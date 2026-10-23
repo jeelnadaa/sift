@@ -1,7 +1,9 @@
-# Sift stack. Choose the mode with COMPOSE_PROFILES and QUEUE_BACKEND in .env:
-#   Oracle Always Free (default):  COMPOSE_PROFILES=redis,https   QUEUE_BACKEND=redis
+# Sift stack. Pick where it runs with COMPOSE_PROFILES and QUEUE_BACKEND in .env:
+#   Laptop + Cloudflare Tunnel:    COMPOSE_PROFILES=redis,tunnel  QUEUE_BACKEND=redis
+#   Oracle Always Free:            COMPOSE_PROFILES=redis,https   QUEUE_BACKEND=redis
 #   GCP e2-micro (1 GB, no Redis): COMPOSE_PROFILES=https         QUEUE_BACKEND=postgres
-#   Local development:             COMPOSE_PROFILES=redis         (no Caddy, API on :8000)
+#   Laptop, local only:            COMPOSE_PROFILES=redis         (API on http://localhost:8000)
+# New-mail detection is independent of the host: CHANGE_DETECTION=poll (default) or push.
 name: sift
 
 x-backend: &backend
@@ -54,6 +56,21 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
+
+  scheduler:
+    <<: *backend
+    command: ["python", "-m", "app.scheduler"]
+
+  # Cloudflare Tunnel: public HTTPS without opening ports (laptop or home server).
+  # Create the tunnel in the Cloudflare dashboard, route your hostname to http://api:8000, put its token in TUNNEL_TOKEN.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on: [api]
 
   caddy:
     image: caddy:2-alpine
