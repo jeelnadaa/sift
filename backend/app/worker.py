@@ -16,6 +16,7 @@ class WorkerSettings:
     """arq settings (redis backend)."""
     functions = [run_job]
     max_tries = 5
+    keep_result = 0  # lets the same _job_id (check:<account>) be enqueued again right after it finishes
     redis_settings = None  # set in main() from REDIS_URL
 
 
