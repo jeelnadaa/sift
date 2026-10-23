@@ -28,7 +28,20 @@ class Settings(BaseSettings):
     # Protects /api/v1/dev/* and device registration until JWT auth lands in Phase 1.
     admin_token: str = ""
 
-    # Pub/Sub push authentication (OIDC token on every push).
+    # Signs OAuth state (and JWTs from Phase 1). Long random string.
+    app_secret: str = ""
+
+    # How new mail is detected:
+    #   poll: the scheduler asks Gmail for changes every POLL_INTERVAL_SECONDS (no billing, no public webhook)
+    #   push: Gmail watch + Cloud Pub/Sub push to /webhooks/gmail (needs a billed GCP project and public HTTPS)
+    change_detection: Literal["poll", "push"] = "poll"
+    poll_interval_seconds: int = 10
+
+    # Google OAuth client (Web application). Redirect URI = PUBLIC_BASE_URL + /api/v1/accounts/oauth/callback
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # Pub/Sub push authentication (OIDC token on every push). Only used when CHANGE_DETECTION=push.
     pubsub_verify: bool = True
     pubsub_audience: str = ""
     pubsub_service_account: str = ""
