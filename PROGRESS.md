@@ -1,30 +1,61 @@
 # Sift (Inbox Agent) — Progress Log
 
-Read this first in every new session. Spec: `Inbox_Agent_Master_Prompt.md`.
+Read `CLAUDE.md` first, then this file. Spec: `Inbox_Agent_Master_Prompt.md`.
 Rule: commit every change to git, never push (the owner pushes).
 
 ## Project
 - Name: **Sift** (repo `jeelnadaa/sift`). Spec calls it "Inbox Agent".
-- Domain: solarquack.in (subdomain TBD).
+- Domain: solarquack.in, default subdomain `sift.solarquack.in`.
 
 ## Status
 | Track | State |
 |-------|-------|
-| Design (landing, web UI, mobile) | v1 done, v2 done, see `DESIGN.md` and `design/README.md` |
-| Phase 0 (setup) | not started |
-| Phases 1–5 | not started |
+| Design (landing, web UI, mobile) | Approved by owner (v2 + font fix). See `DESIGN.md`, `design/README.md` |
+| Phase 0 (setup) | **Code done, locally verified. Waiting on owner:** cloud setup + the two acceptance checks on the real server/phone (README §5) |
+| Phase 1 (notification pipeline) | Not started. Do not start until the owner confirms Phase 0 acceptance |
+| Phases 2–5 | Not started |
 
 ## Log (newest last)
 - 2026-10-24 — Chose name Sift. Started design track: static HTML prototypes in `design/`.
-
-- 2026-10-24 — Design v1 built: shared tokens/components, landing page (motion), web UI (13 routes), mobile gallery (20 screens). Verified over local http server, no console errors. Committed locally, not pushed.
-- 2026-10-24 — Design v2 (owner feedback): Satoshi for all UI text and tabular numerals instead of monospace (JetBrains Mono only for real code); radii cut to 4/6/8/10/14 (no pills); all pill text capitalized, snake_case removed; web sidebar now collapsible (264/76px, `[` key, persisted) with labeled sections Inbox/Organize/Control/Account and SVG icons; removed the AI-on sidebar pill; wordmark and heading tracking opened up; same changes on mobile and landing; themed scrollbars. Wrote `DESIGN.md` (design source of truth). Committed locally, not pushed.
-- 2026-10-24 — Fixed Satoshi not loading (Fontshare returned only Clash Display for a combined request, so body text fell back to system font). Fonts now self-hosted in `design/shared/fonts/` + `fonts.css`; verified Satoshi 400/500/700 and Clash Display load. Added `CLAUDE.md` with all standing instructions (session start routine, phase workflow, docs/log rules, git rules, design and product rules).
+- 2026-10-24 — Design v1 built: shared tokens/components, landing page (motion), web UI (13 routes), mobile gallery (20 screens). Verified over local http server, no console errors.
+- 2026-10-24 — Design v2 (owner feedback): Satoshi for all UI text and tabular numerals instead of monospace (JetBrains Mono only for real code); radii cut to 4/6/8/10/14 (no pills); all pill text capitalized, snake_case removed; web sidebar collapsible (264/76px, `[` key, persisted) with labeled sections Inbox/Organize/Control/Account and SVG icons; removed the AI-on sidebar pill; wordmark and heading tracking opened up; same changes on mobile and landing; themed scrollbars. Wrote `DESIGN.md`.
+- 2026-10-24 — Fixed Satoshi not loading (Fontshare returned only Clash Display for a combined request). Fonts self-hosted in `design/shared/fonts/`. Added `CLAUDE.md` with all standing instructions.
+- 2026-10-24 — Owner approved the design. **Phase 0 implemented:**
+  - `backend/`: FastAPI app (`/health`, `POST /webhooks/gmail`, `POST /api/v1/devices`, `POST /api/v1/dev/test-push`), settings via env, Fernet encryption with key rotation, Pub/Sub OIDC verification (signature/aud/exp via google-auth, plus iss/email/email_verified), FCM HTTP v1 client (data-only, `android.priority=high`, UNREGISTERED → delete token), queue with two backends (arq/Redis, or Postgres `jobs` table with SKIP LOCKED + backoff + stale-lock reclaim), worker entrypoint, CLI (`create-user`, `gen-key`, `fake-push`).
+  - Full data model from brief §12 (24 tables) in Alembic migration `0001`. Up/down/up verified.
+  - 38 tests pass (pubsub auth + parsing, webhook, dedupe, FCM message/errors, queue retry, crypto rotation, health, devices, test-push). Tests build the schema through the real migration.
+  - End-to-end run (uvicorn + Postgres worker): fake push → 204 → job → worker routed to account; redelivery deduped; unknown address handled.
+  - `docker-compose.yml` (postgres, redis[profile], api, worker, caddy[profile]), `deploy/Caddyfile`, `backend/Dockerfile`, `.env.example`, `scripts/backup.sh` + `restore.sh`.
+  - `android/`: minimal Compose app `com.solarquack.sift` — FCM token display/copy, notification channels per tier (urgent/normal/digest), data-message handler that shows the notification and measures delay, notification permission and battery-exemption status. `assembleDebug` builds.
+  - `README.md`: exact setup (GCP, Pub/Sub, OAuth consent, Firebase, Android, Oracle VM, env, acceptance checks, local dev, backups, rebuild, reclaim risk, cost alerts).
 
 ## Decisions
-- Designs are static HTML/CSS/JS prototypes (no build step) so they open by double-click and serve as the visual reference for the React web UI and Compose app.
-- Fonts: Clash Display (display), Satoshi (all UI text) via Fontshare; JetBrains Mono only for code. Full rules in `DESIGN.md`.
-- Keep `DESIGN.md` in sync with any design change, in the same commit.
+- Designs are static HTML/CSS/JS prototypes; the visual reference for the React web UI and Compose app. Keep `DESIGN.md` in sync with any design change, in the same commit.
+- Fonts: Clash Display (display), Satoshi (all UI text), self-hosted; JetBrains Mono only for code.
+- **Defaults taken for Phase 0 (owner can change):**
+  - Hosting: Oracle Always Free Arm VM (Redis mode). e2-micro fallback supported via `QUEUE_BACKEND=postgres` + `COMPOSE_PROFILES=https`.
+  - Subdomain: `sift.solarquack.in`.
+  - Android package: `com.solarquack.sift` (not `in.solarquack.sift`: `in` is a Kotlin keyword and would need backticks in every file).
+  - One Google Cloud project for Gmail API, Pub/Sub and Firebase.
+- Postgres 17 in Docker. Python 3.12 in Docker (code also runs on 3.14 locally).
+- Android toolchain pinned to versions already in the local Gradle cache: AGP 8.7.3, Kotlin 2.0.21, Gradle 8.11.1, Compose BOM 2024.12.01, Firebase BOM 33.7.0, compileSdk/targetSdk 35, minSdk 26. Upgrade deliberately later.
+- Webhook acks malformed pushes with 204 (a non-2xx makes Pub/Sub retry forever) and refuses to run unverified in `ENV=prod`.
+- Pub/Sub redeliveries are deduped by `push:<messageId>` (arq job id or `jobs.dedupe_key`).
+- Phase 0 endpoints use a shared `ADMIN_TOKEN`; Phase 1 replaces this with JWT.
+- `accounts.email` is globally unique because pushes carry only the address.
+- `notifications.message_id` is unique so a message can never notify twice.
 
-## Open questions
-- Hosting choice, Android package name, Firebase/GCP project IDs (needed before Phase 0).
+## Open questions (for the owner)
+1. Confirm or change the defaults above (host, subdomain, package name).
+2. Google Cloud project ID and Firebase project (owner creates them following README §1–2).
+3. Run the two Phase 0 acceptance checks on the server and phone (README §5) and report back.
+
+## Known limitations (Phase 0)
+- Redis queue mode and Docker Compose not run locally (no Docker on the dev machine). Postgres mode verified end to end.
+- Android app: setup screen only; no custom fonts yet.
+- No real Pub/Sub or FCM call has been made yet (needs the owner's cloud projects).
+
+## Dev environment notes (this Windows machine)
+- No Docker. Local Postgres 18 on :5432 needs the owner's password, so sessions use a throwaway cluster: `initdb -U sift -A trust` in the session scratchpad, started on **port 5433**, databases `sift` and `sift_test`. Recreate it if missing.
+- Run tests: `cd backend && TEST_DATABASE_URL=postgresql+psycopg://sift@localhost:5433/sift_test .venv/Scripts/python -m pytest -q`.
+- Gradle on Windows here fails with "Unable to establish loopback connection" unless `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\gtmp` is set (and it must run outside the tool sandbox).

@@ -73,8 +73,15 @@ Backend Python 3.12, FastAPI, SQLAlchemy + Alembic, Postgres, arq + Redis. Andro
 | `DESIGN.md` | Design system |
 | `Inbox_Agent_Master_Prompt.md` | Product spec and phases |
 | `design/` | Static HTML prototypes: `landing/`, `web/`, `mobile/`, `shared/` (tokens, components, fonts) |
+| `README.md` | Setup from scratch, acceptance checks, operations |
+| `backend/` | FastAPI API (`app/api/`), worker (`app/worker.py`, `app/jobs.py`), models (`app/models.py`), Alembic (`migrations/`), tests (`tests/`) |
+| `android/` | Kotlin + Compose app, package `com.solarquack.sift` |
+| `docker-compose.yml`, `deploy/`, `scripts/` | Deployment, Caddy, backup/restore |
 
-Add new top-level folders (backend, android, web) to this table when they are created.
+Add new top-level folders (e.g. the React web app) to this table when they are created.
+
+## 9a. Running and testing locally
+See "Dev environment notes" at the bottom of `PROGRESS.md` (throwaway Postgres on port 5433, test command, Gradle loopback workaround). Every phase must end with the full test suite passing and, where possible, a real end-to-end run.
 
 ## 10. End of every session
 1. All work committed (`git status` clean), nothing pushed.
