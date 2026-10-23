@@ -1,0 +1,5 @@
+# Automatic HTTPS (Let's Encrypt) for the API. Pub/Sub push needs a valid certificate.
+{$SIFT_DOMAIN} {
+	encode gzip
+	reverse_proxy api:8000
+}

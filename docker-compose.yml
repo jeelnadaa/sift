@@ -1,0 +1,77 @@
+# Sift stack. Choose the mode with COMPOSE_PROFILES and QUEUE_BACKEND in .env:
+#   Oracle Always Free (default):  COMPOSE_PROFILES=redis,https   QUEUE_BACKEND=redis
+#   GCP e2-micro (1 GB, no Redis): COMPOSE_PROFILES=https         QUEUE_BACKEND=postgres
+#   Local development:             COMPOSE_PROFILES=redis         (no Caddy, API on :8000)
+name: sift
+
+x-backend: &backend
+  build: ./backend
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sift}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sift}
+    REDIS_URL: redis://redis:6379/0
+    FIREBASE_CREDENTIALS_FILE: /run/secrets/firebase.json
+  volumes:
+    - ./secrets:/run/secrets:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sift}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sift}
+    command: ["postgres", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-128MB}", "-c", "max_connections=${PG_MAX_CONNECTIONS:-40}"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sift}"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    profiles: [redis]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+
+  api:
+    <<: *backend
+    ports:
+      - "${API_BIND:-127.0.0.1}:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      retries: 5
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      SIFT_DOMAIN: ${SIFT_DOMAIN:?set SIFT_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:
