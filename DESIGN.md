@@ -50,7 +50,7 @@ Rules:
 - Display tracking is loose-ish: `letter-spacing: -.005em` for headings, at most `-.035em` for hero sizes, `word-spacing: .08em` (`.12em` hero). The wordmark is `letter-spacing: .06em` with a 12px gap between mark and text.
 - Section labels: Satoshi 700, 10.5px, uppercase, `.14em` tracking, `--text-3`.
 - Sizes: page title 28, section title 22, body 15, row subtitle 13–14, pill 11.5–12.5, mobile body 12.5–13.5.
-- Fonts come from Fontshare (Clash Display, Satoshi) and Google Fonts (JetBrains Mono). Self-host the files in the real apps.
+- Clash Display and Satoshi are self-hosted in `design/shared/fonts/` (declared in `shared/fonts.css`), so they load offline and from `file://`. Request them from Fontshare separately, never in one URL, which returns only the first family. JetBrains Mono loads from Google Fonts. Reuse the same woff2 files in the real apps.
 
 ## 4. Shape and spacing
 

@@ -16,7 +16,7 @@ The rules behind these screens are in [`../DESIGN.md`](../DESIGN.md).
 ## Design system (`shared/`)
 - `tokens.css`: colors, fonts, radii, easing. One color per priority tier (urgent coral, normal blue, digest violet, silent gray) and lime `--signal` as the brand accent. Dark only.
 - `components.css`: buttons, chips, tags, rows, toggles, inputs, cards, the greyed-out "Add an API key to enable" state (`.locked`).
-- Fonts: **Clash Display** (headlines), **Satoshi** (all UI text), both from Fontshare; **JetBrains Mono** only for code, from Google Fonts. For production, self-host the files instead of the CDN.
+- Fonts: **Clash Display** (headlines), **Satoshi** (all UI text), both self-hosted in `shared/fonts/`; **JetBrains Mono** only for code, from Google Fonts. For production, self-host the files instead of the CDN.
 - Motion: masked headline reveal, count-up stats, canvas "sieve" hero (mail falls, noise is filtered, signal passes), marquee, scroll-reveal, cursor glow, notification drop-in. All respect `prefers-reduced-motion`.
 
 ## Screen coverage (brief section 13)
