@@ -60,10 +60,11 @@ Everything you do must be documented so a fresh session can resume cold.
 - Processing must be idempotent (no duplicate notifications or LLM calls). Never backfill old mail with the LLM.
 - One failing account must not affect others (`active`, `needs_reconnect`, `blocked`; blocked copy is fixed in `DESIGN.md`).
 - Everything that decides what is ignored or notified needs tests (rule engine, pipeline, fingerprinting, opportunity matching, search parsing, AI-off mode).
-- Include a seed or demo mode with sample emails. Deployment must stay free (Oracle Always Free Arm VM with Docker Compose and Caddy; GCP e2-micro fallback). No paid services in the default setup.
+- Include a seed or demo mode with sample emails. Deployment must stay free. No paid services in the default setup.
+- **Portability (owner's instruction):** the host (laptop now, Oracle later, e2-micro fallback) and the new-mail detection mode (`CHANGE_DETECTION=poll` default, `push` via Pub/Sub later) are chosen only in `.env`. Never hard-wire code to one host or one mode; both modes must go through `accounts.check_account()`. Keep README §6 (move to Oracle) and §7 (switch to push) working.
 
 ## 8. Stack defaults
-Backend Python 3.12, FastAPI, SQLAlchemy + Alembic, Postgres, arq + Redis. Android Kotlin, Jetpack Compose, FCM, Retrofit/OkHttp, Room. Web React + TypeScript (Vite). Gmail API with OAuth and Pub/Sub push. LLM provider interface, Gemini default. Docker Compose. Change only if the owner says so.
+Backend Python 3.12, FastAPI, SQLAlchemy + Alembic, Postgres, arq + Redis or the Postgres job queue. Processes: api, worker, scheduler. Android Kotlin, Jetpack Compose, FCM, Retrofit/OkHttp, Room. Web React + TypeScript (Vite). Gmail API with OAuth and Pub/Sub push. LLM provider interface, Gemini default. Docker Compose. Change only if the owner says so.
 
 ## 9. Repo map
 | Path | What |
@@ -74,9 +75,9 @@ Backend Python 3.12, FastAPI, SQLAlchemy + Alembic, Postgres, arq + Redis. Andro
 | `Inbox_Agent_Master_Prompt.md` | Product spec and phases |
 | `design/` | Static HTML prototypes: `landing/`, `web/`, `mobile/`, `shared/` (tokens, components, fonts) |
 | `README.md` | Setup from scratch, acceptance checks, operations |
-| `backend/` | FastAPI API (`app/api/`), worker (`app/worker.py`, `app/jobs.py`), models (`app/models.py`), Alembic (`migrations/`), tests (`tests/`) |
+| `backend/` | FastAPI API (`app/api/`), worker (`app/worker.py`, `app/jobs.py`), scheduler (`app/scheduler.py`), accounts and change detection (`app/accounts.py`), mail provider + Gmail + OAuth (`app/mail/`), models (`app/models.py`), Alembic (`migrations/`), tests (`tests/`) |
 | `android/` | Kotlin + Compose app, package `com.solarquack.sift` |
-| `docker-compose.yml`, `deploy/`, `scripts/` | Deployment, Caddy, backup/restore |
+| `docker-compose.yml`, `deploy/`, `scripts/` | Deployment (profiles: redis, tunnel, https), Caddy, `run-local.ps1` (native Windows), backup/restore |
 
 Add new top-level folders (e.g. the React web app) to this table when they are created.
 
