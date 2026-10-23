@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sift — your inbox, sifted</title>
+<link rel="stylesheet" href="../shared/tokens.css">
+<link rel="stylesheet" href="../shared/components.css">
+<style>
+  html { scroll-behavior: smooth; }
+  body { overflow-x: hidden; }
+  .wrap { width: min(1240px, 100% - 48px); margin-inline: auto; }
+
+  /* nav */
+  nav { position: fixed; inset: 16px 0 auto; z-index: 50; display: flex; justify-content: center; pointer-events: none; }
+  nav .bar { pointer-events: auto; display: flex; align-items: center; gap: 28px; padding: 8px 8px 8px 22px; border-radius: 999px; background: rgba(21,21,24,.72); backdrop-filter: blur(16px); border: 1px solid var(--line); }
+  .logo { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: -.03em; display: flex; align-items: center; gap: 8px; }
+  .logo b { width: 14px; height: 14px; border-radius: 4px; background: var(--signal); display: inline-block; transform: rotate(45deg); }
+  nav a.l { color: var(--text-2); font-weight: 500; font-size: 14px; transition: color .2s; }
+  nav a.l:hover { color: var(--text); }
+  @media (max-width: 760px) { nav a.l { display: none; } }
+
+  /* hero */
+  .hero { min-height: 100vh; position: relative; display: grid; align-items: center; padding: 140px 0 80px; overflow: hidden; }
+  .hero h1 { font-size: clamp(56px, 11.5vw, 188px); font-weight: 700; letter-spacing: -.045em; line-height: .88; }
+  .hero h1 .line { display: block; overflow: hidden; padding-bottom: .06em; }
+  .hero h1 .line span { display: inline-block; transform: translateY(110%); animation: up 1.1s var(--ease-out) forwards; }
+  .hero h1 .line:nth-child(2) span { animation-delay: .12s; }
+  .hero h1 em { font-style: normal; color: var(--signal); }
+  @keyframes up { to { transform: none; } }
+  .hero .sub { margin-top: 32px; max-width: 520px; color: var(--text-2); font-size: 19px; opacity: 0; animation: rise 1s .7s var(--ease-out) forwards; }
+  .hero .cta { margin-top: 32px; display: flex; gap: 12px; flex-wrap: wrap; opacity: 0; animation: rise 1s .85s var(--ease-out) forwards; }
+  .hero .btn { height: 52px; padding: 0 28px; font-size: 16px; }
+  .hero-grid { position: relative; }
+  #sieve { position: absolute; right: -40px; top: -80px; width: min(560px, 55vw); height: 120%; pointer-events: none; }
+  @media (max-width: 900px) { #sieve { opacity: .35; right: -120px; } }
+  .stat-row { display: flex; gap: 48px; margin-top: 72px; flex-wrap: wrap; opacity: 0; animation: rise 1s 1s var(--ease-out) forwards; }
+  .stat b { font-family: var(--font-display); font-size: 40px; display: block; letter-spacing: -.03em; }
+  .stat span { color: var(--text-3); font-size: 13px; }
+
+  /* marquee */
+  .marquee { border-block: 1px solid var(--line); overflow: hidden; padding: 22px 0; background: var(--bg-2); }
+  .marquee .track { display: flex; gap: 56px; width: max-content; animation: slide 38s linear infinite; font-family: var(--font-display); font-size: 40px; font-weight: 500; letter-spacing: -.02em; color: var(--text-3); }
+  .marquee .track span { display: flex; align-items: center; gap: 56px; white-space: nowrap; }
+  .marquee .track span::after { content: "✦"; color: var(--signal); font-size: 24px; }
+  .marquee .track .hl { color: var(--text); }
+  @keyframes slide { to { transform: translateX(-50%); } }
+
+  section { padding: 140px 0; position: relative; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--signal); margin-bottom: 20px; display: block; }
+  h2.big { font-size: clamp(40px, 6.4vw, 96px); letter-spacing: -.04em; max-width: 14ch; }
+  h2.big em { font-style: normal; color: var(--text-3); }
+  .lead { color: var(--text-2); font-size: 18px; max-width: 520px; margin-top: 24px; }
+
+  /* reveal */
+  .rv { opacity: 0; transform: translateY(40px); transition: opacity .9s var(--ease-out), transform .9s var(--ease-out); transition-delay: calc(var(--d, 0) * 90ms); }
+  .rv.in { opacity: 1; transform: none; }
+
+  /* pipeline */
+  .pipe { margin-top: 80px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; }
+  .pipe > div { padding: 32px 28px 36px; border-right: 1px solid var(--line); background: var(--surface); transition: background .4s; position: relative; min-height: 300px; }
+  .pipe > div:last-child { border-right: 0; }
+  .pipe > div:hover { background: var(--surface-2); }
+  .pipe .n { font-family: var(--font-mono); color: var(--text-3); font-size: 13px; }
+  .pipe h3 { font-size: 28px; margin: 56px 0 12px; }
+  .pipe p { color: var(--text-2); font-size: 14.5px; }
+  .pipe .tagline { position: absolute; left: 28px; bottom: 24px; }
+  @media (max-width: 900px) { .pipe { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .pipe { grid-template-columns: 1fr; } .pipe > div { border-right: 0; border-bottom: 1px solid var(--line); min-height: 0; } }
+
+  /* bento */
+  .bento { margin-top: 80px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .bento .card { padding: 28px; border-radius: var(--r-xl); overflow: hidden; position: relative; min-height: 280px; transition: transform .5s var(--ease-out), border-color .3s; }
+  .bento .card:hover { transform: translateY(-6px); border-color: var(--line-2); }
+  .bento h3 { font-size: 30px; margin-bottom: 10px; }
+  .bento p { color: var(--text-2); max-width: 36ch; }
+  .b-a { grid-column: span 4; } .b-b { grid-column: span 2; } .b-c { grid-column: span 2; } .b-d { grid-column: span 4; }
+  @media (max-width: 900px) { .b-a,.b-b,.b-c,.b-d { grid-column: span 6; } }
+  .timeline { margin-top: 28px; display: flex; flex-direction: column; gap: 0; position: relative; }
+  .timeline::before { content:""; position:absolute; left: 11px; top: 8px; bottom: 8px; width: 2px; background: var(--line-2); }
+  .tl { display: flex; gap: 18px; align-items: flex-start; padding: 9px 0; }
+  .tl i { width: 24px; height: 24px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line-2); flex: none; z-index: 1; display:grid; place-items:center; }
+  .tl.done i { background: var(--signal); border-color: var(--signal); }
+  .tl b { display: block; font-size: 15px; }
+  .tl span { color: var(--text-3); font-size: 13px; }
+  .silence { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .silence div { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--bg-2); font-size: 13.5px; color: var(--text-2); }
+  .silence div.x { text-decoration: line-through; opacity: .45; }
+  .silence div.keep { border: 1px solid var(--urgent); color: var(--text); background: rgba(255,90,60,.08); }
+  .big-num { font-family: var(--font-display); font-size: 120px; line-height: .9; letter-spacing: -.05em; color: var(--signal); }
+
+  /* phone */
+  .phone-sec { background: var(--bg-2); border-block: 1px solid var(--line); overflow: hidden; }
+  .phone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  @media (max-width: 900px) { .phone-grid { grid-template-columns: 1fr; gap: 56px; } }
+  .phone { width: 300px; height: 620px; margin-inline: auto; border-radius: 46px; border: 8px solid #1d1d21; background: var(--bg); position: relative; overflow: hidden; box-shadow: 0 60px 120px rgba(0,0,0,.6), 0 0 0 1px var(--line-2); transform: rotate(-4deg); transition: transform .8s var(--ease-out); }
+  .phone-sec:hover .phone { transform: rotate(0deg); }
+  .phone .notch { width: 90px; height: 24px; background: #000; border-radius: 99px; margin: 10px auto 0; }
+  .push { margin: 14px 12px 0; padding: 14px; border-radius: 20px; background: rgba(32,32,36,.95); border: 1px solid var(--line-2); transform: translateY(-140%); opacity: 0; }
+  .phone.go .push:nth-child(2) { animation: drop .9s .3s var(--ease-out) forwards; }
+  .phone.go .push:nth-child(3) { animation: drop .9s 1.4s var(--ease-out) forwards; }
+  .phone.go .push:nth-child(4) { animation: drop .9s 2.4s var(--ease-out) forwards; }
+  @keyframes drop { to { transform: none; opacity: 1; } }
+  .push .h { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; }
+  .push .h b { color: var(--text-2); }
+  .push .t { font-weight: 700; font-size: 14px; }
+  .push .s { color: var(--text-2); font-size: 13px; margin-top: 2px; }
+  .push .acts { display: flex; gap: 8px; margin-top: 12px; }
+  .push .acts span { padding: 6px 12px; border-radius: 99px; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+  .push .acts span.p { background: var(--signal); color: var(--signal-ink); }
+
+  /* byok */
+  .key { margin-top: 48px; display: inline-flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line-2); font-family: var(--font-mono); font-size: 14px; }
+  .key .ok { color: var(--signal); }
+
+  /* cta */
+  .final { text-align: center; padding: 180px 0; overflow: hidden; }
+  .final h2 { font-size: clamp(56px, 12vw, 200px); letter-spacing: -.05em; line-height: .86; }
+  .final h2 em { font-style: normal; color: var(--signal); }
+  footer { border-top: 1px solid var(--line); padding: 36px 0 56px; color: var(--text-3); font-size: 13.5px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  .cursor-glow { position: fixed; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle, rgba(200,255,61,.09), transparent 65%); pointer-events: none; transform: translate(-50%, -50%); z-index: 0; left: 50%; top: 40%; transition: left .5s var(--ease-out), top .5s var(--ease-out); }
+  main, nav, footer { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<div class="cursor-glow" id="glow"></div>
+
+<nav>
+  <div class="bar">
+    <a class="logo" href="#"><b></b>Sift</a>
+    <a class="l" href="#how">How it works</a>
+    <a class="l" href="#features">Features</a>
+    <a class="l" href="#mobile">Mobile</a>
+    <a class="l" href="#key">Your key</a>
+    <a class="btn btn-primary btn-sm" href="../web/index.html">Open app</a>
+  </div>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="wrap hero-grid">
+    <canvas id="sieve"></canvas>
+    <h1><span class="line"><span>Your inbox,</span></span><span class="line"><span><em>sifted.</em></span></span></h1>
+    <p class="sub">Sift watches every Gmail account you own, runs your rules first, and pings your phone the second something matters. Bank alerts cost nothing. Placement mails land on one timeline.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="../web/index.html">Connect Gmail →</a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><b data-count="2">0</b><span>seconds, mail to buzz</span></div>
+      <div class="stat"><b data-count="0">0</b><span>tokens spent on bank alerts</span></div>
+      <div class="stat"><b data-count="100" data-suffix="%">0</b><span>you hold the key</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="marquee" aria-hidden="true">
+  <div class="track">
+    <span class="hl">Instant push</span><span>Rules first</span><span class="hl">Company timelines</span><span>Multi-account</span><span class="hl">Bring your own key</span><span>Silent by default</span>
+    <span class="hl">Instant push</span><span>Rules first</span><span class="hl">Company timelines</span><span>Multi-account</span><span class="hl">Bring your own key</span><span>Silent by default</span>
+  </div>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <span class="eyebrow rv">The pipeline</span>
+    <h2 class="big rv" style="--d:1">Cheap checks first. <em>AI last.</em></h2>
+    <p class="lead rv" style="--d:2">Every new mail walks the same short road. Most of it is settled before a single token is spent.</p>
+    <div class="pipe">
+      <div class="rv" style="--d:0"><span class="n">01</span><h3>Arrives</h3><p>Gmail pushes the moment mail lands. No polling, no waiting for the app to wake up.</p><span class="tag tag ok tagline">Pub/Sub</span></div>
+      <div class="rv" style="--d:1"><span class="n">02</span><h3>Your rules</h3><p>First match wins. Sender, domain, subject, keywords, with exceptions so fraud alerts still get through.</p><span class="tag tagline">0 tokens</span></div>
+      <div class="rv" style="--d:2"><span class="n">03</span><h3>Fingerprint</h3><p>Seen this exact template before and silenced it? Same call, instantly, for free.</p><span class="tag tagline">0 tokens</span></div>
+      <div class="rv" style="--d:3"><span class="n">04</span><h3>Small LLM</h3><p>Only the leftovers. One call, redacted, validated, cached. Never old mail.</p><span class="tag urgent tagline">your key</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="padding-top:0">
+  <div class="wrap">
+    <span class="eyebrow rv">What you get</span>
+    <h2 class="big rv" style="--d:1">One timeline per company.</h2>
+    <div class="bento">
+      <div class="card b-a rv">
+        <h3>Placement drive, in order.</h3>
+        <p>College announcement, company follow-up, HirePro link: three senders, three accounts, one thread of events.</p>
+        <div class="timeline">
+          <div class="tl done"><i></i><div><b>Announcement · college@placement</b><span>Mon 9:02 · Account: college</span></div></div>
+          <div class="tl done"><i></i><div><b>Registration open · Acme Corp</b><span>Mon 11:40 · deadline Wed 6pm</span></div></div>
+          <div class="tl done"><i></i><div><b>Assessment link · HirePro</b><span>Tue 8:15 · reminder set 24h + 2h</span></div></div>
+          <div class="tl"><i></i><div><b style="color:var(--text-3)">Interview</b><span>Not yet</span></div></div>
+        </div>
+      </div>
+      <div class="card b-b rv" style="--d:1">
+        <h3>Silent, not lost.</h3>
+        <p>Bank noise is stored and searchable, never notified.</p>
+        <div class="silence">
+          <div class="x">UPI debit ₹240 · Kotak</div>
+          <div class="x">Card spent ₹1,180 · Slice</div>
+          <div class="keep">⚠ Card blocked · Kotak</div>
+        </div>
+      </div>
+      <div class="card b-c rv">
+        <span class="big-num">0</span>
+        <h3 style="margin-top:12px">tokens for noise</h3>
+        <p>Rules and heuristics handle the bulk. Your daily cap handles the rest.</p>
+      </div>
+      <div class="card b-d rv" style="--d:1">
+        <h3>Every account. One feed.</h3>
+        <p>Connect as many Gmail accounts as you like. If one is revoked or blocked, only that one pauses. The rest keep buzzing.</p>
+        <div style="display:flex;gap:10px;margin-top:28px;flex-wrap:wrap">
+          <span class="chip on"><span class="acct"><i style="background:var(--acc-1)"></i></span>personal@gmail.com</span>
+          <span class="chip"><span class="acct"><i style="background:var(--acc-2)"></i></span>college@univ.edu <span class="tag warn">may be blocked</span></span>
+          <span class="chip"><span class="acct"><i style="background:var(--acc-3)"></i></span>work@gmail.com</span>
+          <span class="chip"><span class="acct"><i style="background:var(--acc-4)"></i></span>side@gmail.com <span class="tag urgent">reconnect</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="phone-sec" id="mobile">
+  <div class="wrap phone-grid">
+    <div>
+      <span class="eyebrow rv">Android</span>
+      <h2 class="big rv" style="--d:1">Buzz. Tap. Done.</h2>
+      <p class="lead rv" style="--d:2">Priority channels with their own sound. Action buttons right in the notification. Urgent mail keeps nagging until you acknowledge it.</p>
+    </div>
+    <div class="phone rv" id="phone">
+      <div class="notch"></div>
+      <div class="push" style="margin-top:36px"><div class="h"><span class="dot urgent"></span><b>SIFT · URGENT</b> · now</div><div class="t">HirePro assessment · Acme Corp</div><div class="s">Test link live, closes tonight 11:59 PM</div><div class="acts"><span class="p">Open link</span><span>Snooze</span><span>Done</span></div></div>
+      <div class="push"><div class="h"><span class="dot normal"></span><b>SIFT · NORMAL</b> · now</div><div class="t">Which company is this?</div><div class="s">New mail from hr@globex-careers.in</div><div class="acts"><span class="p">Acme</span><span>Globex</span><span>New</span></div></div>
+      <div class="push"><div class="h"><span class="dot digest"></span><b>SIFT · DIGEST</b> · now</div><div class="t">Notice board update</div><div class="s">Hostel timings revised for next week</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="key">
+  <div class="wrap">
+    <span class="eyebrow rv">Bring your own key</span>
+    <h2 class="big rv" style="--d:1">Your key. Your tokens. <em>Your call.</em></h2>
+    <p class="lead rv" style="--d:2">Sift ships with no shared key. Paste your own Gemini key and AI features switch on. Skip it and everything else still works: push, rules, folders, search.</p>
+    <div class="key rv" style="--d:3"><span class="dim">GEMINI_KEY</span><span>••••••••••••••••a91f</span><span class="ok">✓ valid</span></div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap">
+    <h2 class="rv">Stop <em>digging.</em><br>Start sifting.</h2>
+    <div style="margin-top:56px" class="rv" style="--d:2"><a class="btn btn-primary" style="height:60px;padding:0 40px;font-size:18px" href="../web/index.html">Connect Gmail →</a></div>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap"><span>© 2026 Sift · a solarquack project</span><span>Read-only by default. Never logs email bodies.</span></div></footer>
+
+<script>
+// scroll reveal
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); if (e.target.id === 'phone') e.target.classList.add('go'); io.unobserve(e.target); } }), { threshold: .18 });
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+
+// count-up
+document.querySelectorAll('[data-count]').forEach(el => {
+  const to = +el.dataset.count, suf = el.dataset.suffix || '', t0 = performance.now() + 900;
+  const tick = t => { const p = Math.min(Math.max((t - t0) / 1200, 0), 1); el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))) + suf; if (p < 1) requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+});
+
+// cursor glow
+const glow = document.getElementById('glow');
+addEventListener('pointermove', e => { glow.style.left = e.clientX + 'px'; glow.style.top = e.clientY + 'px'; });
+
+// sieve: mail falls, noise is filtered at the mesh, signal passes and lights up
+(() => {
+  const c = document.getElementById('sieve'), x = c.getContext('2d');
+  let w, h, dpr = Math.min(devicePixelRatio || 1, 2);
+  const fit = () => { w = c.clientWidth; h = c.clientHeight; c.width = w * dpr; c.height = h * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  fit(); addEventListener('resize', fit);
+  const items = [];
+  const spawn = () => { const sig = Math.random() < .14; items.push({ x: w * (.15 + Math.random() * .7), y: -30, vy: 1 + Math.random() * 1.4, w: 46 + Math.random() * 40, sig, o: 0, dead: false, r: (Math.random() - .5) * .5 }); };
+  const mesh = () => h * .55;
+  let last = 0;
+  const frame = t => {
+    x.clearRect(0, 0, w, h);
+    if (t - last > 380) { spawn(); last = t; }
+    // mesh
+    x.strokeStyle = 'rgba(244,243,238,.18)'; x.lineWidth = 1;
+    for (let i = 0; i < 28; i++) { const px = (w / 28) * i; x.beginPath(); x.moveTo(px, mesh() - 6); x.lineTo(px, mesh() + 6); x.stroke(); }
+    x.beginPath(); x.moveTo(0, mesh()); x.lineTo(w, mesh()); x.stroke();
+    for (let i = items.length - 1; i >= 0; i--) {
+      const m = items[i];
+      m.y += m.vy; m.o = Math.min(m.o + .04, 1);
+      if (!m.sig && m.y > mesh() - 10) { m.dead = true; }
+      if (m.dead) { m.o -= .08; m.y -= .6; if (m.o <= 0) { items.splice(i, 1); continue; } }
+      if (m.y > h + 40) { items.splice(i, 1); continue; }
+      x.save(); x.globalAlpha = Math.max(m.o, 0); x.translate(m.x, m.y); x.rotate(m.r);
+      const hh = 28, r = 7;
+      x.fillStyle = m.sig && m.y > mesh() ? '#c8ff3d' : '#1c1c20'; x.strokeStyle = m.sig ? '#c8ff3d' : '#34343b';
+      if (m.sig && m.y > mesh()) { x.shadowColor = '#c8ff3d'; x.shadowBlur = 24; }
+      x.beginPath(); x.roundRect(-m.w / 2, -hh / 2, m.w, hh, r); x.fill(); x.stroke();
+      x.shadowBlur = 0; x.fillStyle = m.sig && m.y > mesh() ? '#10150a' : '#5b5b64';
+      x.fillRect(-m.w / 2 + 9, -3, m.w * .5, 3); x.fillRect(-m.w / 2 + 9, 4, m.w * .3, 3);
+      x.restore();
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
