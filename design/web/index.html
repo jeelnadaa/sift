@@ -7,28 +7,45 @@
 <link rel="stylesheet" href="../shared/tokens.css">
 <link rel="stylesheet" href="../shared/components.css">
 <style>
-  body { height: 100vh; overflow: hidden; display: grid; grid-template-columns: 248px 1fr; }
+  body { height: 100vh; overflow: hidden; display: grid; grid-template-columns: var(--side-w, 264px) minmax(0, 1fr); transition: grid-template-columns .35s var(--ease-out); }
+  body.collapsed { --side-w: 76px; }
   /* sidebar */
-  aside { border-right: 1px solid var(--line); background: var(--bg-2); display: flex; flex-direction: column; padding: 20px 14px; overflow-y: auto; }
-  .logo { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: -.03em; display: flex; align-items: center; gap: 8px; padding: 0 10px 22px; }
-  .logo b { width: 14px; height: 14px; border-radius: 4px; background: var(--signal); transform: rotate(45deg); }
-  .nav-h { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); padding: 18px 12px 8px; }
-  .nav a { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px; color: var(--text-2); font-weight: 500; transition: background .2s, color .2s; }
+  aside { border-right: 1px solid var(--line); background: var(--bg-2); display: flex; flex-direction: column; padding: 18px 12px; overflow: hidden auto; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
+  .logo { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: .06em; display: flex; align-items: center; gap: 12px; flex: 1; white-space: nowrap; overflow: hidden; }
+  .logo b { width: 14px; height: 14px; border-radius: 4px; background: var(--signal); transform: rotate(45deg); flex: none; margin: 0 2px; }
+  .collapse { width: 30px; height: 30px; border-radius: var(--r-sm); display: grid; place-items: center; color: var(--text-3); border: 1px solid var(--line); flex: none; transition: color .2s, background .2s, transform .35s var(--ease-out); }
+  .collapse:hover { color: var(--text); background: var(--surface-2); }
+  .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .nav-group { padding: 10px 0 14px; border-top: 1px solid var(--line); }
+  .nav-group:first-child { border-top: 0; padding-top: 0; }
+  .nav-h { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); padding: 6px 12px 8px; white-space: nowrap; }
+  .nav a { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); color: var(--text-2); font-weight: 500; transition: background .2s, color .2s; position: relative; white-space: nowrap; }
   .nav a:hover { background: var(--surface); color: var(--text); }
   .nav a.on { background: var(--surface-2); color: var(--text); }
-  .nav a.on .ic { color: var(--signal); }
-  .nav .ic { width: 18px; text-align: center; font-size: 15px; }
-  .nav .ct { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
+  .nav a.on::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--signal); }
+  .nav a.on .ico { color: var(--signal); }
+  .nav .ct { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--text-3); font-variant-numeric: tabular-nums; }
   .nav .ct.u { color: var(--urgent); }
-  .side-foot { margin-top: auto; padding: 14px 10px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .ai-pill { margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; background: rgba(200,255,61,.07); border: 1px solid rgba(200,255,61,.2); font-size: 12.5px; color: var(--text-2); }
-  .ai-pill b { color: var(--signal); }
+  .nav .ct-dot { display: none; position: absolute; top: 7px; right: 14px; width: 7px; height: 7px; border-radius: 50%; background: var(--urgent); }
+  .side-foot { margin-top: auto; padding: 14px 8px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; font-size: 13px; white-space: nowrap; }
+  /* collapsed: icons only, section headers become hairlines, tooltip on hover */
+  body.collapsed .brand { flex-direction: column; padding-bottom: 16px; }
+  body.collapsed .logo span, body.collapsed .nav-h, body.collapsed .nav a .lbl, body.collapsed .nav .ct, body.collapsed .side-foot .who-t { display: none; }
+  body.collapsed .logo { justify-content: center; flex: none; }
+  body.collapsed .collapse { transform: rotate(180deg); }
+  body.collapsed .nav a { justify-content: center; padding: 11px 0; }
+  body.collapsed .nav .ct-dot { display: block; }
+  body.collapsed .nav-group { padding: 12px 0; }
+  body.collapsed .side-foot { justify-content: center; padding-inline: 0; }
+  body.collapsed .nav a:hover::after { content: attr(title); position: absolute; left: calc(100% + 14px); padding: 5px 10px; background: var(--text); color: var(--bg); border-radius: var(--r-sm); font-size: 12.5px; font-weight: 700; z-index: 20; pointer-events: none; }
+  body.collapsed aside { overflow: visible; }
 
   /* main */
   main { overflow-y: auto; position: relative; }
   .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px; padding: 16px 32px; background: rgba(10,10,11,.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
   .top h1 { font-size: 28px; }
-  .search { margin-left: auto; width: min(380px, 40%); height: 40px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line-2); display: flex; align-items: center; padding: 0 16px; gap: 10px; color: var(--text-3); }
+  .search { margin-left: auto; width: min(380px, 40%); height: 40px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line-2); display: flex; align-items: center; padding: 0 16px; gap: 10px; color: var(--text-3); }
   .search input { flex: 1; background: none; border: 0; outline: 0; }
   .page { display: none; padding: 28px 32px 80px; max-width: 1280px; animation: rise .5s var(--ease-out); }
   .page.on { display: block; }
@@ -41,9 +58,9 @@
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   .split { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
-  .kpi b { font-family: var(--font-display); font-size: 38px; letter-spacing: -.03em; display: block; }
+  .kpi b { font-family: var(--font-display); font-size: 38px; letter-spacing: -.015em; display: block; }
   .kpi span { color: var(--text-3); font-size: 13px; }
-  .banner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 14px; margin-bottom: 20px; font-size: 14px; }
+  .banner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
   .banner.warn { background: rgba(255,185,56,.1); border: 1px solid rgba(255,185,56,.3); }
   .banner.err { background: rgba(255,90,60,.1); border: 1px solid rgba(255,90,60,.3); }
   .banner .btn { margin-left: auto; }
@@ -54,50 +71,48 @@
   .sel { background: var(--surface); }
   .group-row { background: var(--surface); }
   .indent { padding-left: 28px; }
-  .cond { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); margin-bottom: 8px; flex-wrap: wrap; }
-  .cond .op { font-family: var(--font-mono); font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--surface-2); color: var(--signal); }
-  .bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--signal); border-radius: 99px; }
-  .tree .it { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: var(--text-2); }
+  .cond { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); margin-bottom: 8px; flex-wrap: wrap; }
+  .cond .op { font-family: var(--font-body); font-variant-numeric: tabular-nums; font-size: 12px; padding: 4px 8px; border-radius: 4px; background: var(--surface-2); color: var(--signal); }
+  .bar { height: 8px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--signal); border-radius: 6px; }
+  .tree .it { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; color: var(--text-2); }
   .tree .it:hover { background: var(--surface); }
   .tree .it.on { background: var(--surface-2); color: var(--text); }
-  .tree .it .ct { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+  .tree .it .ct { margin-left: auto; font-family: var(--font-body); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-3); }
   .tree .l1 { margin-left: 18px; } .tree .l2 { margin-left: 36px; }
   .mail-body { line-height: 1.7; color: var(--text-2); max-width: 70ch; }
   .mail-body p { margin-bottom: 14px; }
-  .sandbox { padding: 6px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--text-3); display: inline-flex; gap: 8px; }
+  .sandbox { padding: 6px 12px; border-radius: 6px; background: var(--surface-2); font-size: 12px; color: var(--text-3); display: inline-flex; gap: 8px; }
   .settings-sec { margin-bottom: 36px; }
   .set-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--line); }
   .set-row small { display: block; color: var(--text-3); font-size: 13px; }
   .set-row.locked { padding-right: 190px; }
   .sched td:first-child { font-weight: 700; }
-  @media (max-width: 1000px) { body { grid-template-columns: 1fr; } aside { display: none; } .split, .grid2, .grid3, .grid4 { grid-template-columns: 1fr; } }
+  @media (max-width: 1000px) { .split, .grid2, .grid3, .grid4 { grid-template-columns: 1fr; } .page { padding-inline: 18px; } .top { padding-inline: 18px; }  }
 </style>
 </head>
 <body>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-feed" viewBox="0 0 24 24"><path d="M3 13l2.5-7.5A2 2 0 017.4 4h9.2a2 2 0 011.9 1.5L21 13v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+<symbol id="i-todo" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol>
+<symbol id="i-opps" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></symbol>
+<symbol id="i-groups" viewBox="0 0 24 24"><rect x="5" y="9" width="14" height="10" rx="2"/><path d="M7.5 6h9M10 3h4"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V17a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+<symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M15.5 12v1.5a2.5 2.5 0 005 0V12a8.5 8.5 0 10-3.4 6.8"/></symbol>
+<symbol id="i-rules" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+<symbol id="i-mute" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 19a2 2 0 004 0M4 4l16 16"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2M4 12h16"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-7"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+</defs></svg>
 <aside>
-  <div class="logo"><b></b>Sift</div>
-  <nav class="nav" id="nav">
-    <a href="#feed"><span class="ic">◉</span>Feed<span class="ct u">3</span></a>
-    <a href="#todo"><span class="ic">☑</span>To-do<span class="ct">5</span></a>
-    <a href="#opps"><span class="ic">◈</span>Opportunities<span class="ct">4</span></a>
-    <a href="#groups"><span class="ic">▤</span>Groups</a>
-    <div class="nav-h">Organize</div>
-    <a href="#folders"><span class="ic">▣</span>Folders</a>
-    <a href="#search"><span class="ic">⌕</span>Search</a>
-    <a href="#senders"><span class="ic">@</span>Senders</a>
-    <div class="nav-h">Control</div>
-    <a href="#rules"><span class="ic">⚙</span>Rules</a>
-    <a href="#silenced"><span class="ic">◌</span>Silenced<span class="ct">128</span></a>
-    <a href="#scan"><span class="ic">⟲</span>Onboarding scan</a>
-    <div class="nav-h">Account</div>
-    <a href="#accounts"><span class="ic">✉</span>Accounts<span class="ct u">!</span></a>
-    <a href="#usage"><span class="ic">▥</span>Token usage</a>
-    <a href="#settings"><span class="ic">☰</span>Settings</a>
-  </nav>
-  <div class="ai-pill"><b>AI on</b> · Gemini Flash-Lite<br>3,420 / 50,000 tokens today</div>
-  <div class="side-foot"><div class="avatar">J</div><div><b>Jeel</b><div class="dim" style="font-size:12px">4 accounts</div></div></div>
+  <div class="brand"><div class="logo"><b></b><span>Sift</span></div><button class="collapse" id="collapse" title="Collapse sidebar ( [ )" aria-label="Collapse sidebar"><svg class="ico"><use href="#i-chev"/></svg></button></div>
+  <nav class="nav" id="nav"><div class="nav-group"><div class="nav-h">Inbox</div><a href="#feed" title="Feed"><svg class="ico"><use href="#i-feed"/></svg><span class="lbl">Feed</span><span class="ct u">3</span><i class="ct-dot"></i></a><a href="#todo" title="To-do"><svg class="ico"><use href="#i-todo"/></svg><span class="lbl">To-do</span><span class="ct">5</span></a><a href="#opps" title="Opportunities"><svg class="ico"><use href="#i-opps"/></svg><span class="lbl">Opportunities</span><span class="ct">4</span></a><a href="#groups" title="Groups"><svg class="ico"><use href="#i-groups"/></svg><span class="lbl">Groups</span></a></div><div class="nav-group"><div class="nav-h">Organize</div><a href="#folders" title="Folders"><svg class="ico"><use href="#i-folder"/></svg><span class="lbl">Folders</span></a><a href="#search" title="Search"><svg class="ico"><use href="#i-search"/></svg><span class="lbl">Search</span></a><a href="#senders" title="Senders"><svg class="ico"><use href="#i-at"/></svg><span class="lbl">Senders</span></a></div><div class="nav-group"><div class="nav-h">Control</div><a href="#rules" title="Rules"><svg class="ico"><use href="#i-rules"/></svg><span class="lbl">Rules</span></a><a href="#silenced" title="Silenced"><svg class="ico"><use href="#i-mute"/></svg><span class="lbl">Silenced</span><span class="ct">128</span></a><a href="#scan" title="Onboarding scan"><svg class="ico"><use href="#i-scan"/></svg><span class="lbl">Onboarding scan</span></a></div><div class="nav-group"><div class="nav-h">Account</div><a href="#accounts" title="Accounts"><svg class="ico"><use href="#i-mail"/></svg><span class="lbl">Accounts</span><span class="ct u">!</span><i class="ct-dot"></i></a><a href="#usage" title="Token usage"><svg class="ico"><use href="#i-chart"/></svg><span class="lbl">Token usage</span></a><a href="#settings" title="Settings"><svg class="ico"><use href="#i-gear"/></svg><span class="lbl">Settings</span></a></div></nav>
+  <div class="side-foot"><div class="avatar">J</div><div class="who-t"><b>Jeel</b><div class="dim" style="font-size:12px">4 accounts</div></div></div>
 </aside>
 
 <main>
@@ -108,18 +123,18 @@
     <div class="banner err"><span class="dot urgent"></span><span><b>side@gmail.com</b> needs to reconnect. Other accounts are fine.</span><button class="btn btn-ghost btn-sm">Reconnect</button></div>
     <div class="tabs">
       <span class="chip on">All accounts</span>
-      <span class="chip"><span class="acct"><i style="background:var(--acc-1)"></i>personal</span></span>
-      <span class="chip"><span class="acct"><i style="background:var(--acc-2)"></i>college</span></span>
-      <span class="chip"><span class="acct"><i style="background:var(--acc-3)"></i>work</span></span>
+      <span class="chip"><span class="acct"><i style="background:var(--acc-1)"></i>Personal</span></span>
+      <span class="chip"><span class="acct"><i style="background:var(--acc-2)"></i>College</span></span>
+      <span class="chip"><span class="acct"><i style="background:var(--acc-3)"></i>Work</span></span>
       <span style="margin-left:auto" class="dim">Urgent · Normal · Digest</span>
     </div>
     <div class="list">
-      <div class="row unread"><span class="dot urgent"></span><div class="avatar" style="background:rgba(255,90,60,.15);color:var(--urgent)">H</div><div style="min-width:0"><div class="who">HirePro <span class="tag urgent">assessment_link</span> <span class="tag">Acme Corp</span></div><div class="subj">Your Acme Corp assessment is live — closes tonight 11:59 PM</div></div><span class="acct"><i style="background:var(--acc-2)"></i>college</span><span class="time">2m</span></div>
-      <div class="row unread"><span class="dot urgent"></span><div class="avatar" style="background:rgba(255,90,60,.15);color:var(--urgent)">K</div><div style="min-width:0"><div class="who">Kotak Bank <span class="tag urgent">action_needed</span> <span class="tag warn">rule exception</span></div><div class="subj">Your card has been temporarily blocked due to suspicious activity</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">14m</span></div>
-      <div class="row unread"><span class="dot normal"></span><div class="avatar">P</div><div style="min-width:0"><div class="who">Placement Cell <span class="tag normal">announcement</span> <span class="tag">Acme Corp</span></div><div class="subj">Acme Corp campus drive — register by Wednesday 6 PM</div></div><span class="acct"><i style="background:var(--acc-2)"></i>college</span><span class="time">1h</span></div>
-      <div class="row"><span class="dot normal"></span><div class="avatar">R</div><div style="min-width:0"><div class="who">Priya (Globex) <span class="tag normal">recruiter</span></div><div class="subj">Quick chat about the backend role?</div></div><span class="acct"><i style="background:var(--acc-3)"></i>work</span><span class="time">3h</span></div>
+      <div class="row unread"><span class="dot urgent"></span><div class="avatar" style="background:rgba(255,90,60,.15);color:var(--urgent)">H</div><div style="min-width:0"><div class="who">HirePro <span class="tag urgent">Assessment link</span> <span class="tag">Acme Corp</span></div><div class="subj">Your Acme Corp assessment is live — closes tonight 11:59 PM</div></div><span class="acct"><i style="background:var(--acc-2)"></i>college</span><span class="time">2m</span></div>
+      <div class="row unread"><span class="dot urgent"></span><div class="avatar" style="background:rgba(255,90,60,.15);color:var(--urgent)">K</div><div style="min-width:0"><div class="who">Kotak Bank <span class="tag urgent">Action needed</span> <span class="tag warn">Rule exception</span></div><div class="subj">Your card has been temporarily blocked due to suspicious activity</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">14m</span></div>
+      <div class="row unread"><span class="dot normal"></span><div class="avatar">P</div><div style="min-width:0"><div class="who">Placement Cell <span class="tag normal">Announcement</span> <span class="tag">Acme Corp</span></div><div class="subj">Acme Corp campus drive — register by Wednesday 6 PM</div></div><span class="acct"><i style="background:var(--acc-2)"></i>college</span><span class="time">1h</span></div>
+      <div class="row"><span class="dot normal"></span><div class="avatar">R</div><div style="min-width:0"><div class="who">Priya (Globex) <span class="tag normal">Recruiter</span></div><div class="subj">Quick chat about the backend role?</div></div><span class="acct"><i style="background:var(--acc-3)"></i>work</span><span class="time">3h</span></div>
       <div class="row group-row"><span class="dot digest"></span><div class="avatar">▤</div><div style="min-width:0"><div class="who">Notice Board · group <span class="tag digest">12 mails</span></div><div class="subj">Latest: Hostel timings revised for next week</div></div><span class="acct"><i style="background:var(--acc-2)"></i>college</span><span class="time">5h</span></div>
-      <div class="row"><span class="dot digest"></span><div class="avatar">M</div><div style="min-width:0"><div class="who">Medium Digest <span class="tag digest">digest</span></div><div class="subj">Stories picked for you this week</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">1d</span></div>
+      <div class="row"><span class="dot digest"></span><div class="avatar">M</div><div style="min-width:0"><div class="who">Medium Digest <span class="tag digest">Digest</span></div><div class="subj">Stories picked for you this week</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">1d</span></div>
     </div>
     <div class="dim" style="margin-top:14px;font-size:13px">Priority mail is never hidden inside a group. Urgent mail always gets its own row.</div>
   </section>
@@ -128,10 +143,10 @@
   <section class="page" id="p-todo">
     <p class="lede">Action-needed mail with deadlines. Built by AI when a key exists, or by hand from any mail.</p>
     <div class="list">
-      <div class="row"><span class="toggle"></span><div style="flex:1"><div class="who">Complete HirePro assessment</div><div class="subj">Acme Corp · from HirePro</div></div><span class="tag urgent">tonight 11:59 PM</span></div>
+      <div class="row"><span class="toggle"></span><div style="flex:1"><div class="who">Complete HirePro assessment</div><div class="subj">Acme Corp · from HirePro</div></div><span class="tag urgent">Tonight 11:59 PM</span></div>
       <div class="row"><span class="toggle"></span><div style="flex:1"><div class="who">Register for Acme campus drive</div><div class="subj">Placement Cell</div></div><span class="tag warn">Wed 6:00 PM</span></div>
       <div class="row"><span class="toggle"></span><div style="flex:1"><div class="who">Upload updated résumé</div><div class="subj">Globex · manual</div></div><span class="tag">Fri</span></div>
-      <div class="row"><span class="toggle on"></span><div style="flex:1"><div class="who dim" style="text-decoration:line-through">Fee receipt submission</div></div><span class="tag ok">done</span></div>
+      <div class="row"><span class="toggle on"></span><div style="flex:1"><div class="who dim" style="text-decoration:line-through">Fee receipt submission</div></div><span class="tag ok">Done</span></div>
     </div>
     <div style="margin-top:16px"><button class="btn btn-ghost btn-sm">+ Add to-do manually</button></div>
   </section>
@@ -140,20 +155,20 @@
   <section class="page" id="p-opps">
     <div class="split">
       <div class="list">
-        <div class="row sel"><div class="avatar" style="background:rgba(200,255,61,.12);color:var(--signal)">A</div><div><div class="who">Acme Corp</div><div class="subj">Assessment pending</div></div><span class="tag warn" style="margin-left:auto">tonight</span></div>
+        <div class="row sel"><div class="avatar" style="background:rgba(200,255,61,.12);color:var(--signal)">A</div><div><div class="who">Acme Corp</div><div class="subj">Assessment pending</div></div><span class="tag warn" style="margin-left:auto">Tonight</span></div>
         <div class="row"><div class="avatar">G</div><div><div class="who">Globex</div><div class="subj">Recruiter reached out</div></div></div>
         <div class="row"><div class="avatar">I</div><div><div class="who">Initech</div><div class="subj">Registered</div></div></div>
-        <div class="row"><div class="avatar">H</div><div><div class="who">Hooli</div><div class="subj">Result: rejected</div></div><span class="tag" style="margin-left:auto">closed</span></div>
+        <div class="row"><div class="avatar">H</div><div><div class="who">Hooli</div><div class="subj">Result: rejected</div></div><span class="tag" style="margin-left:auto">Closed</span></div>
         <div style="padding:14px"><button class="btn btn-ghost btn-sm">+ New opportunity</button></div>
       </div>
       <div class="card">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:34px">Acme Corp</h2><span class="tag ok">active</span></div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:34px">Acme Corp</h2><span class="tag ok">Active</span></div>
         <div class="muted" style="margin-bottom:24px">Aliases: Acme, ACME Ltd · Deadline <b style="color:var(--warn)">Tonight 11:59 PM</b> · <a class="muted" style="text-decoration:underline">Add to Google Calendar</a></div>
         <div style="border-left:2px solid var(--line-2);margin-left:10px;padding-left:28px;display:flex;flex-direction:column;gap:26px">
-          <div style="position:relative"><i class="dot ok" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag normal">announcement</span> <span class="dim mono">Mon 9:02</span><div class="who" style="margin-top:4px">Acme Corp campus drive</div><div class="muted">From Placement Cell · college</div></div>
-          <div style="position:relative"><i class="dot ok" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag normal">registration</span> <span class="dim mono">Mon 11:40</span><div class="who" style="margin-top:4px">Registration form open</div><div class="muted">Deadline Wed 6 PM · <a style="color:var(--signal)">register.acme.com ↗</a></div></div>
-          <div style="position:relative"><i class="dot urgent" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag urgent">assessment_link</span> <span class="dim mono">Tue 8:15</span><div class="who" style="margin-top:4px">HirePro assessment live</div><div class="muted">Reminders: 24h ✓ · 2h pending · <a style="color:var(--signal)">hirepro.in/t/8dk2 ↗</a></div></div>
-          <div style="position:relative"><i class="dot silent" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag">interview</span> <span class="dim">awaiting</span></div>
+          <div style="position:relative"><i class="dot ok" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag normal">Announcement</span> <span class="dim mono">Mon 9:02</span><div class="who" style="margin-top:4px">Acme Corp campus drive</div><div class="muted">From Placement Cell · college</div></div>
+          <div style="position:relative"><i class="dot ok" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag normal">Registration</span> <span class="dim mono">Mon 11:40</span><div class="who" style="margin-top:4px">Registration form open</div><div class="muted">Deadline Wed 6 PM · <a style="color:var(--signal)">register.acme.com ↗</a></div></div>
+          <div style="position:relative"><i class="dot urgent" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag urgent">Assessment link</span> <span class="dim mono">Tue 8:15</span><div class="who" style="margin-top:4px">HirePro assessment live</div><div class="muted">Reminders: 24h ✓ · 2h pending · <a style="color:var(--signal)">hirepro.in/t/8dk2 ↗</a></div></div>
+          <div style="position:relative"><i class="dot silent" style="position:absolute;left:-34px;top:6px;width:12px;height:12px"></i><span class="tag">Interview</span> <span class="dim">awaiting</span></div>
         </div>
         <div style="margin-top:28px;display:flex;gap:10px"><button class="btn btn-ghost btn-sm">+ Attach mail</button><button class="btn btn-ghost btn-sm">Edit aliases</button></div>
       </div>
@@ -203,17 +218,17 @@
     <div class="card" style="margin-bottom:16px">
       <div class="tabs" style="margin-bottom:12px">
         <span class="chip on">from:kotak <span class="x">✕</span></span>
-        <span class="chip on">last 30 days <span class="x">✕</span></span>
+        <span class="chip on">Last 30 days <span class="x">✕</span></span>
         <span class="chip neg">tag:ignore <span class="x">✕</span></span>
         <span class="chip">In folder ▾</span><span class="chip">Account ▾</span><span class="chip">Has attachment</span><span class="chip">Unread</span><span class="chip">I have not replied</span><span class="chip">Silenced by rule</span><span class="chip">+ filter</span>
       </div>
-      <div class="field"><label>Gmail query (copy into Gmail)</label><div class="input mono" style="display:flex;align-items:center">from:kotak newer_than:30d -label:ignore</div></div>
+      <div class="field"><label>Gmail query (copy into Gmail)</label><div class="input code" style="display:flex;align-items:center">from:kotak newer_than:30d -label:ignore</div></div>
       <div style="margin-top:12px" class="locked"><span class="chip">✦ Natural language: "mails from Walmart last week"</span></div>
     </div>
     <div class="tabs"><span class="dim">Saved:</span><span class="chip">📌 Unreplied recruiters</span><span class="chip">Bank, this month</span><span class="chip">Recent: HirePro</span><span style="margin-left:auto" class="dim">Sort: Newest ▾ &nbsp; Export CSV</span></div>
     <div class="list">
-      <div class="row"><div class="avatar">K</div><div><div class="who">Kotak Bank <span class="tag">card alerts</span></div><div class="subj">…UPI <mark style="background:rgba(200,255,61,.25);color:var(--text)">debit</mark> of ₹240 to Chai Point…</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">Oct 22</span></div>
-      <div class="row"><div class="avatar">K</div><div><div class="who">Kotak Bank <span class="tag urgent">kept: fraud exception</span></div><div class="subj">…card temporarily blocked due to suspicious activity…</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">Oct 24</span></div>
+      <div class="row"><div class="avatar">K</div><div><div class="who">Kotak Bank <span class="tag">Card alerts</span></div><div class="subj">…UPI <mark style="background:rgba(200,255,61,.25);color:var(--text)">debit</mark> of ₹240 to Chai Point…</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">Oct 22</span></div>
+      <div class="row"><div class="avatar">K</div><div><div class="who">Kotak Bank <span class="tag urgent">Kept: fraud exception</span></div><div class="subj">…card temporarily blocked due to suspicious activity…</div></div><span class="acct"><i style="background:var(--acc-1)"></i>personal</span><span class="time">Oct 24</span></div>
     </div>
   </section>
 
@@ -221,9 +236,9 @@
   <section class="page" id="p-senders">
     <div class="list"><table>
       <tr><th>Sender</th><th>Mails</th><th>Last</th><th>Status</th><th></th></tr>
-      <tr><td><b>noreply@kotak.com</b></td><td class="mono">214</td><td class="dim">2d ago</td><td><span class="tag">silenced</span></td><td style="text-align:right"><button class="chip">VIP</button> <button class="chip">Mute</button> <button class="chip">Rule</button></td></tr>
+      <tr><td><b>noreply@kotak.com</b></td><td class="mono">214</td><td class="dim">2d ago</td><td><span class="tag">Silenced</span></td><td style="text-align:right"><button class="chip">VIP</button> <button class="chip">Mute</button> <button class="chip">Rule</button></td></tr>
       <tr><td><b>placement@univ.edu</b></td><td class="mono">41</td><td class="dim">1h ago</td><td><span class="tag urgent">VIP</span></td><td style="text-align:right"><button class="chip">VIP</button> <button class="chip">Mute</button> <button class="chip">Rule</button></td></tr>
-      <tr><td><b>digest@medium.com</b></td><td class="mono">66</td><td class="dim">1d ago</td><td><span class="tag digest">newsletter</span></td><td style="text-align:right"><button class="chip">Unsubscribe</button> <button class="chip">Mute</button> <button class="chip">Rule</button></td></tr>
+      <tr><td><b>digest@medium.com</b></td><td class="mono">66</td><td class="dim">1d ago</td><td><span class="tag digest">Newsletter</span></td><td style="text-align:right"><button class="chip">Unsubscribe</button> <button class="chip">Mute</button> <button class="chip">Rule</button></td></tr>
     </table></div>
   </section>
 
@@ -235,10 +250,10 @@
           <div class="field"><label>Plain-English rule</label><div style="display:flex;gap:8px"><input class="input" style="flex:1" placeholder="Silence Slice and Kotak transaction mail but keep fraud alerts"><button class="btn btn-primary btn-sm" style="height:42px">Convert</button></div></div>
         </div>
         <div class="list">
-          <div class="row"><span class="dim mono">1</span><div style="flex:1"><div class="who">Placement cell = urgent</div><div class="subj">sender domain univ.edu · hits 41</div></div><span class="tag urgent">notify urgent</span><span class="toggle on"></span></div>
-          <div class="row sel"><span class="dim mono">2</span><div style="flex:1"><div class="who">Bank transactions → silent</div><div class="subj">kotak / slice · hits 214 · 1 exception</div></div><span class="tag">store silently</span><span class="toggle on"></span></div>
-          <div class="row"><span class="dim mono">3</span><div style="flex:1"><div class="who">Notice board → digest</div><div class="subj">list-id notices.univ.edu · hits 66</div></div><span class="tag digest">digest</span><span class="toggle on"></span></div>
-          <div class="row"><span class="dim mono">4</span><div style="flex:1"><div class="who">Medium → file in Reading</div><div class="subj">hits 0 · never matched</div></div><span class="tag">file in folder</span><span class="toggle"></span></div>
+          <div class="row"><span class="dim mono">1</span><div style="flex:1"><div class="who">Placement cell = urgent</div><div class="subj">sender domain univ.edu · hits 41</div></div><span class="tag urgent">Notify urgent</span><span class="toggle on"></span></div>
+          <div class="row sel"><span class="dim mono">2</span><div style="flex:1"><div class="who">Bank transactions → silent</div><div class="subj">kotak / slice · hits 214 · 1 exception</div></div><span class="tag">Store silently</span><span class="toggle on"></span></div>
+          <div class="row"><span class="dim mono">3</span><div style="flex:1"><div class="who">Notice board → digest</div><div class="subj">list-id notices.univ.edu · hits 66</div></div><span class="tag digest">Digest</span><span class="toggle on"></span></div>
+          <div class="row"><span class="dim mono">4</span><div style="flex:1"><div class="who">Medium → file in Reading</div><div class="subj">hits 0 · never matched</div></div><span class="tag">File in folder</span><span class="toggle"></span></div>
         </div>
         <div style="margin-top:12px" class="dim">Drag to reorder. First match wins.</div>
       </div>
@@ -246,9 +261,9 @@
         <h2>Edit rule · Bank transactions → silent</h2>
         <div class="field" style="margin-bottom:16px"><label>Scope</label><div class="tabs" style="margin:0"><span class="chip on">All accounts</span><span class="chip">Choose accounts</span></div></div>
         <div class="field"><label>When (all of)</label></div>
-        <div class="cond"><span class="chip">Sender domain ▾</span><span class="op">is any of</span><span class="chip on">kotak.com</span><span class="chip on">slice.in</span></div>
-        <div class="cond"><span class="chip">Subject ▾</span><span class="op">matches</span><span class="chip on mono">debited|credited|spent|UPI</span></div>
-        <div class="cond" style="border-color:rgba(255,90,60,.4)"><span class="op" style="color:var(--urgent)">UNLESS</span><span class="chip">Body ▾</span><span class="op">contains</span><span class="chip on">fraud</span><span class="chip on">blocked</span><span class="chip on">suspicious</span></div>
+        <div class="cond"><span class="chip">Sender domain ▾</span><span class="op">is any of</span><span class="chip on">Kotak.com</span><span class="chip on">Slice.in</span></div>
+        <div class="cond"><span class="chip">Subject ▾</span><span class="op">matches</span><span class="chip on code">debited|credited|spent|UPI</span></div>
+        <div class="cond" style="border-color:rgba(255,90,60,.4)"><span class="op" style="color:var(--urgent)">UNLESS</span><span class="chip">Body ▾</span><span class="op">contains</span><span class="chip on">Fraud</span><span class="chip on">Blocked</span><span class="chip on">Suspicious</span></div>
         <button class="chip" style="margin:4px 0 16px">+ condition</button>
         <div class="field" style="margin-bottom:20px"><label>Then</label><div class="tabs" style="margin:0"><span class="chip">Notify urgent</span><span class="chip">Notify normal</span><span class="chip">Digest</span><span class="chip on">Store silently</span><span class="chip">Ignore</span><span class="chip">File in folder</span><span class="chip">Tag</span><span class="chip">Star</span></div></div>
         <div class="card" style="background:var(--bg-2)">
@@ -264,7 +279,7 @@
       <div class="row"><div style="flex:1"><div class="who">"Your order #&lt;num&gt; has shipped" · amazon.in</div><div class="subj">Seen 38 times · all manually opened late</div></div><button class="btn btn-ghost btn-sm">Make digest</button><button class="btn btn-primary btn-sm">Silence it</button></div>
     </div>
     <h2 style="margin-top:36px">Categories</h2>
-    <div class="tabs"><span class="chip on">placement_announcement</span><span class="chip on">assessment_link</span><span class="chip on">interview</span><span class="chip on">result</span><span class="chip">+ custom category</span></div>
+    <div class="tabs"><span class="chip on">Placement announcement</span><span class="chip on">Assessment link</span><span class="chip on">Interview</span><span class="chip on">Result</span><span class="chip">+ custom category</span></div>
   </section>
 
   <!-- SILENCED -->
@@ -273,7 +288,7 @@
     <div class="list">
       <div class="row"><div class="avatar">K</div><div style="flex:1"><div class="who">Kotak Bank</div><div class="subj">UPI debit of ₹240 to Chai Point</div></div><span class="tag">Rule 2 · Bank transactions</span><button class="btn btn-ghost btn-sm">Not like this</button><span class="time">2d</span></div>
       <div class="row"><div class="avatar">S</div><div style="flex:1"><div class="who">Slice</div><div class="subj">₹1,180 spent at Zomato</div></div><span class="tag">Rule 2</span><button class="btn btn-ghost btn-sm">Not like this</button><span class="time">3d</span></div>
-      <div class="row"><div class="avatar">A</div><div style="flex:1"><div class="who">Amazon</div><div class="subj">Your order has shipped</div></div><span class="tag digest">fingerprint</span><button class="btn btn-ghost btn-sm">Not like this</button><span class="time">3d</span></div>
+      <div class="row"><div class="avatar">A</div><div style="flex:1"><div class="who">Amazon</div><div class="subj">Your order has shipped</div></div><span class="tag digest">Fingerprint</span><button class="btn btn-ghost btn-sm">Not like this</button><span class="time">3d</span></div>
     </div>
   </section>
 
@@ -293,10 +308,10 @@
   <!-- ACCOUNTS -->
   <section class="page" id="p-accounts">
     <div class="grid2">
-      <div class="card"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-1)"></i></span><b>personal@gmail.com</b><span class="tag ok" style="margin-left:auto">active</span></div><div class="dim" style="margin-top:10px;font-size:13px">Watch renews in 6d · last mail 2m ago</div><div style="margin-top:16px;display:flex;gap:8px"><button class="btn btn-ghost btn-sm">Notification settings</button><button class="btn btn-danger btn-sm">Remove</button></div></div>
-      <div class="card" style="border-color:rgba(255,185,56,.4)"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-2)"></i></span><b>college@univ.edu</b><span class="tag warn" style="margin-left:auto">blocked</span></div><div class="muted" style="margin-top:10px;font-size:13.5px">This account may be blocked by its administrator (common for college or work accounts).</div></div>
-      <div class="card"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-3)"></i></span><b>work@gmail.com</b><span class="tag ok" style="margin-left:auto">active</span></div><div class="dim" style="margin-top:10px;font-size:13px">Watch renews in 3d · last mail 3h ago</div></div>
-      <div class="card" style="border-color:rgba(255,90,60,.4)"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-4)"></i></span><b>side@gmail.com</b><span class="tag urgent" style="margin-left:auto">needs reconnect</span></div><div class="muted" style="margin-top:10px;font-size:13.5px">Token expired. Testing-mode Google apps expire in ~7 days.</div><div style="margin-top:14px"><button class="btn btn-primary btn-sm">Reconnect</button></div></div>
+      <div class="card"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-1)"></i></span><b>personal@gmail.com</b><span class="tag ok" style="margin-left:auto">Active</span></div><div class="dim" style="margin-top:10px;font-size:13px">Watch renews in 6d · last mail 2m ago</div><div style="margin-top:16px;display:flex;gap:8px"><button class="btn btn-ghost btn-sm">Notification settings</button><button class="btn btn-danger btn-sm">Remove</button></div></div>
+      <div class="card" style="border-color:rgba(255,185,56,.4)"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-2)"></i></span><b>college@univ.edu</b><span class="tag warn" style="margin-left:auto">Blocked</span></div><div class="muted" style="margin-top:10px;font-size:13.5px">This account may be blocked by its administrator (common for college or work accounts).</div></div>
+      <div class="card"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-3)"></i></span><b>work@gmail.com</b><span class="tag ok" style="margin-left:auto">Active</span></div><div class="dim" style="margin-top:10px;font-size:13px">Watch renews in 3d · last mail 3h ago</div></div>
+      <div class="card" style="border-color:rgba(255,90,60,.4)"><div style="display:flex;align-items:center;gap:10px"><span class="acct"><i style="background:var(--acc-4)"></i></span><b>side@gmail.com</b><span class="tag urgent" style="margin-left:auto">Needs reconnect</span></div><div class="muted" style="margin-top:10px;font-size:13.5px">Token expired. Testing-mode Google apps expire in ~7 days.</div><div style="margin-top:14px"><button class="btn btn-primary btn-sm">Reconnect</button></div></div>
     </div>
     <div style="margin-top:20px"><button class="btn btn-primary">+ Add Gmail account</button></div>
     <p class="dim" style="margin-top:14px;font-size:13px">Removing an account stops its watch, deletes tokens and deletes its stored mail.</p>
@@ -322,11 +337,11 @@
       <div class="card">
         <div class="grid2">
           <div class="field"><label>Provider</label><select class="input"><option>Gemini</option></select></div>
-          <div class="field"><label>Model ID</label><input class="input mono" value="gemini-flash-lite-latest"></div>
+          <div class="field"><label>Model ID</label><input class="input code" value="gemini-flash-lite-latest"></div>
         </div>
-        <div class="field" style="margin-top:16px"><label>API key</label><div style="display:flex;gap:8px"><input class="input mono" style="flex:1" value="••••••••••••••••a91f" readonly><button class="btn btn-ghost">Test</button><button class="btn btn-danger">Remove</button></div></div>
+        <div class="field" style="margin-top:16px"><label>API key</label><div style="display:flex;gap:8px"><input class="input code" style="flex:1" value="••••••••••••••••a91f" readonly><button class="btn btn-ghost">Test</button><button class="btn btn-danger">Remove</button></div></div>
         <div style="margin-top:12px"><span class="tag ok">✓ valid · validated 2m ago</span> <span class="dim" style="font-size:13px;margin-left:8px">Stored encrypted. Never shown again after saving.</span></div>
-        <div class="field" style="margin-top:16px;max-width:240px"><label>Daily token cap</label><input class="input mono" value="50000"></div>
+        <div class="field" style="margin-top:16px;max-width:240px"><label>Daily token cap</label><input class="input code" value="50000"></div>
       </div>
     </div>
     <div class="settings-sec"><h2>AI features</h2>
@@ -356,6 +371,12 @@ function route() {
   document.querySelector('main').scrollTop = 0;
 }
 addEventListener('hashchange', route); route();
+const body = document.body, KEY = 'sift.sidebar';
+const narrow = matchMedia('(max-width: 1000px)');
+try { if (localStorage.getItem(KEY) === '1' || narrow.matches) body.classList.add('collapsed'); } catch (e) { if (narrow.matches) body.classList.add('collapsed'); }
+const btn = document.getElementById('collapse');
+btn.addEventListener('click', () => { const c = body.classList.toggle('collapsed'); btn.title = c ? 'Expand sidebar ( [ )' : 'Collapse sidebar ( [ )'; try { localStorage.setItem(KEY, c ? '1' : '0'); } catch (e) {} });
+document.addEventListener('keydown', e => { if (e.key === '[' && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) btn.click(); });
 document.querySelectorAll('.toggle').forEach(t => t.addEventListener('click', () => t.classList.toggle('on')));
 </script>
 </body>
