@@ -172,7 +172,7 @@ export function Acct({ name, color, id }: { name: string | null; color: string |
 }
 
 /** A mail row. Draggable so it can be dropped on a folder (web UI only). */
-export function MailRow({ m, onOpen, extra, draggable = true, n }: { m: Mail; onOpen?: () => void; extra?: ReactNode; draggable?: boolean; n?: number }) {
+export function MailRow({ m, onOpen, extra, draggable = true, n, highlight, lead }: { m: Mail; onOpen?: () => void; extra?: ReactNode; draggable?: boolean; n?: number; highlight?: string[]; lead?: ReactNode }) {
   const [dragging, setDragging] = useState(false);
   const who = m.sender_name || m.sender || "Unknown";
   return (
@@ -180,8 +180,9 @@ export function MailRow({ m, onOpen, extra, draggable = true, n }: { m: Mail; on
       draggable={draggable}
       onDragStart={(e) => { e.dataTransfer.setData("application/x-sift-mail", m.id); e.dataTransfer.effectAllowed = "copy"; setDragging(true); }}
       onDragEnd={() => setDragging(false)}>
+      {lead}
       {n !== undefined && <span className="num" data-tip={`Mail ${n} on this page`}>{n}</span>}
-      <Dot tier={m.priority} />
+      <Dot tier={m.priority} tip={m.priority ? undefined : "Not in Sift: older mail found in Gmail"} />
       <Avatar text={who} tone={m.priority === "urgent" ? "urgent" : undefined} tip={m.sender ?? undefined} />
       <div className="main">
         <div className="who">
@@ -190,7 +191,7 @@ export function MailRow({ m, onOpen, extra, draggable = true, n }: { m: Mail; on
           {m.company && <Tag tip={`On the ${m.company} company timeline`}>{m.company}</Tag>}
           {m.has_attachment && <span className="dim" data-tip="Has an attachment">📎</span>}
         </div>
-        <div className="subj" data-tip={m.summary && m.subject ? `Subject: ${m.subject}` : undefined}>{m.summary || m.subject || "(no subject)"}</div>
+        <div className="subj" data-tip={m.summary && m.subject ? `Subject: ${m.subject}` : undefined}><Highlight text={m.summary || m.subject || "(no subject)"} words={highlight} /></div>
       </div>
       {extra}
       <Acct name={m.account} color={m.account_color} id={m.account_id} />
@@ -426,4 +427,12 @@ export function Select({ value, options, onChange, ariaLabel, id, disabled }: {
       )}
     </div>
   );
+}
+
+/** Marks the searched words in a line of text (text only, never HTML). */
+export function Highlight({ text, words }: { text: string; words?: string[] }) {
+  const ws = (words ?? []).map((w) => w.trim()).filter((w) => w.length > 1);
+  if (!ws.length) return <>{text}</>;
+  const re = new RegExp(`(${ws.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "ig");
+  return <>{text.split(re).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}</>;
 }

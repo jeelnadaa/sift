@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
 import { DialogHost, Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
 import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
 import { MailDetail } from "./pages/Mail";
+import { SearchPage } from "./pages/Search";
+import { Thread } from "./pages/Thread";
 import { Todos } from "./pages/Todo";
 import { Opportunities } from "./pages/Opportunities";
 import { Groups, GroupDetail } from "./pages/Groups";
@@ -46,7 +48,9 @@ const NAV: { h: string; items: [string, string, string, string][] }[] = [
     ["/todo", "To-do", "todo", "Mail that needs action, with deadlines and reminders"],
     ["/opportunities", "Opportunities", "opps", "One timeline per company: announcements, tests, interviews, results"],
     ["/groups", "Groups", "groups", "Similar mail stacked together (display only)"]] },
-  { h: "Organize", items: [["/folders", "Folders", "folder", "Your own nested folders. Drop mail on one to file it"]] },
+  { h: "Organize", items: [
+    ["/folders", "Folders", "folder", "Your own nested folders. Drop mail on one to file it"],
+    ["/search", "Search", "search", "Gmail syntax plus Sift filters, across every account, or by meaning  ( / )"]] },
   { h: "Control", items: [
     ["/rules", "Rules", "rules", "What gets silenced, digested, notified or filed"],
     ["/silenced", "Silenced", "mute", "Mail kept quiet by a rule: check here if a rule is too greedy"],
@@ -63,10 +67,15 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const toggle = () => setCollapsed((c) => { try { localStorage.setItem(SIDEBAR_KEY, c ? "0" : "1"); } catch { /* ignore */ } return !c; });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "[" && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) toggle(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) return;
+      if (e.key === "[") toggle();
+      if (e.key === "/") { e.preventDefault(); navigate("/search"); setTimeout(() => (document.querySelector(".search-box textarea") as HTMLElement | null)?.focus(), 50); }
+    };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, []);
@@ -93,12 +102,15 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
             <div className="nav-group" key={g.h}>
               <div className="nav-h">{g.h}</div>
               {g.items.map(([to, label, icon, tip]) => (
-                <NavLink key={to} to={to} end={to === "/"} data-tip={collapsed ? `${label}\n${tip}` : tip} aria-label={label} className={({ isActive }) => (isActive ? "on" : "")}>
-                  <Icon name={icon} /><span className="lbl">{label}</span>
-                  {to === "/accounts" && trouble && <><span className="ct u">!</span><i className="ct-dot" /></>}
-                </NavLink>
+                <Fragment key={to}>
+                  <NavLink to={to} end={to === "/"} data-tip={collapsed ? `${label}\n${tip}` : tip} aria-label={label} className={({ isActive }) => (isActive ? "on" : "")}>
+                    <Icon name={icon} /><span className="lbl">{label}</span>
+                    {to === "/accounts" && trouble && <><span className="ct u">!</span><i className="ct-dot" /></>}
+                  </NavLink>
+                  {/* top-level folders sit right under Folders, as drop targets for mail */}
+                  {to === "/folders" && !collapsed && folders.slice(0, 8).map((f) => <SideFolder key={f.id} f={f} />)}
+                </Fragment>
               ))}
-              {g.h === "Organize" && !collapsed && folders.slice(0, 8).map((f) => <SideFolder key={f.id} f={f} />)}
             </div>
           ))}
         </nav>
@@ -111,6 +123,8 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
         <Routes>
           <Route path="/" element={<Feed />} />
           <Route path="/mail/:id" element={<MailDetail />} />
+          <Route path="/read/:accountId/:threadId" element={<ReadThread />} />
+          <Route path="/search" element={<SearchPage />} />
           <Route path="/todo" element={<Todos />} />
           <Route path="/opportunities" element={<Opportunities />} />
           <Route path="/opportunities/:id" element={<Opportunities />} />
@@ -182,6 +196,7 @@ function Icons() {
       <symbol id="i-todo" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M8.5 12.5l2.5 2.5 4.5-5" /></symbol>
       <symbol id="i-opps" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></symbol>
       <symbol id="i-groups" viewBox="0 0 24 24"><rect x="5" y="9" width="14" height="10" rx="2" /><path d="M7.5 6h9M10 3h4" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></symbol>
       <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V17a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></symbol>
       <symbol id="i-rules" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></symbol>
       <symbol id="i-mute" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z" /><path d="M10 19a2 2 0 004 0M4 4l16 16" /></symbol>
@@ -191,5 +206,19 @@ function Icons() {
       <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" /></symbol>
       <symbol id="i-chev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6" /></symbol>
     </defs></svg>
+  );
+}
+
+/** A conversation Sift never stored (older mail found by search), read straight from Gmail. */
+function ReadThread() {
+  const { accountId = "", threadId = "" } = useParams();
+  return (
+    <>
+      <Top title="Conversation" back />
+      <section className="page" style={{ maxWidth: 1000 }}>
+        <p className="dim" style={{ fontSize: 13, marginBottom: 12 }}>Older mail Sift never processed, read straight from Gmail. Sift doesn't keep a copy.</p>
+        <Thread accountId={accountId} threadId={threadId} />
+      </section>
+    </>
   );
 }

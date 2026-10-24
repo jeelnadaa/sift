@@ -22,9 +22,10 @@ export function size(n: number): string {
 
 /** The whole conversation, fetched live. The newest message (and the one you opened) start open;
  * older ones show a one-line preview until clicked. Remote images stay blocked until asked for. */
-export function Thread({ messageId }: { messageId: string }) {
+export function Thread({ messageId, accountId, threadId }: { messageId?: string; accountId?: string; threadId?: string }) {
   const [images, setImages] = useState(false);
-  const t = useLoad(() => get<ThreadData>(`/messages/${messageId}/thread`, { images: images || undefined }), [messageId, images]);
+  const path = messageId ? `/messages/${messageId}/thread` : `/accounts/${accountId}/threads/${threadId}`;
+  const t = useLoad(() => get<ThreadData>(path, { images: images || undefined }), [path, images]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const d = t.data;
 

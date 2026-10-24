@@ -202,3 +202,13 @@ textarea.input.grow { resize: none; height: 42px; min-height: 42px; padding: 10p
 .att .main { min-width: 0; flex: 1; }
 .att .nm { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .att-ico { font-size: 18px; }
+
+/* search */
+.search-box { position: relative; flex: 1; min-width: 240px; }
+.select-menu.suggest { top: calc(100% + 6px); left: 0; right: 0; max-height: 360px; }
+.select-menu.suggest li { white-space: normal; }
+mark { background: rgba(200,255,61,.25); color: var(--text); border-radius: 2px; padding: 0 1px; }
+.chip .x { margin-left: 2px; padding: 0 3px; border-radius: 3px; color: inherit; opacity: .55; cursor: pointer; }
+.chip .x:hover { opacity: 1; background: rgba(0,0,0,.15); }
+.row input[type="checkbox"] { accent-color: var(--signal); width: 15px; height: 15px; flex: none; cursor: pointer; }
+.chip:disabled { opacity: .45; cursor: default; }

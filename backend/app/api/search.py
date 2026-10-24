@@ -211,3 +211,28 @@ def from_text(body: TextIn, user: User = Depends(current_user), db: Session = De
     except QueryError as exc:
         raise HTTPException(422, "Couldn't turn that into a valid search; try different words") from exc
     return {**out, "chips": [c.__dict__ for c in p.chips], "gmail_query": p.gmail}
+
+
+class TagIn(BaseModel):
+    message_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    name: str = Field(min_length=1, max_length=80)
+
+
+@router.post("/search/tag")
+def tag_results(body: TagIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Bulk action on search results: tag the chosen mails (mail Sift stored only)."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    from app.models import MailTag
+    ids = list(db.scalars(select(Message.id).where(Message.user_id == user.id, Message.id.in_(body.message_ids))))
+    if len(ids) != len(set(body.message_ids)):
+        raise HTTPException(404, "message not found")
+    name = " ".join(body.name.split())
+    tag = db.scalar(select(Tag).where(Tag.user_id == user.id, Tag.name == name))
+    if tag is None:
+        tag = Tag(user_id=user.id, name=name)
+        db.add(tag)
+        db.flush()
+    db.execute(insert(MailTag).values([{"tag_id": tag.id, "message_id": i} for i in ids]).on_conflict_do_nothing())
+    db.commit()
+    return {"tagged": len(ids), "tag": name}
