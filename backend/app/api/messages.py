@@ -31,6 +31,8 @@ def message_json(m: Message, account: GmailAccount | None = None, notification: 
         "matched_rule_id": str(m.matched_rule_id) if m.matched_rule_id else None,
         "summary": ext.get("summary"), "company": ext.get("company"), "platform": ext.get("platform"),
         "deadline": ext.get("deadline"), "links": ext.get("links") or [], "action_needed": ext.get("action_needed", False),
+        "opportunity_id": ext.get("opportunity_id"), "todo_id": ext.get("todo_id"),
+        "company_question": ext.get("company_question"),
         "decided_by": ext.get("source") or ("rule" if m.matched_rule_id else ext.get("heuristic") and "heuristic"),
         "notified_at": notification.sent_at.isoformat() if notification and notification.sent_at else None,
         "delivered_at": notification.acknowledged_at.isoformat() if notification and notification.acknowledged_at else None,

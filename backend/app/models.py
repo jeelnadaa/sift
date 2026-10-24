@@ -34,6 +34,8 @@ PRIORITIES = ("urgent", "normal", "digest", "silent")
 LLM_KEY_STATUSES = ("unvalidated", "valid", "invalid", "quota_exceeded")
 GROUPING_MODES = ("always", "never")
 JOB_STATUSES = ("queued", "running", "done", "failed")
+OPPORTUNITY_STATUSES = ("active", "closed")
+EVENT_KINDS = ("announcement", "registration", "assessment", "interview", "result", "update")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -155,10 +157,16 @@ class Message(Base):
 
 class Opportunity(Base):
     __tablename__ = "opportunities"
+    __table_args__ = (
+        CheckConstraint(_in("status", OPPORTUNITY_STATUSES), name="status_valid"),
+        Index("ix_opportunities_user_status", "user_id", "status"),
+    )
     id: Mapped[uuid.UUID] = pk()
     user_id: Mapped[uuid.UUID] = user_fk()
     company: Mapped[str] = mapped_column(String(200), nullable=False)
     aliases: Mapped[list | None] = mapped_column(JSONB)
+    # Sender domains learned from the user's "which company?" answers (e.g. a careers subdomain).
+    domains: Mapped[list | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)
     deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created()
@@ -167,11 +175,14 @@ class Opportunity(Base):
 
 class OpportunityEvent(Base):
     __tablename__ = "opportunity_events"
+    __table_args__ = (CheckConstraint(_in("kind", EVENT_KINDS), name="kind_valid"),)
     id: Mapped[uuid.UUID] = pk()
     opportunity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("opportunities.id", ondelete="CASCADE"), index=True, nullable=False)
-    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
-    kind: Mapped[str] = mapped_column(String(30), nullable=False)  # announcement, registration, assessment, interview, result
-    details: Mapped[dict | None] = mapped_column(JSONB)
+    # A message belongs to at most one opportunity.
+    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"), unique=True)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    details: Mapped[dict | None] = mapped_column(JSONB)  # deadline, links, platform, summary
+    matched_by: Mapped[str] = mapped_column(String(20), default="user", server_default="user", nullable=False)  # name, ai, thread, domain, timing, user
     occurred_at: Mapped[datetime] = created()
 
 
@@ -203,12 +214,33 @@ class Notification(Base):
     created_at: Mapped[datetime] = created()
 
 
+class Todo(Base):
+    """Action-needed items: created from AI extraction (source "ai") or by hand from any mail or free text."""
+    __tablename__ = "todos"
+    __table_args__ = (Index("ix_todos_user_done_due", "user_id", "done", "due_at"),)
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("opportunities.id", ondelete="SET NULL"))
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(10), default="manual", server_default="manual", nullable=False)  # ai | manual
+    created_at: Mapped[datetime] = created()
+
+
 class Reminder(Base):
     __tablename__ = "reminders"
+    __table_args__ = (UniqueConstraint("user_id", "dedupe_key"),)
     id: Mapped[uuid.UUID] = pk()
     user_id: Mapped[uuid.UUID] = user_fk()
     message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
     opportunity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("opportunities.id", ondelete="CASCADE"))
+    todo_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("todos.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(20), default="custom", server_default="custom", nullable=False)  # deadline_24h, deadline_2h, custom
+    dedupe_key: Mapped[str | None] = mapped_column(String(200))  # same deadline twice never schedules twice
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     remind_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)

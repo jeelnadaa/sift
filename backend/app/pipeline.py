@@ -21,13 +21,13 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import heuristics, notify, rules, user_settings
+from app import heuristics, notify, opportunities, rules, todos, user_settings
 from app.fingerprint import fingerprint, normalize_subject
 from app.llm import service as llm
 from app.mail.base import AuthRevoked, MailProvider
 from app.mail.gmail import GmailError
 from app.mail.message import clean_body, extract_body, parse_metadata
-from app.models import Fingerprint, Folder, FolderItem, GmailAccount, MailTag, Message, Rule, Tag
+from app.models import Fingerprint, Folder, FolderItem, GmailAccount, MailTag, Message, Opportunity, Rule, Tag
 from app.redact import redact
 
 log = logging.getLogger(__name__)
@@ -204,9 +204,12 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         extraction = msg.extraction  # cached from an interrupted earlier run: never pay twice
     elif llm.ai_enabled(db, user_id) and llm.under_cap(db, user_id):
         body = redact(clean_body(load_body()))
-        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at)
+        opp_text, opp_keys = opportunities.prompt_list(opportunities.active(db, user_id))
+        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at, opp_text, list(opp_keys))
         llm_called = extraction is not None and extraction.get("source") == "llm"
         if llm_called:
+            # the o1/o2 keys the model saw, so a resumed run maps its answer to the same opportunities
+            extraction["opportunity_keys"] = {k: str(o.id) for k, o in opp_keys.items()}
             msg.extraction = extraction
             db.commit()  # cache the result (and its token usage) before anything else can fail
         if extraction and extraction.get("error") == "key_invalid":
@@ -228,5 +231,52 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         priority, decided = "normal", "default"  # AI off or failed: normal / other, never hidden
         msg.category = "other"
     msg.priority, msg.status = priority, "processed"
-    msg.extraction = {**(extraction or {}), **extras, **({"heuristic": suggestion.reason} if suggestion else {})} or None
+    merged = {**(extraction or {}), **extras, **({"heuristic": suggestion.reason} if suggestion else {})}
+    # 10. opportunity matching, to-dos and deadline reminders (AI only; by hand in AI-off mode)
+    if decided == "llm":
+        merged = _timeline_and_todos(db, msg, merged)
+    msg.extraction = merged or None
     return Outcome(msg.id, priority, decided, llm_called=llm_called)
+
+
+def _parse_deadline(value: str | None) -> datetime | None:
+    try:
+        d = datetime.fromisoformat(value or "")
+    except ValueError:
+        return None
+    return d if d.tzinfo else None
+
+
+def _timeline_and_todos(db: Session, msg: Message, ext: dict) -> dict:
+    ext = dict(ext)
+    kind = opportunities.EVENT_KIND.get(ext.get("category") or "")
+    opp = None
+    if kind or ext.get("opportunity") not in (None, "none"):
+        keys = {}
+        for k, oid in (ext.get("opportunity_keys") or {}).items():
+            o = db.get(Opportunity, uuid.UUID(oid))
+            if o is not None and o.user_id == msg.user_id:
+                keys[k] = o
+        result = opportunities.match(db, msg, ext, keys)
+        opp = result.opportunity
+        if opp is not None:
+            details = {k: ext.get(k) for k in ("deadline", "links", "platform", "summary")}
+            opportunities.attach(db, opp, msg, kind or "update", details, result.matched_by)
+            ext["opportunity_id"], ext["matched_by"] = str(opp.id), result.matched_by
+            ext.pop("company_question", None)
+        else:
+            # unresolved: the notification asks "which company?" (up to 3 recent drives, or "new")
+            ext["company_question"] = [{"id": str(o.id), "name": o.company} for o in result.candidates]
+
+    deadline = _parse_deadline(ext.get("deadline"))
+    title = (ext.get("summary") or msg.subject or "Mail needs action").strip()
+    if opp is not None and opp.company.lower() not in title.lower():
+        title = f"{opp.company}: {title}"
+    todo = None
+    if ext.get("action_needed"):
+        todo = todos.ai_todo(db, msg.user_id, msg.id, title, deadline, opp.id if opp else None)
+        ext["todo_id"] = str(todo.id)
+    if deadline is not None:
+        todos.schedule_deadline(db, msg.user_id, f"msg:{msg.id}", title, deadline,
+                                message_id=msg.id, opportunity_id=opp.id if opp else None, todo_id=todo.id if todo else None)
+    return ext

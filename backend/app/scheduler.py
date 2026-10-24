@@ -7,8 +7,8 @@
   found mail that push never announced) is polled every POLL_INTERVAL_SECONDS, so losing
   Pub/Sub (e.g. the Google Cloud free trial ending) degrades to poll speed, never worse.
   Watches are (re)started hourly when missing or due within a day.
-- Both: catch up all accounts at startup; re-send unacknowledged urgent notifications (checked
-  every minute); prune finished jobs hourly (Postgres queue).
+- Both: catch up all accounts at startup; every minute re-send unacknowledged urgent notifications
+  and send due deadline reminders; prune finished jobs hourly (Postgres queue).
 Checks are deduped per account, so a slow check never piles up duplicates.
 """
 import asyncio
@@ -86,6 +86,7 @@ async def run() -> None:
             await queue_checks()
             if started - last_minute >= MINUTE or last_minute == 0.0:
                 await jobs.enqueue("resend_notifications", {}, dedupe_key="resend_notifications")
+                await jobs.enqueue("send_reminders", {}, dedupe_key="send_reminders")
                 last_minute = started
             if started - last_hourly >= HOUR or last_hourly == 0.0:
                 await hourly()

@@ -62,6 +62,10 @@ def payload(n: Notification, msg: Message, account: GmailAccount) -> dict:
         "account_color": account.color or "",
         "link": links[0]["url"] if links else "",
         "link_label": links[0]["label"] if links else "",
+        "deadline": ext.get("deadline") or "",
+        "todo_id": ext.get("todo_id") or "",
+        # "which company?" buttons: up to 3 "id|name" pairs, separated by newlines (FCM data is strings only)
+        "company_choices": "\n".join(f"{c['id']}|{c['name']}" for c in (ext.get("company_question") or [])[:3]),
         "sent_at_ms": int(time.time() * 1000),
     }
 
@@ -80,6 +84,10 @@ def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notifica
         n.sent_at = datetime.now(UTC)
     db.flush()
     return n
+
+
+def send_reminder(db: Session, user_id: uuid.UUID, data: dict) -> int:
+    return _send_all(db, user_id, data)
 
 
 def send_system(db: Session, user_id: uuid.UUID, title: str, body: str) -> None:

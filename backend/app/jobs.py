@@ -56,7 +56,17 @@ def handle_resend_notifications(payload: dict) -> None:
         log.info("re-sent %d unacknowledged urgent notification(s)", n)
 
 
+def handle_send_reminders(payload: dict) -> None:
+    from app.todos import send_due
+
+    with get_sessionmaker()() as db:
+        n = send_due(db)
+    if n:
+        log.info("sent %d reminder(s)", n)
+
+
 HANDLERS = {
+    "send_reminders": handle_send_reminders,
     "resend_notifications": handle_resend_notifications,
     "gmail_push": handle_gmail_push,
     "check_account": handle_check_account,

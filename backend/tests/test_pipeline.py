@@ -30,7 +30,11 @@ class FakeLlm:
         if self.fail_with:
             raise self.fail_with
         p = prompt.lower()
-        if "assessment" in p or "suspicious" in p:
+        if "campus drive" in p:
+            out = {"category": "placement_announcement", "company": "Acme Corp", "platform": None, "deadline": "set",
+                   "links": [{"url": "https://forms.univ.edu/acme", "label": "Register"}], "action_needed": True,
+                   "priority": "normal", "summary": "Acme Corp campus drive, register by Wednesday", "confidence": 0.9}
+        elif "assessment" in p or "suspicious" in p:
             out = {"category": "assessment_link" if "assessment" in p else "action_needed", "company": "Acme Corp" if "acme" in p else None,
                    "platform": "HirePro" if "hirepro" in p else None, "deadline": "2026-10-24T23:59:00+05:30",
                    "links": [{"url": "https://assess.hirepro.in/t/8dk2Q", "label": "Start test"}], "action_needed": True,
@@ -38,8 +42,21 @@ class FakeLlm:
         else:
             out = {"category": "recruiter", "company": "Globex", "platform": None, "deadline": None, "links": [],
                    "action_needed": False, "priority": "normal", "summary": "Recruiter wants a call", "confidence": 0.8}
+        out.setdefault("deadline", None)
+        if out.get("deadline"):
+            out["deadline"] = (datetime.now(UTC) + timedelta(days=3)).isoformat()  # always in the future
         out.update(self.override)
+        out.setdefault("opportunity", self._choose(prompt, out.get("company")))
         return LlmResult(text=self.raw if self.raw is not None else json.dumps(out), input_tokens=300, output_tokens=60)
+
+    @staticmethod
+    def _choose(prompt, company):
+        """Like the real model: pick a listed opportunity by name, else "new" / "unsure"."""
+        import re
+        for key, name in re.findall(r"^- (o\d+): ([^(\n]+)", prompt, re.M):
+            if company and company.lower().split()[0] in name.lower():
+                return key
+        return "new" if company else "unsure"
 
     def ping(self):
         pass
