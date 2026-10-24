@@ -69,6 +69,12 @@ class DemoProvider:
     def get_full(self, message_id: str) -> dict:
         return self._by_id[message_id]
 
+    def get_thread(self, thread_id: str) -> dict:
+        return {"id": thread_id, "messages": [m for m in self._by_id.values() if m.get("threadId") == thread_id]}
+
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        raise KeyError(attachment_id)  # demo mail has no attachments
+
     def profile(self):
         raise NotImplementedError
 

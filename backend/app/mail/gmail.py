@@ -3,6 +3,8 @@
 Quota (per user, per minute: 6,000 units): history.list = 2, messages.get = 20 (metadata) or 60 (full),
 watch = 100. Polling every 5 s costs 24 units per account per minute.
 """
+import base64
+
 import httpx
 
 from app.mail.base import AuthRevoked, Changes, CursorExpired, Profile, Watch
@@ -90,6 +92,15 @@ class GmailProvider:
     def get_full(self, message_id: str) -> dict:
         """Full message incl. body parts (60 units). Only when a rule or the LLM needs the body."""
         return self._call("GET", f"/messages/{message_id}", params={"format": "full"})
+
+    def get_thread(self, thread_id: str) -> dict:
+        """Whole conversation with bodies, for reading (10 units). Never stored."""
+        return self._call("GET", f"/threads/{thread_id}", params={"format": "full"})
+
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        """Attachment bytes (5 units), streamed to the user and never stored."""
+        data = self._call("GET", f"/messages/{message_id}/attachments/{attachment_id}").get("data", "")
+        return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
     def start_watch(self, topic: str) -> Watch:
         w = self._call("POST", "/watch", json={"topicName": topic, "labelIds": ["INBOX"], "labelFilterBehavior": "INCLUDE"})

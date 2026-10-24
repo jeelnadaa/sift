@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
-from app import grouping, rule_tools
+from app import grouping, reader, rule_tools
 from app.db import get_db
 from app.mail.base import AuthRevoked
 from app.mail.message import extract_body
@@ -98,6 +98,31 @@ def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: S
     m = _own(db, user, message_id)
     n = db.scalar(select(Notification).where(Notification.message_id == m.id))
     return message_json(m, db.get(GmailAccount, m.account_id), n)
+
+
+@router.get("/{message_id}/thread")
+def get_thread(message_id: uuid.UUID, images: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """The whole conversation, fetched live from Gmail: sanitized HTML (remote images blocked
+    unless `images`, and then only through the image proxy), plain text, and attachments as
+    signed links. Not stored, not logged."""
+    m = _own(db, user, message_id)
+    account = db.get(GmailAccount, m.account_id)
+    if account.status != "active":
+        raise HTTPException(409, f"account is {account.status}")
+    try:
+        thread = account_service.provider_for(account).get_thread(m.thread_id)
+    except AuthRevoked as exc:
+        account_service.mark_auth_failure(account, exc)
+        db.commit()
+        raise HTTPException(409, f"account is {account.status}") from exc
+    msgs = reader.render_thread(thread, user_id=str(user.id), account_id=str(account.id), base="", images=images)
+    stored = dict(db.execute(select(Message.gmail_id, Message.id).where(
+        Message.account_id == account.id, Message.gmail_id.in_([x["gmail_id"] for x in msgs]))).all())
+    for x in msgs:
+        x["id"] = str(stored[x["gmail_id"]]) if x["gmail_id"] in stored else None
+        x.pop("html")  # clients load the sandboxed document from html_url instead
+    return {"thread_id": m.thread_id, "account": account.label or account.email, "account_id": str(account.id),
+            "subject": (msgs[0]["subject"] if msgs else m.subject) or "", "images": images, "messages": msgs}
 
 
 @router.get("/{message_id}/body")

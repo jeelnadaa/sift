@@ -43,4 +43,6 @@ class MailProvider(Protocol):
     def stop_watch(self) -> None: ...
     def get_metadata(self, message_id: str) -> dict: ...  # Gmail API message resource, headers only
     def get_full(self, message_id: str) -> dict: ...  # with body parts
+    def get_thread(self, thread_id: str) -> dict: ...  # whole conversation, with bodies (reading)
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes: ...
     # Phase 4: send(...)
