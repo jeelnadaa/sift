@@ -111,7 +111,11 @@ def check_account(account_id: uuid.UUID | str) -> int:
     The row lock serializes concurrent checks of one account (a poll and a push at once).
     Returns the number of new messages."""
     with get_sessionmaker()() as db:
-        account = db.scalar(select(GmailAccount).where(GmailAccount.id == uuid.UUID(str(account_id))).with_for_update(skip_locked=True))
+        # FOR NO KEY UPDATE, not FOR UPDATE: the pipeline inserts messages that reference this row
+        # from another connection, and FOR UPDATE would block those inserts (self-deadlock).
+        account = db.scalar(
+            select(GmailAccount).where(GmailAccount.id == uuid.UUID(str(account_id))).with_for_update(skip_locked=True, key_share=True)
+        )
         if account is None or account.status != "active" or not account.encrypted_refresh_token:
             return 0  # missing, paused, or another worker is already checking it
         try:

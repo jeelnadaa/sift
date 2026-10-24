@@ -10,7 +10,8 @@ from app.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
-    return create_engine(get_settings().database_url, pool_pre_ping=True)
+    # lock_timeout: a lock that is never released fails the job (which is retried) instead of hanging it forever.
+    return create_engine(get_settings().database_url, pool_pre_ping=True, connect_args={"options": "-c lock_timeout=30000"})
 
 
 @lru_cache

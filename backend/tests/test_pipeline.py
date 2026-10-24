@@ -256,6 +256,41 @@ def test_transient_gmail_error_leaves_message_to_retry(db, setup, monkeypatch, f
     assert out.notified and len(fcm_sends) == 1
 
 
+# ---- end to end through check_account (regression: account row lock blocked message inserts) ----
+
+def test_check_account_runs_the_pipeline_without_deadlocking(db, setup, monkeypatch, fcm_sends):
+    import threading
+
+    from app import accounts
+    from app.mail.base import Changes, Profile
+    user, account, provider, msgs = setup
+    acc = db.get(GmailAccount, account.id)
+    acc.encrypted_refresh_token, acc.history_id = crypto.encrypt("rt"), 100
+    db.commit()
+
+    class Mailbox(demo.DemoProvider):
+        def list_changes(self, since):
+            return Changes([msgs["recruiter"]["id"], msgs["bank"]["id"]], 120)
+
+        def profile(self):
+            return Profile(account.email, 120)
+
+    box = Mailbox(list(msgs.values()))
+    monkeypatch.setattr(accounts, "provider_factory", lambda token: box)
+    monkeypatch.setattr(accounts.google_oauth, "refresh_access_token", lambda rt: ("at", 3600))
+    accounts._token_cache.clear()
+
+    result = {}
+    t = threading.Thread(target=lambda: result.setdefault("n", accounts.check_account(account.id)), daemon=True)
+    t.start()
+    t.join(timeout=20)
+    assert not t.is_alive(), "check_account hung (lock conflict)"
+    assert result["n"] == 2
+    db.expire_all()
+    assert db.get(GmailAccount, account.id).history_id == 120
+    assert len(fcm_sends) == 1  # recruiter notified, bank silenced
+
+
 # ---- re-send ------------------------------------------------------------------------------
 
 def test_unacknowledged_urgent_notifications_are_resent_up_to_the_limit(db, setup, fake_llm, fcm_sends):
