@@ -8,7 +8,7 @@ export function Groups() {
   const navigate = useNavigate();
   const status = useLoad(() => get<GroupingStatus>("/grouping"));
   const on = status.data?.grouping_enabled === "yes";
-  const groups = useLoad(async () => (on ? get<Group[]>("/groups") : []), [on]);
+  const groups = useLoad(async () => (on ? get<Group[]>("/groups") : []), [on], ["mail", "new_mail"]);
 
   async function set(answer: "yes" | "no") {
     try { await post("/grouping", { answer }); status.reload(); toast(answer === "yes" ? "Grouping on. The last 30 days are being grouped." : "Grouping off"); } catch (e) { toast(errorText(e)); }
@@ -36,7 +36,7 @@ export function Groups() {
 export function GroupDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const g = useLoad(() => get<Group>(`/groups/${id}`), [id]);
+  const g = useLoad(() => get<Group>(`/groups/${id}`), [id], ["mail", "new_mail"]);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [filing, setFiling] = useState<"file" | "rule" | null>(null);
   const [merging, setMerging] = useState(false);

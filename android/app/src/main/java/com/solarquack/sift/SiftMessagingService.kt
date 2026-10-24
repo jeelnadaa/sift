@@ -32,6 +32,10 @@ class SiftMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
+        if (data["type"] == "sync") {  // silent: refresh what's on screen, show nothing
+            com.solarquack.sift.data.LiveEvents.changed()
+            return
+        }
         data["sent_at_ms"]?.toLongOrNull()?.let {
             val delay = System.currentTimeMillis() - it
             Session.saveLastDelay(this, delay)

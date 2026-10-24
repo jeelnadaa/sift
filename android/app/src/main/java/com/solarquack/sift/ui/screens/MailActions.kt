@@ -83,7 +83,15 @@ fun MailActionsButton(m: MessageDto, extra: List<SheetItem>, onChanged: () -> Un
     val gmail = listOf(
         if (m.inInbox) SheetItem("Archive", "Out of the inbox, still searchable") { act("archive", leave = true) }
         else SheetItem("Move to inbox", "Back into Gmail's inbox") { act("unarchive") },
-        SheetItem(if (m.unread) "Mark read" else "Mark unread", "For the whole conversation, in Gmail") { act(if (m.unread) "read" else "unread") },
+        SheetItem(if (m.unread) "Mark read" else "Mark unread", "For the whole conversation (also in Gmail when the account allows changes)") {
+            scope.launch {
+                try {
+                    val r = Api.get(context).readState(com.solarquack.sift.data.ReadStateIn(listOf(m.id), !m.unread))
+                    onInfo((if (m.unread) "Marked read" else "Marked unread") + if (r.siftOnly.isNotEmpty()) " in Sift (Gmail unchanged)" else "")
+                    onChanged()
+                } catch (t: Throwable) { onInfo(t.userMessage()) }
+            }
+        },
         SheetItem(if (m.starred) "Remove star" else "Star", null) { act(if (m.starred) "unstar" else "star") },
         SheetItem("Label…", "Add a Gmail label") { labelling = true },
         SheetItem("Snooze…", "Hide it until later; it comes back and notifies you") { snoozing = true },

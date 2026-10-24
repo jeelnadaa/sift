@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, post, type Draft, type Folder, type FolderTree, type Mail, type Preview } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Thread } from "./Thread";
 import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailActions";
-import { Avatar, Banner, FolderPicker, Modal, Tag, errorText, toast, useLoad } from "../components";
+import { Avatar, Banner, FolderPicker, Modal, Tag, errorText, setReadState, toast, useLoad } from "../components";
 import { findFolder, fullTime, safeUrl } from "../util";
 
 const DECIDED: Record<string, string> = {
@@ -17,9 +17,31 @@ const DECIDED: Record<string, string> = {
 export function MailDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const mail = useLoad(() => get<Mail>(`/messages/${id}`), [id]);
+  const mail = useLoad(() => get<Mail>(`/messages/${id}`), [id], ["mail", "folders"]);
+  const inFoldersLive = ["folders"] as const;
+  // opening a mail reads it: the whole conversation is marked read (in Gmail when the account
+  // allows changes), once per visit, and every other open device updates live
+  const autoRead = useRef<string | null>(null);
+  useEffect(() => {
+    const m = mail.data;
+    if (!m || autoRead.current === id) return;
+    autoRead.current = id;
+    if (m.unread) {
+      mail.setData({ ...m, unread: false });
+      setReadState([id], false).catch(() => mail.reload());
+    }
+  }, [mail.data, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function toggleRead() {
+    const m = mail.data;
+    if (!m) return;
+    mail.setData({ ...m, unread: !m.unread });
+    try {
+      const r = await setReadState([id], !m.unread);
+      toast((m.unread ? "Marked read" : "Marked unread") + (r.sift_only.length ? " in Sift (Gmail unchanged: this account is read-only)" : ""));
+    } catch (e) { mail.reload(); toast(errorText(e)); }
+  }
   const tree = useLoad(() => get<FolderTree>("/folders"), [id]);
-  const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id]);
+  const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id], [...inFoldersLive]);
   const [picking, setPicking] = useState(false);
   const [likeThis, setLikeThis] = useState<{ draft: Draft; preview: Preview } | null>(null);
   const [snoozing, setSnoozing] = useState(false);
@@ -107,7 +129,7 @@ export function MailDetail() {
               {m.in_inbox === false
                 ? <button className="btn btn-ghost btn-sm" onClick={() => gmail("unarchive")} data-tip="Put it back in Gmail's inbox">Move to inbox</button>
                 : <button className="btn btn-ghost btn-sm" onClick={() => gmail("archive", true)} data-tip="Archive in Gmail: out of the inbox, still searchable  (Z to undo)">Archive</button>}
-              <button className="btn btn-ghost btn-sm" onClick={() => gmail(m.unread ? "read" : "unread")} data-tip={m.unread ? "Mark the conversation read in Gmail" : "Mark it unread in Gmail"}>{m.unread ? "Mark read" : "Mark unread"}</button>
+              <button className="btn btn-ghost btn-sm" onClick={toggleRead} data-tip={m.unread ? "Mark the conversation read  (also in Gmail when the account allows changes)" : "Mark it unread, to come back to it"}>{m.unread ? "Mark read" : "Mark unread"}</button>
               <button className="btn btn-ghost btn-sm" onClick={() => gmail(m.starred ? "unstar" : "star")} data-tip={m.starred ? "Remove the star in Gmail" : "Star it in Gmail"}>{m.starred ? "★ Starred" : "☆ Star"}</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setLabelling(true)} data-tip="Add a Gmail label">Label…</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setSnoozing(true)} data-tip="Hide it until later; it comes back and notifies you">Snooze…</button>

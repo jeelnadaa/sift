@@ -68,6 +68,7 @@ fun DealsScreen(onOpen: (String) -> Unit) {
         try { items = Api.get(context).opportunities(status); error = null } catch (t: Throwable) { error = t.userMessage() } finally { loading = false }
     }
     LaunchedEffect(status) { load() }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
     Box(Modifier.fillMaxSize().background(Ink.bg)) {
         Column(Modifier.fillMaxSize()) {

@@ -31,7 +31,9 @@ interface SiftApi {
         @Query("account_id") accountId: String? = null,
         @Query("view") view: String = "feed",
         @Query("before") before: String? = null,
+        @Query("limit") limit: Int? = null,
     ): MessagePage
+    @POST("api/v1/messages/read-state") suspend fun readState(@Body body: ReadStateIn): ReadStateOut
     @GET("api/v1/messages/{id}") suspend fun message(@Path("id") id: String): MessageDto
     @GET("api/v1/messages/{id}/body") suspend fun body(@Path("id") id: String): BodyDto
     @GET("api/v1/messages/{id}/thread") suspend fun thread(@Path("id") id: String, @Query("images") images: Boolean? = null): ThreadDto
@@ -117,6 +119,7 @@ interface SiftApi {
         @Query("account_id") accountId: String? = null,
         @Query("before") before: String? = null,
         @Query("grouped") grouped: Boolean = true,
+        @Query("limit") limit: Int? = null,
     ): GroupedPage
 
     @GET("api/v1/folders") suspend fun folders(): FolderTree

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Logo } from "./Logo";
+import { startLive, stopLive, type LiveEvent } from "./live";
 import { Landing } from "./pages/Landing";
 import { ComposePage } from "./pages/Compose";
 import { OutboxPage } from "./pages/Outbox";
@@ -96,8 +97,12 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
   useEffect(() => {
     const load = () => get<{ folders: Folder[] }>("/folders").then((t) => setFolders(t.folders)).catch(() => {});
     load();
+    // unread counts follow reading on other devices and new mail (live.ts)
+    const onLive = (e: Event) => { if ((e as CustomEvent<LiveEvent>).detail.type !== "hello") load(); };
     addEventListener("sift:folders", load);
-    return () => removeEventListener("sift:folders", load);
+    addEventListener("sift:live", onLive);
+    startLive();
+    return () => { removeEventListener("sift:folders", load); removeEventListener("sift:live", onLive); stopLive(); };
   }, []);
   const trouble = accounts.some((a) => a.status !== "active");
   const email = session.email() ?? "";
@@ -227,6 +232,8 @@ function Icons() {
       <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="M3.5 7l8.5 6 8.5-6" /></symbol>
       <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-7" /></symbol>
       <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" /></symbol>
+      <symbol id="i-read" viewBox="0 0 24 24"><path d="M3 10l9-6 9 6v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M3.5 10.5L12 16l8.5-5.5" /></symbol>
+      <symbol id="i-unread" viewBox="0 0 24 24"><rect x="3" y="6" width="15" height="12" rx="2.5" /><path d="M3.5 8l7.5 5.5L18.5 8" /><circle cx="19.5" cy="6.5" r="2.5" fill="currentColor" /></symbol>
       <symbol id="i-chev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6" /></symbol>
       <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l4.5-1 10-10a2.1 2.1 0 00-3-3l-10 10L4 20z" /><path d="M14 7l3 3" /></symbol>
       <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5L4 12z" /><path d="M11.5 13.5L20 4" /></symbol>

@@ -24,13 +24,17 @@ def _folder(db: Session, user: User, folder_id: uuid.UUID):
         raise HTTPException(404, str(exc)) from exc
 
 
-def _run(db: Session, fn, *args, **kwargs):
-    """Run a folder operation, commit, and turn FolderError into a 422 with its message."""
+def _run(db: Session, fn, *args, user_id=None, **kwargs):
+    """Run a folder operation, commit, and turn FolderError into a 422 with its message. With
+    `user_id`, other open apps of that user are told folders changed."""
     try:
         out = fn(*args, **kwargs)
     except folders.FolderError as exc:
         db.rollback()
         raise HTTPException(422, str(exc)) from exc
+    if user_id is not None:
+        from app import events
+        events.publish(db, user_id, "folders")
     db.commit()
     return out
 
@@ -253,7 +257,7 @@ def _file(db: Session, user: User, f, body: FileIn) -> dict:
                 folder_ai.sort_if_needed(db, f, m)
         return filed
 
-    return {"filed": _run(db, run), "folder_id": str(f.id)}
+    return {"filed": _run(db, run, user_id=user.id), "folder_id": str(f.id)}
 
 
 @router.post("/{folder_id}/threads/remove")
@@ -261,6 +265,8 @@ def unfile_mail(folder_id: uuid.UUID, body: FileIn, user: User = Depends(current
     f = _folder(db, user, folder_id)
     msgs = _messages(db, user, body.message_ids)
     removed = sum(folders.unfile_thread(db, f, a, t) for a, t in {(m.account_id, m.thread_id) for m in msgs})
+    from app import events
+    events.publish(db, user.id, "folders")
     db.commit()
     return {"removed": removed}
 

@@ -325,6 +325,7 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
         }
     }
     LaunchedEffect(id, includeSub) { load() }
+    LaunchedEffect(id) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
     LaunchedEffect(query) { kotlinx.coroutines.delay(350); load() }
     val nearEnd by remember { androidx.compose.runtime.derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 8 } ?: false } }
     LaunchedEffect(nearEnd, view?.nextBefore) { if (nearEnd) loadMore() }

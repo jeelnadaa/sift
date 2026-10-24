@@ -70,11 +70,21 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
 
     LaunchedEffect(id) {
         try {
-            m = Api.get(context).message(id)
+            val loaded = Api.get(context).message(id)
+            m = loaded
+            // opening a mail reads it: the whole conversation is marked read (in Gmail when the
+            // account allows changes) and other devices update live
+            if (loaded.unread) {
+                m = loaded.copy(unread = false)
+                runCatching { Api.get(context).readState(com.solarquack.sift.data.ReadStateIn(listOf(id), false)) }
+            }
         } catch (t: Throwable) {
             error = t.userMessage()
             return@LaunchedEffect
         }
+    }
+    LaunchedEffect(id) {
+        com.solarquack.sift.data.LiveEvents.changes.collect { runCatching { Api.get(context).message(id) }.onSuccess { m = it } }
     }
 
     Column(Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).padding(18.dp)) {

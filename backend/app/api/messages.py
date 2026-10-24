@@ -187,3 +187,53 @@ def unsilence(message_id: uuid.UUID, user: User = Depends(current_user), db: Ses
     result = rule_tools.unsilence(db, m)
     db.commit()
     return result
+
+
+
+class ReadStateIn(BaseModel):
+    message_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    unread: bool
+
+
+@router.post("/read-state")
+def set_read_state(body: ReadStateIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Read / unread for whole conversations, the way opening a mail or the read button works.
+    With write access it changes Gmail too; without it, only Sift's copy (never a permission
+    prompt for simply reading). Every open app of the user updates live."""
+    from app import accounts as account_service
+    from app import actions, events
+    from app.mail.base import AuthRevoked
+    from app.mail.gmail import GmailError
+
+    msgs = list(db.scalars(select(Message).where(Message.user_id == user.id, Message.id.in_(body.message_ids))))
+    if len(msgs) != len(set(body.message_ids)):
+        raise HTTPException(404, "message not found")
+    add, remove = (["UNREAD"], []) if body.unread else ([], ["UNREAD"])
+    threads = {(m.account_id, m.thread_id) for m in msgs}
+    accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.id.in_({a for a, _ in threads})))}
+    in_gmail, local_only, changed_ids = 0, set(), []
+    for account_id, thread_id in threads:
+        account = accounts[account_id]
+        thread_msgs = list(db.scalars(select(Message).where(Message.account_id == account_id, Message.thread_id == thread_id)))
+        already = all(("UNREAD" in (m.labels or [])) == body.unread for m in thread_msgs)
+        if already:
+            continue  # nothing to do (e.g. opening a mail that's already read): no Gmail call
+        if account_service.can_modify(account) and account.status == "active":
+            try:
+                account_service.provider_for(account).modify_thread(thread_id, add, remove)
+                in_gmail += 1
+            except AuthRevoked as exc:
+                account_service.mark_auth_failure(account, exc)
+                local_only.add(account.email)
+            except GmailError as exc:
+                if exc.status == 403:
+                    account.scopes = [s for s in (account.scopes or []) if s != account_service.google_oauth.MODIFY_SCOPE]
+                local_only.add(account.email)
+        else:
+            local_only.add(account.email)
+        actions._apply_local(db, account_id, thread_id, add, remove)
+        changed_ids += [m.id for m in thread_msgs]
+    if changed_ids:
+        events.mail_changed(db, user.id, changed_ids)
+    db.commit()
+    return {"unread": body.unread, "conversations": len(threads), "in_gmail": in_gmail, "sift_only": sorted(local_only)}

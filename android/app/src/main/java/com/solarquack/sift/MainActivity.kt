@@ -86,6 +86,12 @@ class MainActivity : ComponentActivity() {
         setContent { SiftTheme { App() } }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // back on screen: catch up on anything changed meanwhile (read elsewhere, new mail)
+        com.solarquack.sift.data.LiveEvents.changed()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(EXTRA_MESSAGE_ID)?.let { openMessage = it }

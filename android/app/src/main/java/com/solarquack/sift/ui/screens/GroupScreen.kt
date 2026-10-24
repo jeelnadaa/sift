@@ -133,6 +133,7 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
         } catch (t: Throwable) { error = t.userMessage() }
     }
     LaunchedEffect(id) { load() }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
     val group = g
     LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {

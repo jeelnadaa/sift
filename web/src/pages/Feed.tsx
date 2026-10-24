@@ -17,7 +17,7 @@ export function Feed() {
   const grouping = useLoad(() => get<GroupingStatus>("/grouping"));
   const grouped = grouping.data?.grouping_enabled === "yes";
   const feed = usePages((before) => get<Page<Mail | Group>>("/messages", { account_id: account, priority, grouped: grouped || undefined, before, limit: PAGE_SIZE }),
-    [account, priority, grouped]);
+    [account, priority, grouped], ["mail", "new_mail", "folders"]);
 
   useEffect(() => {
     let prompted = false;

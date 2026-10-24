@@ -6,7 +6,7 @@ import { Banner, MailRow, Pager, Tag, errorText, toast, useLoad, usePages } from
 /** Audit of everything a rule or a taught template kept quiet. */
 export function Silenced() {
   const navigate = useNavigate();
-  const mail = usePages((before) => get<Page<Mail>>("/messages", { view: "silenced", limit: 30, before }), []);
+  const mail = usePages((before) => get<Page<Mail>>("/messages", { view: "silenced", limit: 30, before }), [], ["mail", "new_mail", "folders"]);
   const rules = useLoad(() => get<Rule[]>("/rules"));
   const ruleName = (id: string | null) => (id ? rules.data?.find((r) => r.id === id)?.name ?? "A rule" : null);
 

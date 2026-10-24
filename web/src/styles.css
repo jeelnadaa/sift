@@ -270,3 +270,14 @@ main { padding-bottom: 96px; }
 .tl-tools { float: right; display: inline-flex; gap: 6px; opacity: .7; }
 .tl-tools .chip { height: 24px; padding: 0 9px; font-size: 12px; }
 div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
+/* read state: read mail is greyed out; unread stays bright and bold (owner, 2026-10-24) */
+.row.read .who, .row.read .subj { color: var(--text-3); font-weight: 500; }
+.row.read .avatar { opacity: .55; }
+.row.unread .who { color: var(--text); font-weight: 700; }
+.row.unread .subj { color: var(--text-2); }
+.read-btn { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-sm); border: 1px solid transparent;
+  background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.read-btn .ico { width: 17px; height: 17px; }
+.row:hover .read-btn, .read-btn:focus-visible { opacity: 1; }
+.read-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--line-2); }
+@media (hover: none) { .read-btn { opacity: 1; } }

@@ -1,28 +1,44 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ApiError, get, type Folder, type Mail, type Group } from "./api";
+import type { LiveEvent } from "./live";
+import { ApiError, get, post, type Folder, type Mail, type Group } from "./api";
 import { accountColor, flatten, fullTime, humanize, relativeTime } from "./util";
 
-/** Load data with loading/error state; `reload` re-runs it. */
-export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
+/** Load data with loading/error state; `reload` re-runs it. With `live`, it also reloads quietly
+ * (no loading state, data stays on screen) when another device or Gmail changes something
+ * (live events of those types, see live.ts). */
+export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: LiveEvent["type"][]) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const seq = useRef(0);
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (quiet = false) => {
     const n = ++seq.current;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     try {
       const d = await fn();
       if (n === seq.current) { setData(d); setError(null); }
     } catch (e) {
-      if (n === seq.current) setError(e instanceof Error ? e.message : String(e));
+      if (n === seq.current && !quiet) setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (n === seq.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   useEffect(() => { reload(); }, [reload]);
-  return { data, setData, error, setError, loading, reload };
+  const liveKey = live?.join(",") ?? "";
+  useEffect(() => {
+    if (!liveKey) return;
+    const kinds = new Set([...liveKey.split(","), "resync"]);
+    let timer: number | undefined;
+    const on = (e: Event) => {
+      if (!kinds.has((e as CustomEvent<LiveEvent>).detail.type)) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => reload(true), 250);  // a burst of changes → one reload
+    };
+    addEventListener("sift:live", on);
+    return () => { removeEventListener("sift:live", on); window.clearTimeout(timer); };
+  }, [reload, liveKey]);
+  return { data, setData, error, setError, loading, reload: () => reload(false) };
 }
 
 export const errorText = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : String(e));
@@ -183,9 +199,19 @@ export function Acct({ name, color, id }: { name: string | null; color: string |
 /** A mail row. Draggable so it can be dropped on a folder (web UI only). */
 export function MailRow({ m, onOpen, extra, draggable = true, n, highlight, lead }: { m: Mail; onOpen?: () => void; extra?: ReactNode; draggable?: boolean; n?: number; highlight?: string[]; lead?: ReactNode }) {
   const [dragging, setDragging] = useState(false);
+  // shown at once when switched here; the server's answer (and live updates) then confirm it
+  const [unread, setUnread] = useState(m.unread);
+  useEffect(() => setUnread(m.unread), [m.unread]);
   const who = m.sender_name || m.sender || "Unknown";
+  const stored = !!m.priority;  // mail Sift never stored (older Gmail results) has no read switch here
+  async function toggleRead(e: React.MouseEvent) {
+    e.stopPropagation();
+    const next = !unread;
+    setUnread(next);
+    try { await setReadState([m.id], next); } catch (err) { setUnread(!next); toast(errorText(err)); }
+  }
   return (
-    <div className={`row ${m.unread ? "unread" : ""} ${onOpen ? "click" : ""} ${dragging ? "dragging" : ""}`} onClick={onOpen}
+    <div className={`row ${unread ? "unread" : "read"} ${onOpen ? "click" : ""} ${dragging ? "dragging" : ""}`} onClick={onOpen}
       draggable={draggable}
       onDragStart={(e) => { e.dataTransfer.setData("application/x-sift-mail", m.id); e.dataTransfer.effectAllowed = "copy"; setDragging(true); }}
       onDragEnd={() => setDragging(false)}>
@@ -203,6 +229,10 @@ export function MailRow({ m, onOpen, extra, draggable = true, n, highlight, lead
         <div className="subj" data-tip={m.summary && m.subject ? `Subject: ${m.subject}` : undefined}><Highlight text={m.summary || m.subject || "(no subject)"} words={highlight} /></div>
       </div>
       {extra}
+      {stored && (
+        <button className="read-btn" onClick={toggleRead} aria-label={unread ? "Mark read" : "Mark unread"}
+          data-tip={unread ? "Mark read" : "Mark unread"}><Icon name={unread ? "read" : "unread"} /></button>
+      )}
       <Acct name={m.account} color={m.account_color} id={m.account_id} />
       <span className="time" data-tip={fullTime(m.received_at) + (draggable ? "\nDrag the row onto a folder to file it" : "")}>{relativeTime(m.received_at)}</span>
     </div>
@@ -278,7 +308,7 @@ type PageData<T> = { items: T[]; next_before: string | null; total?: number; pag
 
 /** Pages over a cursor API. Keeps the cursor of every page visited so Previous works;
  * a change in `key` (filters) goes back to page 1, so rows are numbered from 1 again. */
-export function usePages<T, P extends PageData<T> = PageData<T>>(load: (before: string | null) => Promise<P>, key: unknown[]) {
+export function usePages<T, P extends PageData<T> = PageData<T>>(load: (before: string | null) => Promise<P>, key: unknown[], live?: LiveEvent["type"][]) {
   const k = JSON.stringify(key);
   // remembered per list for this tab, so opening a mail and coming back keeps your page
   const store = `sift.pages:${location.pathname}`;
@@ -294,7 +324,7 @@ export function usePages<T, P extends PageData<T> = PageData<T>>(load: (before: 
   useEffect(() => { if (state.k !== k) setState({ k, cursors: [null] }); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [k]);
   const cursors = state.k === k ? state.cursors : [null];
   const cursor = cursors[cursors.length - 1];
-  const res = useLoad(() => load(cursor), [k, cursors.length, cursor]);
+  const res = useLoad(() => load(cursor), [k, cursors.length, cursor], live);
   const page = cursors.length;
   useEffect(() => { document.querySelector("main")?.scrollTo({ top: 0 }); }, [page, k]);
   const next = res.data?.next_before;
@@ -447,4 +477,10 @@ export function Highlight({ text, words }: { text: string; words?: string[] }) {
   if (!ws.length) return <>{text}</>;
   const re = new RegExp(`(${ws.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "ig");
   return <>{text.split(re).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}</>;
+}
+
+/** Read or unread for whole conversations. Changes Gmail when the account allows changes,
+ * otherwise only Sift (no permission prompt for simply reading). Other devices update live. */
+export async function setReadState(messageIds: string[], unread: boolean): Promise<{ in_gmail: number; sift_only: string[] }> {
+  return post("/messages/read-state", { message_ids: messageIds, unread });
 }

@@ -758,3 +758,9 @@ data class SectionIn(val kind: String, val title: String, val note: String? = nu
 
 @Serializable
 data class SectionPatch(val kind: String? = null, val title: String? = null, val note: String? = null, val at: String? = null, val remind: Boolean? = null)
+
+@Serializable
+data class ReadStateIn(@SerialName("message_ids") val messageIds: List<String>, val unread: Boolean)
+
+@Serializable
+data class ReadStateOut(val unread: Boolean = false, @SerialName("in_gmail") val inGmail: Int = 0, @SerialName("sift_only") val siftOnly: List<String> = emptyList())

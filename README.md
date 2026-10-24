@@ -185,6 +185,8 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 
 **If mail stops coming in:** Sift records every check. If an account can't be checked for 15 minutes, your phone gets "Sift can't check your mail", the feed shows a red banner with the reason, and Accounts shows when each account was last checked. When checks work again you get "Sift is checking mail again"; mail that arrived meanwhile is caught up automatically. `/health` also reports `mail_checks` (ok / stalled (n)) for uptime monitors.
 
+**Read state and live updates:** opening a mail marks its conversation read (in Gmail too when the account allows changes; otherwise in Sift only). Read mail is greyed out. Switch it back with Mark unread on the mail, the envelope button on a row (web), or a long-press on a row (phone). Everything you open on several devices stays in step without reloading: reading, unread, archive, star, snooze, filing, new mail, and mail you read in Gmail itself. Web pages keep a live connection to the server; phones get a silent push and also refresh when the app comes back to the screen.
+
 **Accounts and sign-up:** the sign-in page (web and phone) has **Create an account** while `REGISTRATION=open` (the default; sign-ups are rate-limited per network address, passwords need 10+ characters). Set `REGISTRATION=closed` in `.env` to hide it and add users with `python -m app.cli create-user EMAIL` + `set-password`. Every new account starts with the bank rule and a **Placements** folder (see below).
 
 **AI on folders:** open a folder → **✦ AI for this folder** (phone: ✦ AI next to the folder name).

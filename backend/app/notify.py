@@ -45,6 +45,11 @@ def _send_all(db: Session, user_id: uuid.UUID, data: dict) -> int:
     return sent
 
 
+def send_data(db: Session, user_id: uuid.UUID, data: dict) -> int:
+    """A data-only message to every phone of the user (nothing is shown), e.g. a live sync."""
+    return _send_all(db, user_id, data)
+
+
 def payload(n: Notification, msg: Message, account: GmailAccount, last_folder: str = "") -> dict:
     ext = msg.extraction or {}
     links = ext.get("links") or []

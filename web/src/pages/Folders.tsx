@@ -17,7 +17,7 @@ const NOTIFY: [Folder["notify_mode"], string, string][] = [
 export function Folders() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const tree = useLoad(() => get<FolderTree>("/folders"));
+  const tree = useLoad(() => get<FolderTree>("/folders"), [], ["mail", "new_mail", "folders"]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<{ parent: Folder | null } | null>(null);
   const [overTop, setOverTop] = useState(false);
@@ -114,7 +114,7 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<"edit" | "move" | "merge" | "delete" | null>(null);
   useEffect(() => { const t = setTimeout(() => setQuery(q.trim()), 300); return () => clearTimeout(t); }, [q]);
-  const view = usePages((before) => get<FolderView>(`/folders/${f.id}/threads`, { include_subfolders: includeSub, q: query || undefined, before, limit: 30 }), [f.id, includeSub, query]);
+  const view = usePages((before) => get<FolderView>(`/folders/${f.id}/threads`, { include_subfolders: includeSub, q: query || undefined, before, limit: 30 }), [f.id, includeSub, query], ["mail", "new_mail", "folders"]);
 
   async function edit(changes: object) {
     try { await patch(`/folders/${f.id}`, changes); onChanged(); } catch (e) { toast(errorText(e)); }

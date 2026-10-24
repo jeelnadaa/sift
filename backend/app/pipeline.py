@@ -166,6 +166,8 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
         grouping.assign_if_enabled(db, msg)  # display only; before notify so a muted group is known
     if notify.notify_message(db, msg, account):
         outcome.notified = True
+    from app import events
+    events.publish(db, msg.user_id, "new_mail", ids=[msg.id])
     db.commit()
     if not outcome.notified:
         alerts.check_new(db, msg, account, provider)  # saved searches set to notify; never raises

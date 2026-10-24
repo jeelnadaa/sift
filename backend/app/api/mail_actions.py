@@ -60,6 +60,8 @@ class ActionIn(Targets):
 def act(body: ActionIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Archive, read/unread, star, label, trash or spam whole conversations in Gmail. Needs write
     access for each account involved: otherwise 403 code=needs_write_access lists them."""
+    from app import events
+    events.publish(db, user.id, "mail", ids=[str(i) for i in body.message_ids])  # sent only if the change commits
     threads = [(a, t) for a, t, _ in _resolve(db, user, body)]
     try:
         res = action_service.apply(db, user.id, threads, body.action, body.label)
@@ -100,6 +102,8 @@ def snooze(body: SnoozeIn, user: User = Depends(current_user), db: Session = Dep
         rows = snooze_service.snooze(db, user.id, _resolve(db, user, body), body.until)
     except snooze_service.SnoozeError as exc:
         raise HTTPException(422, str(exc)) from exc
+    from app import events
+    events.publish(db, user.id, "mail", ids=[])  # snoozed or back: other open apps update
     db.commit()
     return [snooze_service.snooze_json(s, db.get(Message, s.message_id) if s.message_id else None) for s in rows]
 
@@ -117,4 +121,6 @@ def unsnooze(snooze_id: uuid.UUID, user: User = Depends(current_user), db: Sessi
     if s is None or s.user_id != user.id or s.done:
         raise HTTPException(404, "snooze not found")
     snooze_service.cancel(db, s)
+    from app import events
+    events.publish(db, user.id, "mail", ids=[])  # snoozed or back: other open apps update
     db.commit()

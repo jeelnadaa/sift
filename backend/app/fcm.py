@@ -32,11 +32,14 @@ class SendResult:
 
 
 def build_message(token: str, data: dict[str, object]) -> dict:
+    # silent syncs go at normal priority (Android limits high-priority messages that show nothing)
+    # and collapse, so a phone that was offline gets one sync, not dozens
+    android = {"priority": "normal", "collapse_key": "sync"} if data.get("type") == "sync" else {"priority": "high"}
     return {
         "message": {
             "token": token,
             "data": {k: "" if v is None else str(v) for k, v in data.items()},
-            "android": {"priority": "high"},
+            "android": android,
         }
     }
 

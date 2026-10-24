@@ -2,6 +2,7 @@ package com.solarquack.sift.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -125,6 +127,43 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
     }
 
+    // live: reload what's loaded, quietly (no spinner, no jump to the top)
+    suspend fun refreshQuiet() {
+        if (loading || loadingMore) return
+        val api = Api.get(context)
+        val count = items.size.coerceIn(30, 200)
+        runCatching {
+            if (grouped) {
+                val p = api.groupedFeed(priority = priority, accountId = account, limit = count)
+                items = p.items.map { o ->
+                    if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
+                    else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
+                }
+                next = p.nextBefore
+            } else {
+                val p = api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed", limit = count)
+                items = p.items.map { MailItem(it) }
+                next = p.nextBefore
+            }
+            accounts = api.accounts()
+        }
+    }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { refreshQuiet() } }
+    fun toggleRead(m: MessageDto) {
+        val unread = !m.unread
+        items = items.map { if (it is MailItem && it.m.id == m.id) MailItem(m.copy(unread = unread)) else it }
+        scope.launch {
+            try {
+                val r = Api.get(context).readState(com.solarquack.sift.data.ReadStateIn(listOf(m.id), unread))
+                android.widget.Toast.makeText(context, (if (unread) "Marked unread" else "Marked read") +
+                    if (r.siftOnly.isNotEmpty()) " in Sift (Gmail unchanged)" else "", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) {
+                items = items.map { if (it is MailItem && it.m.id == m.id) MailItem(m) else it }
+                error = t.userMessage()
+            }
+        }
+    }
+
     // fetch the next page when the list gets within 8 rows of its end
     val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 8 } ?: false } }
     LaunchedEffect(nearEnd, next) { if (nearEnd && next != null) loadMore() }
@@ -182,7 +221,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 }
                 items(items, key = { it.key }) { item ->
                     when (item) {
-                        is MailItem -> MailRow(item.m) { onOpen(item.m.id) }
+                        is MailItem -> MailRow(item.m, onLongPress = { toggleRead(item.m) }) { onOpen(item.m.id) }
                         is GroupItem -> GroupRow(item.g) { onOpenGroup(item.g.id) }
                     }
                 }
@@ -194,18 +233,29 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     }
 }
 
+/** One mail in a list. Read mail is greyed out; unread is bright and bold. Long-press switches
+ * read / unread (where the screen allows it). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun MailRow(m: MessageDto, onClick: () -> Unit) {
+fun MailRow(m: MessageDto, onLongPress: (() -> Unit)? = null, onClick: () -> Unit) {
     val urgent = m.priority == "urgent"
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 11.dp, horizontal = 4.dp), verticalAlignment = Alignment.Top) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Row(
+        Modifier.fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress?.let { f -> { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); f() } },
+                onLongClickLabel = if (m.unread) "Mark read" else "Mark unread")
+            .alpha(if (m.unread) 1f else 0.62f)
+            .padding(vertical = 11.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
         Box(Modifier.padding(top = 14.dp, end = 10.dp)) { PriorityDot(m.priority) }
         Avatar(m.senderName ?: m.sender ?: "?", if (urgent) Ink.urgent else null)
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(
-                m.senderName?.takeIf { it.isNotBlank() } ?: m.sender ?: "Unknown", color = Ink.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                m.senderName?.takeIf { it.isNotBlank() } ?: m.sender ?: "Unknown", color = if (m.unread) Ink.text else Ink.text2, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (m.unread) FontWeight.Bold else FontWeight.Medium),
             )
-            Text(m.summary ?: m.subject ?: "(no subject)", color = if (m.unread) Ink.text else Ink.text2, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(m.summary ?: m.subject ?: "(no subject)", color = if (m.unread) Ink.text else Ink.text3, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             // tags sit with the account on the last line, so a long category never squeezes the sender
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 m.category?.takeIf { it != "other" }?.let { Tag(it, Ink.tier(m.priority)) }

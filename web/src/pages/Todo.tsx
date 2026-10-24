@@ -14,7 +14,7 @@ function dueTone(iso: string | null): string {
 export function Todos() {
   const navigate = useNavigate();
   const [state, setState] = useState<"open" | "done">("open");
-  const todos = useLoad(() => get<Todo[]>("/todos", { state }), [state]);
+  const todos = useLoad(() => get<Todo[]>("/todos", { state }), [state], ["new_mail"]);
   const [editing, setEditing] = useState<Todo | "new" | null>(null);
 
   async function toggle(t: Todo) {

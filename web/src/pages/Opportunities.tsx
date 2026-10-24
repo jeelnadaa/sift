@@ -16,7 +16,7 @@ export function Opportunities() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState<"active" | "closed">("active");
-  const list = useLoad(() => get<Opportunity[]>("/opportunities", { status }), [status]);
+  const list = useLoad(() => get<Opportunity[]>("/opportunities", { status }), [status], ["new_mail"]);
   const [creating, setCreating] = useState(false);
   const selected = id ?? list.data?.[0]?.id;
 
@@ -50,7 +50,7 @@ export function Opportunities() {
 
 function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
   const navigate = useNavigate();
-  const o = useLoad(() => get<OpportunityDetail>(`/opportunities/${id}`), [id]);
+  const o = useLoad(() => get<OpportunityDetail>(`/opportunities/${id}`), [id], ["new_mail"]);
   const [editing, setEditing] = useState(false);
   const [aliases, setAliases] = useState("");
   const [section, setSection] = useState<TimelineEvent | "new" | null>(null);

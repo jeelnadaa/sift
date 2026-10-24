@@ -88,6 +88,7 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
         try { items = Api.get(context).todos(state); error = null } catch (t: Throwable) { error = t.userMessage() } finally { loading = false }
     }
     LaunchedEffect(state) { load() }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
     fun setDone(t: TodoDto, done: Boolean) = scope.launch {
         try {

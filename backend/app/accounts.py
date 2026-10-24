@@ -199,13 +199,21 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
 def apply_label_changes(db: Session, account: GmailAccount, changes: list[tuple[str, list[str], list[str]]]) -> None:
     """Keep stored labels (read/unread, starred) in step with Gmail, for unread counts.
     Mail Sift never stored is skipped."""
+    from app import events
+
     ids = {c[0] for c in changes}
     rows = {m.gmail_id: m for m in db.scalars(select(Message).where(Message.account_id == account.id, Message.gmail_id.in_(ids)))}
+    changed = []
     for gmail_id, added, removed in changes:
         m = rows.get(gmail_id)
         if m is not None:
             labels = [label for label in (m.labels or []) if label not in removed]
-            m.labels = labels + [label for label in added if label not in labels]
+            new = labels + [label for label in added if label not in labels]
+            if set(new) != set(m.labels or []):
+                m.labels = new
+                changed.append(m.id)
+    if changed:  # read, starred or archived in Gmail itself: open apps update live
+        events.mail_changed(db, account.user_id, changed)
 
 
 def active_account_ids(db: Session) -> list[uuid.UUID]:

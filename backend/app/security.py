@@ -55,3 +55,12 @@ def current_user(authorization: str | None = Header(default=None), db: Session =
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or expired sign-in")
     return user
+
+
+def user_id_from_header(authorization: str | None = Header(default=None)) -> uuid.UUID:
+    """Like current_user, for long-lived responses (live streams): checks the sign-in with a
+    short session and returns only the id, so no database connection stays checked out."""
+    from app.db import get_sessionmaker
+
+    with get_sessionmaker()() as db:
+        return current_user(authorization, db).id
