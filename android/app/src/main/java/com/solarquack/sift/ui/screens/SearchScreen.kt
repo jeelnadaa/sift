@@ -154,6 +154,12 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 QUICK.forEach { (tok, label) -> Chip(label, false) { add(tok) } }
             }
+            Text(
+                "◆ Sift filters (folder, tag, priority, company, silenced…) only see mail Sift has seen, from when you connected the account. " +
+                    "Gmail syntax (from:, subject:, has:attachment, newer_than:…) searches all your mail in Gmail.",
+                color = Ink.text3, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 10.dp).fillMaxWidth().background(Ink.bg2, Radius.sm).padding(10.dp),
+            )
             if (saved.isNotEmpty()) {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Saved", color = Ink.text3, style = MaterialTheme.typography.labelMedium)

@@ -139,6 +139,10 @@ export function SearchPage() {
             </div>
           )}
           <FilterBuilder accounts={accounts.data ?? []} tree={tree.data} onAdd={add} />
+          <p className="search-note">
+            <b>◆ Sift filters</b> (folder, tag, priority, company, silenced…) only see mail Sift has seen, from when you connected the account.
+            {" "}<b>Gmail syntax</b> (from:, subject:, has:attachment, newer_than:…) searches all your mail in Gmail.
+          </p>
           {parseError && <p className="err-text">{parseError}</p>}
           {gmailQuery && mode === "keywords" && (
             <div className="field"><label>Gmail query (copy into Gmail)</label>
