@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from app import jobs
+from app import intake, jobs
 from app.config import get_settings, setup_logging
 from app.db import get_sessionmaker
 from app.models import GmailAccount
@@ -88,6 +88,8 @@ async def run() -> None:
                 await jobs.enqueue("resend_notifications", {}, dedupe_key="resend_notifications")
                 await jobs.enqueue("send_reminders", {}, dedupe_key="send_reminders")
                 await jobs.enqueue("wake_snoozes", {}, dedupe_key="wake_snoozes")
+                # run here, not as a job: it must still alert when the worker itself is down
+                await asyncio.to_thread(intake.watch)
                 last_minute = started
             if started - last_hourly >= HOUR or last_hourly == 0.0:
                 await hourly()

@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { del, get, type Account } from "../api";
 import { Top } from "../App";
 import { Banner, confirmDialog, errorText, Tag, toast, useLoad } from "../components";
-import { accountColor, fullTime, safeUrl } from "../util";
+import { accountColor, fullTime, relativeTime, safeUrl } from "../util";
 
 const STATUS: Record<Account["status"], [string, string]> = { active: ["Active", "ok"], needs_reconnect: ["Needs reconnect", "urgent"], blocked: ["Blocked", "warn"] };
 
@@ -46,6 +46,14 @@ export function Accounts() {
                     : a.status === "needs_reconnect" ? "Sift lost access to this account. Reconnect it; other accounts are fine."
                     : a.watch_expires_at ? `Instant push · watch renews by ${fullTime(a.watch_expires_at)}` : "Checked every few seconds"}
                 </div>
+                {a.status === "active" && (
+                  <p style={{ marginTop: 8, fontSize: 13, color: a.stalled ? "var(--urgent)" : "var(--text-3)" }}
+                    data-tip={a.last_check_error ? `Last error: ${a.last_check_error}` : "When Sift last checked this account for new mail successfully"}>
+                    {a.stalled
+                      ? `Mail checks are failing${a.check_failing_since ? ` since ${fullTime(a.check_failing_since)}` : ""}${a.last_check_error ? ` (${a.last_check_error})` : ""}. Sift keeps retrying.`
+                      : a.last_check_ok_at ? `Last checked ${relativeTime(a.last_check_ok_at) === "now" ? "just now" : relativeTime(a.last_check_ok_at) + " ago"}` : "Not checked yet"}
+                  </p>
+                )}
                 {a.status === "active" && (
                   <div style={{ marginTop: 8 }}>
                     {a.can_modify

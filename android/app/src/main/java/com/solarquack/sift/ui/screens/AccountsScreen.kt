@@ -93,6 +93,11 @@ fun AccountsScreen(onScan: (String) -> Unit = {}) {
                 Spacer(Modifier.height(10.dp))
                 if (a.status == "active") {
                     Text(
+                        if (a.stalled) "Mail checks are failing${a.checkFailingSince?.let { " since " + com.solarquack.sift.ui.fullTime(it) } ?: ""}${a.lastCheckError?.let { " ($it)" } ?: ""}. Sift keeps retrying."
+                        else a.lastCheckOkAt?.let { "Last checked " + com.solarquack.sift.ui.relativeTime(it).let { r -> if (r == "now") "just now" else "$r ago" } } ?: "Not checked yet",
+                        color = if (a.stalled) Ink.urgent else Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Text(
                         if (a.canModify) "Can change mail: archive, labels, read state, star, snooze." else "Read-only. Sift asks for permission the first time you archive or mark mail read here.",
                         color = if (a.canModify) Ink.signal else Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
                     )

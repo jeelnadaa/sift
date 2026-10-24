@@ -91,6 +91,10 @@ export function SettingsPage() {
         )}
 
         <div className="settings-sec"><h2>Mail</h2>
+          {s && (
+            <div className="set-row"><div>Load images in mail automatically<small>They come through your Sift server, so senders never see your address. Off: images stay blocked until you press "Load images".</small></div>
+              <Toggle on={s.load_remote_images} label="Load images automatically" onChange={(v) => change({ load_remote_images: v })} /></div>
+          )}
           {grouping.data && (
             <div className="set-row"><div>Group similar emails<small>Display only. Urgent mail keeps its own row; notifications don't change.</small></div>
               <Toggle on={grouping.data.grouping_enabled === "yes"} label="Group similar emails" onChange={async (v) => {

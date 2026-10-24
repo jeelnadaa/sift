@@ -40,6 +40,14 @@ export function Feed() {
     <>
       <Top title="Feed" />
       <section className="page">
+        {(accounts.data ?? []).filter((a) => a.status === "active" && a.stalled).map((a) => {
+          const since = a.check_failing_since ?? a.last_check_ok_at;
+          return (
+            <Banner key={"s" + a.id} tone="err" action="Details" onAction={() => navigate("/accounts")}>
+              Sift hasn't been able to check <b>{a.email}</b>{since ? ` since ${new Date(since).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : ""}{a.last_check_error ? ` (${a.last_check_error})` : ""}. It keeps retrying and catches up on its own; you'll be notified when it's back.
+            </Banner>
+          );
+        })}
         {trouble.map((a) => (
           <Banner key={a.id} tone={a.status === "blocked" ? "warn" : "err"} action="Open" onAction={() => navigate("/accounts")}>
             {a.status === "blocked" ? <><b>{a.email}</b> may be blocked by its administrator.</> : <><b>{a.email}</b> needs to reconnect. Other accounts are fine.</>}

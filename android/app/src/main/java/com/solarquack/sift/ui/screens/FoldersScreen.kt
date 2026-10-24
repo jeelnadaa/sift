@@ -367,12 +367,13 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
 /** "File in folder" for one mail: picker plus "last used" shortcut, and where the thread is filed now. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FilingSection(messageId: String, onRuleDraft: (com.solarquack.sift.data.DraftResponse) -> Unit) {
+fun FilingSection(messageId: String, buttons: Boolean = true, pickRequest: Int = 0, refreshKey: Int = 0, onRuleDraft: (com.solarquack.sift.data.DraftResponse) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var tree by remember { mutableStateOf<FolderTree?>(null) }
     var inFolders by remember { mutableStateOf<List<FolderDto>>(emptyList()) }
     var picking by remember { mutableStateOf(false) }
+    LaunchedEffect(pickRequest) { if (pickRequest > 0) picking = true }
     var creating by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<String?>(null) }
 
@@ -386,11 +387,11 @@ fun FilingSection(messageId: String, onRuleDraft: (com.solarquack.sift.data.Draf
     fun file(f: FolderDto) = scope.launch {
         try { Api.get(context).fileMail(f.id, com.solarquack.sift.data.FileIn(listOf(messageId))); info = "Filed in ${f.name}" ; refresh() } catch (t: Throwable) { info = t.userMessage() }
     }
-    LaunchedEffect(messageId) { refresh() }
+    LaunchedEffect(messageId, refreshKey) { refresh() }
 
     val last = tree?.lastUsedId?.let { lid -> flatten(tree!!.folders).firstOrNull { it.first.id == lid }?.first }
     Column(Modifier.padding(top = 12.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (buttons) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             GhostButton("File in folder") { picking = true }
             if (last != null && inFolders.none { it.id == last.id }) GhostButton("Move to ${last.name}") { file(last) }
         }

@@ -64,6 +64,10 @@ data class AccountDto(
     val label: String? = null,
     val color: String? = null,
     @SerialName("can_modify") val canModify: Boolean = false,
+    @SerialName("last_check_ok_at") val lastCheckOkAt: String? = null,
+    @SerialName("check_failing_since") val checkFailingSince: String? = null,
+    @SerialName("last_check_error") val lastCheckError: String? = null,
+    val stalled: Boolean = false,
 )
 
 @Serializable
@@ -117,6 +121,7 @@ data class SettingsDto(
     @SerialName("resend_urgent") val resendUrgent: Boolean = true,
     @SerialName("resend_after_minutes") val resendAfterMinutes: Int = 5,
     @SerialName("resend_limit") val resendLimit: Int = 3,
+    @SerialName("load_remote_images") val loadRemoteImages: Boolean = true,
 )
 
 @Serializable

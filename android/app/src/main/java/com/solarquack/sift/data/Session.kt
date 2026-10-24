@@ -23,6 +23,11 @@ object Session {
     fun saveFcmToken(context: Context, token: String) = prefs(context).edit().putString("fcm_token", token).apply()
     fun fcmToken(context: Context): String? = prefs(context).getString("fcm_token", null)
 
+    /** Bottom tabs: off (default) = a tab always opens at its top, e.g. Feed shows the list, not
+     * the mail you had open before switching tabs. On = each tab keeps where you were. */
+    fun rememberTabs(context: Context): Boolean = prefs(context).getBoolean("remember_tabs", false)
+    fun setRememberTabs(context: Context, on: Boolean) = prefs(context).edit().putBoolean("remember_tabs", on).apply()
+
     fun saveLastDelay(context: Context, ms: Long) = prefs(context).edit().putLong("last_delay_ms", ms).apply()
     fun lastDelay(context: Context): Long? = prefs(context).getLong("last_delay_ms", -1).takeIf { it >= 0 }
 }

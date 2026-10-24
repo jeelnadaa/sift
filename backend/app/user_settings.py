@@ -13,6 +13,8 @@ DEFAULTS: dict = {
     "resend_after_minutes": 5,
     "resend_limit": 3,
     "grouping_enabled": "not_asked",  # brief section 21
+    # Remote images in mail load automatically, always through Sift's image proxy (owner, 2026-10-24).
+    "load_remote_images": True,
 }
 EDITABLE = {
     "timezone": str,
@@ -20,6 +22,7 @@ EDITABLE = {
     "resend_urgent": bool,
     "resend_after_minutes": int,
     "resend_limit": int,
+    "load_remote_images": bool,
 }
 
 

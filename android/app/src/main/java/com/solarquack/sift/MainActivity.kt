@@ -153,10 +153,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun NavHostController.go(dest: String) = navigate(dest) {
-        popUpTo("feed") { saveState = true }
-        launchSingleTop = true
-        restoreState = true
+    /** Switch bottom tabs. With "Remember where I was" off (default), a tab opens at its top. */
+    private fun NavHostController.go(dest: String) {
+        val keep = Session.rememberTabs(this@MainActivity)
+        navigate(dest) {
+            popUpTo("feed") { saveState = keep }
+            launchSingleTop = true
+            restoreState = keep
+        }
     }
 
     companion object {

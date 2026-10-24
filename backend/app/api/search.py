@@ -126,7 +126,7 @@ def export_csv(q: str = Query(min_length=1, max_length=1000), user: User = Depen
 
 
 @router.get("/accounts/{account_id}/threads/{thread_id}")
-def account_thread(account_id: uuid.UUID, thread_id: str, images: bool = False,
+def account_thread(account_id: uuid.UUID, thread_id: str, images: bool | None = None,
                    user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Read a conversation Sift never stored (e.g. older mail found by search)."""
     account = db.get(GmailAccount, account_id)

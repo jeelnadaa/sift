@@ -139,6 +139,13 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                     modifier = Modifier.background(Ink.surface, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 8.dp))
             }
         }
+        accounts.filter { it.status == "active" && it.stalled }.forEach { a ->
+            Box(Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                val since = (a.checkFailingSince ?: a.lastCheckOkAt)?.let { com.solarquack.sift.ui.fullTime(it) }
+                Banner("Sift can't check ${a.email}${since?.let { " since $it" } ?: ""}${a.lastCheckError?.let { " ($it)" } ?: ""}. It keeps retrying and catches up on its own.",
+                    Ink.urgent, "Open", onAccounts)
+            }
+        }
         val trouble = accounts.filter { it.status != "active" }
         if (trouble.isNotEmpty()) {
             Box(Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {

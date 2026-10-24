@@ -104,7 +104,7 @@ def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: S
 
 
 @router.get("/{message_id}/thread")
-def get_thread(message_id: uuid.UUID, images: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+def get_thread(message_id: uuid.UUID, images: bool | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """The whole conversation, fetched live from Gmail: sanitized HTML (remote images blocked
     unless `images`, and then only through the image proxy), plain text, and attachments as
     signed links. Not stored, not logged."""
@@ -112,7 +112,10 @@ def get_thread(message_id: uuid.UUID, images: bool = False, user: User = Depends
     return thread_json(db, user, db.get(GmailAccount, m.account_id), m.thread_id, images, m.subject)
 
 
-def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, images: bool, fallback_subject: str | None = None) -> dict:
+def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, images: bool | None, fallback_subject: str | None = None) -> dict:
+    if images is None:  # the user's setting (default: load, through the image proxy)
+        from app import user_settings
+        images = bool(user_settings.get(db, user.id)["load_remote_images"])
     if account.status != "active":
         raise HTTPException(409, f"account is {account.status}")
     try:

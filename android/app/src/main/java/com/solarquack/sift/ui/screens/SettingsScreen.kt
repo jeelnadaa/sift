@@ -113,6 +113,19 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
         error?.let { Spacer(Modifier.height(8.dp)); Banner(it, Ink.urgent, "Retry") { load() } }
 
         SectionLabel("This phone")
+        var rememberTabs by remember { mutableStateOf(Session.rememberTabs(context)) }
+        SiftCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Remember where I was in each tab", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                    Text(if (rememberTabs) "Coming back to a tab shows what you had open there." else "A tab always opens at its top, e.g. Feed shows the list.",
+                        color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = rememberTabs, onCheckedChange = { rememberTabs = it; Session.setRememberTabs(context, it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
         StatusRow("Notifications", if (notificationsOk) "Granted" else "Not granted", notificationsOk) {
             if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -185,6 +198,19 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
         }
 
         SectionLabel("Mail")
+        settings?.let { s ->
+            SiftCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Load images in mail automatically", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                        Text("Through your Sift server, so senders never see your address.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = s.loadRemoteImages, onCheckedChange = { patch("load_remote_images", it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         grouping?.let { g ->
             SiftCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {

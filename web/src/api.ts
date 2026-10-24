@@ -90,7 +90,8 @@ export interface Group {
 
 export interface Page<T> { items: T[]; next_before: string | null; grouped?: boolean; total: number; pages: number }
 
-export interface Account { id: string; email: string; status: "active" | "needs_reconnect" | "blocked"; status_detail: string | null; label: string | null; color: string | null; watch_expires_at: string | null; can_modify: boolean }
+export interface Account { id: string; email: string; status: "active" | "needs_reconnect" | "blocked"; status_detail: string | null; label: string | null; color: string | null; watch_expires_at: string | null; can_modify: boolean;
+  last_check_ok_at: string | null; check_failing_since: string | null; last_check_error: string | null; stalled: boolean }
 
 export interface Folder {
   id: string; parent_id: string | null; name: string; color: string | null; icon: string | null; position: number;
@@ -122,7 +123,7 @@ export interface Todo { id: string; title: string; notes: string | null; due_at:
 export interface ScanSender { key: string; kind: string; name: string | null; count: number; sample_subject: string | null; hints: string[]; suggested: string }
 export interface Scan { id: string; account_id: string; status: string; scanned: number; senders: ScanSender[]; error: string | null; applied_at: string | null }
 
-export interface Settings { timezone: string; daily_token_cap: number; resend_urgent: boolean; resend_after_minutes: number; resend_limit: number; grouping_enabled: string }
+export interface Settings { timezone: string; daily_token_cap: number; resend_urgent: boolean; resend_after_minutes: number; resend_limit: number; grouping_enabled: string; load_remote_images: boolean }
 export interface AiStatus { ai_enabled: boolean; status: string; provider: string | null; model: string | null; key_last4: string | null; tokens_today: number; daily_token_cap: number; suggested_model: string | null }
 export interface Usage { days: { day: string; calls: number; input_tokens: number; output_tokens: number }[]; tokens_today: number; daily_token_cap: number }
 export interface GroupingStatus { grouping_enabled: "not_asked" | "yes" | "no"; prompts: number; should_ask: boolean }

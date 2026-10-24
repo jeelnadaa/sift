@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
+from app import intake
 from app.accounts import ConnectError, connect_account
 from app.db import get_db
 from app.mail import google_oauth
@@ -25,6 +26,7 @@ def account_json(a: GmailAccount) -> dict:
         "label": a.label, "color": a.color,
         "watch_expires_at": a.watch_expires_at.isoformat() if a.watch_expires_at else None,
         "can_modify": account_service.can_modify(a),
+        **intake.health_json(a),
     }
 
 

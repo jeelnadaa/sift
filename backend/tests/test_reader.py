@@ -155,7 +155,7 @@ def thread(db, setup, monkeypatch):
 
 def test_thread_endpoint_returns_safe_conversation(client, thread):
     user, msg = thread
-    r = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()
+    r = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user), params={"images": False}).json()
     assert [m["gmail_id"] for m in r["messages"]] == ["g1", "g2"]  # oldest first, no drafts
     first = r["messages"][0]
     assert first["id"] == str(msg.id) and r["messages"][1]["id"] is None
@@ -188,3 +188,13 @@ def test_links_are_private_to_their_owner(client, db, thread, keys):
     assert client.get(f"/api/v1/files/{stolen}").status_code == 404
     assert client.get(f"/api/v1/files/{token[:-3]}abc").status_code == 403
     assert client.get("/api/v1/render/garbage").status_code == 403
+
+
+
+def test_images_load_by_default_through_the_proxy_and_the_setting_turns_it_off(client, thread):
+    user, msg = thread
+    first = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"][0]
+    assert first["images_blocked"] == 0 and "/api/v1/img?t=" in client.get(first["html_url"]).text
+    client.patch("/api/v1/settings", headers=H(user), json={"load_remote_images": False})
+    first = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"][0]
+    assert first["images_blocked"] == 1 and "/api/v1/img" not in client.get(first["html_url"]).text

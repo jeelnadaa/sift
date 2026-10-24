@@ -10,7 +10,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,16 +50,21 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 
-/** Archive, read/unread, star, label, snooze, spam and trash for one conversation (Phase 3c).
- * An account without write access asks once ("Allow in Google"), then the action is retried. */
-@OptIn(ExperimentalLayoutApi::class)
+/** One entry in the Actions sheet. `section` groups entries under a small heading. */
+data class SheetItem(val label: String, val hint: String? = null, val danger: Boolean = false, val section: String = "Gmail", val onClick: () -> Unit)
+
+/** Every action for one conversation behind a single "Actions" button (owner, 2026-10-24: the
+ * phone screen was crowded with buttons). The sheet scrolls; tapping an entry closes it and runs
+ * it. Gmail actions ask once per account for write access ("Allow in Google"), then retry. */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun MailActionsRow(m: MessageDto, onChanged: () -> Unit, onLeave: () -> Unit, onInfo: (String) -> Unit) {
+fun MailActionsButton(m: MessageDto, extra: List<SheetItem>, onChanged: () -> Unit, onLeave: () -> Unit, onInfo: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var needAccess by remember { mutableStateOf<Pair<List<WriteAccessAccount>, suspend () -> Unit>?>(null) }
     var snoozing by remember { mutableStateOf(false) }
     var labelling by remember { mutableStateOf(false) }
+    var sheetOpen by remember { mutableStateOf(false) }
 
     fun act(action: String, leave: Boolean = false, label: String? = null) {
         val run: suspend () -> Unit = {
@@ -71,14 +80,51 @@ fun MailActionsRow(m: MessageDto, onChanged: () -> Unit, onLeave: () -> Unit, on
         }
     }
 
-    FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (m.inInbox) GhostButton("Archive") { act("archive", leave = true) } else GhostButton("Move to inbox") { act("unarchive") }
-        GhostButton(if (m.unread) "Mark read" else "Mark unread") { act(if (m.unread) "read" else "unread") }
-        GhostButton(if (m.starred) "★ Starred" else "☆ Star") { act(if (m.starred) "unstar" else "star") }
-        GhostButton("Label…") { labelling = true }
-        GhostButton("Snooze…") { snoozing = true }
-        GhostButton("Spam") { act("spam", leave = true) }
-        GhostButton("Trash", color = Ink.urgent) { act("trash", leave = true) }
+    val gmail = listOf(
+        if (m.inInbox) SheetItem("Archive", "Out of the inbox, still searchable") { act("archive", leave = true) }
+        else SheetItem("Move to inbox", "Back into Gmail's inbox") { act("unarchive") },
+        SheetItem(if (m.unread) "Mark read" else "Mark unread", "For the whole conversation, in Gmail") { act(if (m.unread) "read" else "unread") },
+        SheetItem(if (m.starred) "Remove star" else "Star", null) { act(if (m.starred) "unstar" else "star") },
+        SheetItem("Label…", "Add a Gmail label") { labelling = true },
+        SheetItem("Snooze…", "Hide it until later; it comes back and notifies you") { snoozing = true },
+    )
+    val danger = listOf(
+        SheetItem("Report spam", "Moves it to Gmail's spam", danger = true, section = "Remove") { act("spam", leave = true) },
+        SheetItem("Move to trash", "Gmail keeps it 30 days; Sift never deletes", danger = true, section = "Remove") { act("trash", leave = true) },
+    )
+    val all = gmail + extra + danger
+
+    PrimaryButton("Actions", modifier = Modifier.fillMaxWidth()) { sheetOpen = true }
+
+    if (sheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { sheetOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Ink.surface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
+        ) {
+            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                var lastSection = ""
+                all.forEach { entry ->
+                    if (entry.section != lastSection) {
+                        val title = entry.section
+                        lastSection = title
+                        item(key = "h-$title") {
+                            Text(title.uppercase(), color = Ink.text3, style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(start = 22.dp, top = 14.dp, bottom = 6.dp))
+                        }
+                    }
+                    item(key = entry.label) {
+                        Column(
+                            Modifier.fillMaxWidth().clickable { sheetOpen = false; entry.onClick() }.padding(horizontal = 22.dp, vertical = 12.dp),
+                        ) {
+                            Text(entry.label, color = if (entry.danger) Ink.urgent else Ink.text, style = MaterialTheme.typography.titleSmall)
+                            entry.hint?.let { Text(it, color = Ink.text3, style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     needAccess?.let { (accounts, retry) ->

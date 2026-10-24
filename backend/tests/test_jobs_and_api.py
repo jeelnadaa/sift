@@ -66,7 +66,7 @@ def test_encrypt_without_keys_fails_loudly(override_settings):
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "queue": "postgres", "database": "ok"}
+    assert r.json() == {"status": "ok", "queue": "postgres", "database": "ok", "mail_checks": "ok"}
 
 
 def test_test_push_sends_and_prunes_unregistered_tokens(client, db, monkeypatch):

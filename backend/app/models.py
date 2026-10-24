@@ -84,6 +84,13 @@ class GmailAccount(Base):
     # OAuth scopes Google granted for this account. Read-only until the user first asks Sift to
     # change mail in it (Phase 3c: write access is requested per account, on first use).
     scopes: Mapped[list | None] = mapped_column(JSONB)
+    # Mail-check health (2026-10-24 incident): when a check last succeeded, since when checks
+    # have been failing and why (error type and HTTP status only, never content), and whether
+    # the user was already alerted about it.
+    last_check_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_failing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_check_error: Mapped[str | None] = mapped_column(String(200))
+    intake_alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

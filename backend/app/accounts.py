@@ -13,7 +13,7 @@ from cryptography.fernet import InvalidToken
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import crypto
+from app import crypto, intake
 from app.config import get_settings
 from app.db import get_sessionmaker
 from app.mail import google_oauth
@@ -161,6 +161,7 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
             provider = provider_for(account)
             if account.history_id is None:
                 account.history_id = provider.profile().cursor
+                intake.record_ok(db, account)
                 db.commit()
                 return 0
             try:
@@ -169,6 +170,7 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
                 # Down for over a week. Phase 1 adds a catch-up scan of recent mail here.
                 log.warning("account %s: history cursor expired, restarting from now", account.id)
                 account.history_id = provider.profile().cursor
+                intake.record_ok(db, account)
                 db.commit()
                 return 0
             if changes.message_ids:
@@ -179,12 +181,17 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
             if changes.label_changes:
                 apply_label_changes(db, account, changes.label_changes)
             account.history_id = changes.cursor  # only after successful processing
+            intake.record_ok(db, account)
             db.commit()
             return len(changes.message_ids)
         except AuthRevoked as exc:
             mark_auth_failure(account, exc)
             db.commit()
             return 0
+        except Exception as exc:
+            db.rollback()
+            intake.record_failure(account_id, exc)  # visible in the app; alerts after 15 minutes
+            raise
 
 
 def apply_label_changes(db: Session, account: GmailAccount, changes: list[tuple[str, list[str], list[str]]]) -> None:

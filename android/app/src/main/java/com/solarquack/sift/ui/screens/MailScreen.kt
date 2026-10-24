@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -62,6 +63,9 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
     var addingTodo by remember { mutableStateOf(false) }
     var likeThis by remember { mutableStateOf<DraftResponse?>(null) }
     var silencedByRule by remember { mutableStateOf<String?>(null) }
+    var folderPick by remember { mutableStateOf(0) }
+    var companyPick by remember { mutableStateOf(0) }
+    var filingRefresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(id) {
@@ -107,20 +111,40 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             }
         }
 
-        MailActionsRow(msg, onChanged = { scope.launch { m = Api.get(context).message(id) } }, onLeave = onBack,
-            onInfo = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() })
-
-        CompanySection(msg, onOpenOpportunity, onChanged = { scope.launch { m = Api.get(context).message(id) } })
-
-        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (msg.todoId == null) GhostButton("Add to to-do") { addingTodo = true }
-            else Tag("On your to-do list", Ink.signal)
-            if (msg.deadline != null && runCatching { java.time.OffsetDateTime.parse(msg.deadline).isAfter(java.time.OffsetDateTime.now()) }.getOrDefault(false)) {
-                GhostButton("Add to calendar") { CalendarIntent.open(context, listOfNotNull(msg.company, msg.summary ?: msg.subject).joinToString(": "), msg.deadline) }
-            }
+        val info: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }
+        val reload: () -> Unit = { scope.launch { m = Api.get(context).message(id); filingRefresh++ } }
+        val silenced = msg.status == "silenced" || msg.status == "ignored"
+        val deadlineAhead = msg.deadline != null && runCatching { java.time.OffsetDateTime.parse(msg.deadline).isAfter(java.time.OffsetDateTime.now()) }.getOrDefault(false)
+        val extra = buildList {
+            add(SheetItem("File in folder…", "The whole conversation; replies follow it", section = "Organize") { folderPick++ })
+            add(SheetItem("Move to last used folder", "One tap, same folder as last time", section = "Organize") {
+                scope.launch {
+                    try { Api.get(context).fileLastUsed(com.solarquack.sift.data.FileIn(listOf(msg.id))); info("Filed"); filingRefresh++ } catch (t: Throwable) { info(t.userMessage()) }
+                }
+            })
+            if (msg.opportunityId == null && msg.companyQuestion == null) add(SheetItem("Add to a company…", "Put it on a company timeline", section = "Organize") { companyPick++ })
+            if (msg.todoId == null) add(SheetItem("Add to to-do…", "With an optional deadline and reminders", section = "Organize") { addingTodo = true })
+            if (deadlineAhead) add(SheetItem("Add to calendar", "Opens your calendar with the deadline", section = "Organize") {
+                CalendarIntent.open(context, listOfNotNull(msg.company, msg.summary ?: msg.subject).joinToString(": "), msg.deadline)
+            })
+            if (silenced) add(SheetItem("Not like this", "Back to the feed, and stop silencing mail like it", section = "Sift") {
+                scope.launch {
+                    try { val r = Api.get(context).unsilence(msg.id); m = Api.get(context).message(id); silencedByRule = r.ruleId } catch (t: Throwable) { error = t.userMessage() }
+                }
+            }) else add(SheetItem("Ignore mails like this…", "Silence future mail from this sender with this kind of subject", section = "Sift") {
+                scope.launch { try { likeThis = Api.get(context).likeThis(msg.id, LikeThisIn(save = false)) } catch (t: Throwable) { error = t.userMessage() } }
+            })
+            add(SheetItem("Open in Gmail", "In the Gmail app or browser", section = "Sift") {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mail.google.com/mail/u/0/#all")))
+            })
         }
+        Spacer(Modifier.height(14.dp))
+        MailActionsButton(msg, extra, onChanged = reload, onLeave = onBack, onInfo = info)
 
-        FilingSection(msg.id) { r -> RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; onEditRule() }
+        CompanySection(msg, onOpenOpportunity, onChanged = reload, pickRequest = companyPick)
+        if (msg.todoId != null) Box(Modifier.padding(top = 10.dp)) { Tag("On your to-do list", Ink.signal) }
+
+        FilingSection(msg.id, buttons = false, pickRequest = folderPick, refreshKey = filingRefresh) { r -> RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; onEditRule() }
 
         SectionLabel("Conversation")
         ThreadView(id)
@@ -129,26 +153,6 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             "Decided by ${msg.decidedBy ?: "default"}" + (msg.deliveredAt?.let { " · delivered ${fullTime(it)}" } ?: ""),
             color = Ink.text3, style = MaterialTheme.typography.bodySmall,
         )
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (msg.status == "silenced" || msg.status == "ignored") {
-                GhostButton("Not like this") {
-                    scope.launch {
-                        try {
-                            val r = Api.get(context).unsilence(msg.id)
-                            m = Api.get(context).message(id)
-                            silencedByRule = r.ruleId
-                        } catch (t: Throwable) { error = t.userMessage() }
-                    }
-                }
-            } else {
-                GhostButton("Ignore mails like this") {
-                    scope.launch {
-                        try { likeThis = Api.get(context).likeThis(msg.id, LikeThisIn(save = false)) } catch (t: Throwable) { error = t.userMessage() }
-                    }
-                }
-            }
-        }
         silencedByRule?.let { ruleId ->
             Spacer(Modifier.height(8.dp))
             Banner("Back in your feed. A rule silenced it; edit the rule so it doesn't happen again.", Ink.warn, "Edit rule") {
@@ -156,10 +160,6 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
                     Api.get(context).rules().firstOrNull { it.id == ruleId }?.let { RuleEditorSeed.clear(); RuleEditorSeed.rule = it; onEditRule() }
                 }
             }
-        }
-        Spacer(Modifier.height(12.dp))
-        GhostButton("Open in Gmail") {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mail.google.com/mail/u/0/#all")))
         }
     }
 
@@ -207,12 +207,13 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
 
 /** Which company drive this mail belongs to: link, "which company?" question, or a manual picker. */
 @Composable
-private fun CompanySection(msg: MessageDto, onOpenOpportunity: (String) -> Unit, onChanged: () -> Unit) {
+private fun CompanySection(msg: MessageDto, onOpenOpportunity: (String) -> Unit, onChanged: () -> Unit, pickRequest: Int = 0) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(pickRequest) { if (pickRequest > 0) picking = true }
 
     fun answer(body: CompanyAnswer) = scope.launch {
         try { Api.get(context).answerCompany(msg.id, body); onChanged() } catch (t: Throwable) { error = t.userMessage() }
@@ -229,7 +230,7 @@ private fun CompanySection(msg: MessageDto, onOpenOpportunity: (String) -> Unit,
                 Chip("other…", false) { picking = true }
             }
         }
-        else -> GhostButton("Add to a company") { picking = true }
+        else -> {}  // "Add to a company" is in the Actions sheet
     }
     error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall) }
 
