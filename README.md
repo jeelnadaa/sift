@@ -49,7 +49,7 @@ Two independent choices, both set in `.env`, no code changes:
 
 ## 2. Firebase (push notifications, free Spark plan)
 
-1. [Firebase console](https://console.firebase.google.com) → Add project → pick the **same** Google Cloud project. Stay on the free Spark plan.
+1. [Firebase console](https://console.firebase.google.com) → Add project. It can be the same Google Cloud project as step 1 or a separate one; Sift only needs its project ID and the two files below. Stay on the free Spark plan.
 2. Add an Android app, package name `com.solarquack.sift`. Download `google-services.json` into `android/app/` (git-ignored).
 3. Project settings → Service accounts → **Generate new private key**. Save as `secrets/firebase.json` (git-ignored). Set `FIREBASE_PROJECT_ID` in `.env`.
 
@@ -181,7 +181,7 @@ Accounts continue from their saved positions, so mail that arrived during the mo
 
 ## 7. Optional: switch to Pub/Sub push
 
-Needs a Google Cloud project with billing enabled (Pub/Sub stays within its free tier for one person) and public HTTPS (tunnel or VM).
+Use the **Google Cloud project that holds the Gmail API and OAuth client** (step 1), not a separate Firebase project: Gmail's watch only accepts a topic in the OAuth client's project. That project needs billing enabled (Pub/Sub stays within its free tier for one person) and Sift needs a stable public HTTPS URL (Cloudflare Tunnel with your own hostname, or a VM; not a random trycloudflare.com URL).
 
 ```bash
 PROJECT=your-project-id; DOMAIN=sift.solarquack.in

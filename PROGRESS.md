@@ -36,6 +36,7 @@ Rule: commit every change to git, never push (the owner pushes).
   - CLI: `connect-url`, `accounts`, `check`.
   - 72 tests pass. `run-local.ps1` run end to end with fake credentials: API healthy, scheduler queues checks, worker runs them, failures back off as one job.
   - README rewritten: laptop first (native or Docker Desktop), Cloudflare Tunnel, acceptance checks, "Move to Oracle", optional Pub/Sub.
+- 2026-10-24 — Owner can enable Pub/Sub and has separate Google and Firebase projects. Documented: Pub/Sub goes in the Gmail/OAuth project; Firebase may be separate. Still on poll mode until the owner switches (needs billing + stable tunnel hostname).
 
 ## Decisions
 - Designs are static HTML/CSS/JS prototypes; the visual reference for the React web UI and Compose app. Keep `DESIGN.md` in sync with any design change, in the same commit.
@@ -45,7 +46,7 @@ Rule: commit every change to git, never push (the owner pushes).
   - New-mail detection (owner, 2026-10-24): **poll by default**, Pub/Sub push must stay available as a switch (`CHANGE_DETECTION`). Never hard-wire either.
   - Subdomain: `sift.solarquack.in`.
   - Android package: `com.solarquack.sift` (not `in.solarquack.sift`: `in` is a Kotlin keyword and would need backticks in every file).
-  - One Google Cloud project for Gmail API, Pub/Sub and Firebase.
+  - Owner has two projects: a Google Cloud project (Gmail API, OAuth client, and Pub/Sub when push is enabled) and a separate Firebase project (FCM only). Pub/Sub must live in the OAuth client's project (Gmail watch rejects topics from other projects).
 - Postgres 17 in Docker. Python 3.12 in Docker (code also runs on 3.14 locally).
 - Android toolchain pinned to versions already in the local Gradle cache: AGP 8.7.3, Kotlin 2.0.21, Gradle 8.11.1, Compose BOM 2024.12.01, Firebase BOM 33.7.0, compileSdk/targetSdk 35, minSdk 26. Upgrade deliberately later.
 - Webhook acks malformed pushes with 204 (a non-2xx makes Pub/Sub retry forever) and refuses to run unverified in `ENV=prod`.
