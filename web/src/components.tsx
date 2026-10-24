@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ApiError, get, type Folder, type Mail, type Group } from "./api";
 import { accountColor, flatten, fullTime, humanize, relativeTime } from "./util";
 
@@ -290,4 +290,140 @@ export function usePages<T, P extends PageData<T> = PageData<T>>(load: (before: 
     onNext: next && !res.loading ? () => setState({ k, cursors: [...cursors, next] }) : undefined,
     onPrev: page > 1 ? () => setState({ k, cursors: cursors.slice(0, -1) }) : undefined,
   };
+}
+
+// ---- confirm / input dialogs (replace the browser's confirm() and prompt()) -------------------
+
+type DialogReq =
+  | { kind: "confirm"; title: string; body?: ReactNode; confirm: string; danger?: boolean; resolve: (v: boolean) => void }
+  | { kind: "input"; title: string; label: string; initial: string; confirm: string; placeholder?: string; resolve: (v: string | null) => void };
+
+let openDialog: (d: DialogReq) => void = () => {};
+
+/** `await confirmDialog({...})` resolves true only when the user confirms. */
+export function confirmDialog(o: { title: string; body?: ReactNode; confirm?: string; danger?: boolean }): Promise<boolean> {
+  return new Promise((resolve) => openDialog({ kind: "confirm", confirm: "Confirm", ...o, resolve }));
+}
+
+/** `await inputDialog({...})` resolves the trimmed text, or null when cancelled. */
+export function inputDialog(o: { title: string; label: string; initial?: string; confirm?: string; placeholder?: string }): Promise<string | null> {
+  return new Promise((resolve) => openDialog({ kind: "input", initial: "", confirm: "Save", ...o, resolve }));
+}
+
+export function DialogHost() {
+  const [d, setD] = useState<DialogReq | null>(null);
+  const [text, setText] = useState("");
+  useEffect(() => { openDialog = (req) => { setText(req.kind === "input" ? req.initial : ""); setD(req); }; }, []);
+  if (!d) return null;
+  const close = (ok: boolean) => {
+    setD(null);
+    if (d.kind === "confirm") d.resolve(ok);
+    else d.resolve(ok && text.trim() ? text.trim() : null);
+  };
+  return (
+    <Modal title={d.title} onClose={() => close(false)} foot={<>
+      <button className="btn btn-ghost btn-sm" onClick={() => close(false)} data-tip="Close without doing anything">Cancel</button>
+      <button className={`btn btn-sm ${d.kind === "confirm" && d.danger ? "btn-danger" : "btn-primary"}`} autoFocus={d.kind === "confirm"}
+        disabled={d.kind === "input" && !text.trim()} onClick={() => close(true)}>{d.confirm}</button>
+    </>}>
+      {d.kind === "confirm" ? (typeof d.body === "string" ? <p className="muted">{d.body}</p> : d.body) : (
+        <div className="field"><label htmlFor="dlg-in">{d.label}</label>
+          <TextField id="dlg-in" value={text} onChange={setText} placeholder={d.placeholder} autoFocus onEnter={() => { if (text.trim()) close(true); }} /></div>
+      )}
+    </Modal>
+  );
+}
+
+// ---- text field that wraps and grows instead of scrolling sideways ------------------------------
+
+/** A text input that shows all of its text: long values wrap onto more lines and the box grows
+ * (up to `maxRows`, then it scrolls down, never sideways). Enter runs `onEnter` instead of
+ * adding a line break; pasted line breaks become spaces. */
+export function TextField({ value, onChange, onEnter, onBlur, placeholder, id, className, maxRows = 8, autoFocus, maxLength, ariaLabel, code, inputMode }: {
+  value: string; onChange: (v: string) => void; onEnter?: () => void; onBlur?: () => void; placeholder?: string; id?: string; className?: string;
+  maxRows?: number; autoFocus?: boolean; maxLength?: number; ariaLabel?: string; code?: boolean; inputMode?: "decimal" | "numeric" | "text";
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 20;
+    const max = line * maxRows + 22;
+    el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`;
+    el.style.overflowY = el.scrollHeight + 2 > max ? "auto" : "hidden";
+  }, [value, maxRows]);
+  return (
+    <textarea ref={ref} id={id} rows={1} className={`input grow ${code ? "code" : ""} ${className ?? ""}`} value={value} placeholder={placeholder}
+      autoFocus={autoFocus} maxLength={maxLength} aria-label={ariaLabel} inputMode={inputMode} spellCheck={!code}
+      onChange={(e) => onChange(e.target.value.replace(/\r?\n/g, " "))} onBlur={onBlur}
+      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onEnter?.(); } }} />
+  );
+}
+
+// ---- custom dropdown -----------------------------------------------------------------------
+
+export interface Option { value: string; label: string; hint?: string }
+
+/** Styled dropdown (listbox) replacing the native select: click or Enter/Space opens it,
+ * arrows move, Enter picks, Escape closes, typing a letter jumps to the next match. */
+export function Select({ value, options, onChange, ariaLabel, id, disabled }: {
+  value: string; options: Option[]; onChange: (v: string) => void; ariaLabel?: string; id?: string; disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const uid = id ?? "sel";
+  const current = options.find((o) => o.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+    const away = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    addEventListener("mousedown", away);
+    return () => removeEventListener("mousedown", away);
+  }, [open]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { list.current?.children[active]?.scrollIntoView({ block: "nearest" }); }, [active, open]);
+
+  function pick(i: number) { onChange(options[i].value); setOpen(false); }
+  function key(e: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (disabled) return;
+    if (!open) {
+      if (["Enter", " ", "ArrowDown", "ArrowUp"].includes(e.key)) { e.preventDefault(); setOpen(true); }
+      return;
+    }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(options.length - 1, a + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+    else if (e.key === "End") { e.preventDefault(); setActive(options.length - 1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(active); }
+    else if (e.key === "Tab") setOpen(false);
+    else if (e.key.length === 1) {
+      const k = e.key.toLowerCase();
+      const n = options.length;
+      for (let s = 1; s <= n; s++) { const i = (active + s) % n; if (options[i].label.toLowerCase().startsWith(k)) { setActive(i); break; } }
+    }
+  }
+  return (
+    <div className={`select ${open ? "open" : ""}`} ref={root}>
+      <button type="button" id={id} className="input select-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel}
+        aria-activedescendant={open ? `${uid}-${active}` : undefined} aria-controls={`${uid}-list`}
+        disabled={disabled} onClick={() => setOpen((o) => !o)} onKeyDown={key} data-tip={current?.hint}>
+        <span>{current?.label}</span><span className="caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <ul className="select-menu" role="listbox" id={`${uid}-list`} ref={list} aria-label={ariaLabel}>
+          {options.map((o, i) => (
+            <li key={o.value} id={`${uid}-${i}`} role="option" aria-selected={o.value === value}
+              className={`${i === active ? "active" : ""} ${o.value === value ? "chosen" : ""}`}
+              onMouseEnter={() => setActive(i)} onMouseDown={(e) => { e.preventDefault(); pick(i); }}>
+              <span>{o.label}</span>{o.hint && <small>{o.hint}</small>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

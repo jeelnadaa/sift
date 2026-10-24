@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { del, get, patch, post, type Todo } from "../api";
 import { Top } from "../App";
-import { Banner, Modal, Tag, Toggle, errorText, toast, useLoad } from "../components";
+import { Banner, confirmDialog, errorText, Modal, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { fullTime } from "../util";
 
 function dueTone(iso: string | null): string {
@@ -50,7 +50,10 @@ export function Todos() {
               </div>
               {t.message_id && <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/mail/${t.message_id}`)} data-tip="Open the mail this came from">Open mail</button>}
               {t.due_at && <Tag tone={t.done ? "ok" : dueTone(t.due_at)} tip="Due. Reminders come 24 h and 2 h before">{fullTime(t.due_at)}</Tag>}
-              <button className="chip" onClick={async () => { try { await del(`/todos/${t.id}`); todos.reload(); } catch (e) { toast(errorText(e)); } }} data-tip="Delete this to-do">✕</button>
+              <button className="chip" onClick={async () => {
+                if (!(await confirmDialog({ title: "Delete this to-do?", body: `"${t.title}" and its reminders go. The mail stays.`, confirm: "Delete", danger: true }))) return;
+                try { await del(`/todos/${t.id}`); todos.reload(); } catch (e) { toast(errorText(e)); }
+              }} data-tip="Delete this to-do">✕</button>
             </div>
           ))}
         </div>
@@ -59,7 +62,7 @@ export function Todos() {
         <Modal title="Add a to-do" onClose={() => setAdding(false)}
           foot={<><button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)} data-tip="Close without saving">Cancel</button><button className="btn btn-primary btn-sm" disabled={!title.trim()} onClick={add} data-tip="Save this to-do">Add</button></>}>
           <div className="stack">
-            <div className="field"><label htmlFor="tt">What</label><input id="tt" className="input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></div>
+            <div className="field"><label htmlFor="tt">What</label><TextField id="tt" value={title} onChange={setTitle} autoFocus maxLength={300} onEnter={() => { if (title.trim()) add(); }} /></div>
             <div className="field"><label htmlFor="td">Due (optional)</label><input id="td" className="input" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></div>
           </div>
         </Modal>

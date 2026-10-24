@@ -129,12 +129,17 @@ fun Field(
     value: String, onChange: (String) -> Unit, label: String, password: Boolean = false, keyboard: KeyboardType = KeyboardType.Text,
     mono: Boolean = false, placeholder: String? = null, singleLine: Boolean = true,
 ) {
+    // Plain text wraps onto more lines (up to 6) instead of scrolling sideways, so long values can be
+    // read without moving the cursor. Passwords, emails and addresses stay one line. Line breaks are
+    // never inserted: the keyboard's action key is Done and pasted breaks become spaces.
+    val wrap = !password && keyboard == KeyboardType.Text && singleLine
     OutlinedTextField(
-        value = value, onValueChange = onChange, label = { Text(label) }, singleLine = singleLine, maxLines = if (singleLine) 1 else 4, shape = Radius.md,
+        value = value, onValueChange = { onChange(if (wrap) it.replace(Regex("\r?\n"), " ") else it) }, label = { Text(label) },
+        singleLine = !wrap && singleLine, maxLines = if (wrap || !singleLine) 6 else 1, shape = Radius.md,
         placeholder = placeholder?.let { { Text(it, color = Ink.text3) } },
         modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard),
+        keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
         textStyle = if (mono) MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) else MaterialTheme.typography.bodyLarge,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Ink.signal, unfocusedBorderColor = Ink.line2, focusedLabelColor = Ink.signal,

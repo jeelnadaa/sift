@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { del, get, patch, post, put, type AiStatus, type GroupingStatus, type Settings } from "../api";
 import { Top, foldersChanged } from "../App";
-import { Banner, Tag, Toggle, errorText, toast, useLoad } from "../components";
+import { Banner, confirmDialog, errorText, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
 
 export function SettingsPage() {
   const ai = useLoad(() => get<AiStatus>("/ai"));
@@ -49,7 +49,7 @@ export function SettingsPage() {
   return (
     <>
       <Top title="Settings" />
-      <section className="page" style={{ maxWidth: 860 }}>
+      <section className="page">
         {ai.error && <Banner tone="err">{ai.error}</Banner>}
         <div className="settings-sec"><h2>AI provider · your own key</h2>
           <div className="card">
@@ -60,15 +60,15 @@ export function SettingsPage() {
             </div>
             {a && !a.ai_enabled && <p style={{ color: "var(--warn)", fontSize: 13.5, marginBottom: 12 }}>Add an API key to enable summaries, deadlines, company matching and plain-English rules. Everything else works without one, and unhandled mail arrives as normal priority.</p>}
             <div className="grid2">
-              <div className="field"><label htmlFor="pv">Provider</label><select id="pv" className="input" value="gemini" onChange={() => {}}><option value="gemini">Gemini</option></select></div>
-              <div className="field"><label htmlFor="md">Model ID</label><input id="md" className="input code" value={model ?? a?.model ?? a?.suggested_model ?? ""} onChange={(e) => setModel(e.target.value)} /></div>
+              <div className="field"><label htmlFor="pv">Provider</label><Select id="pv" value="gemini" ariaLabel="AI provider" options={[{ value: "gemini", label: "Gemini", hint: "Google AI Studio key" }]} onChange={() => {}} /></div>
+              <div className="field"><label htmlFor="md">Model ID</label><TextField id="md" code value={model ?? a?.model ?? a?.suggested_model ?? ""} onChange={setModel} maxLength={120} /></div>
             </div>
             <div className="field" style={{ marginTop: 16 }}><label htmlFor="ky">{a?.key_last4 ? "Replace API key" : "API key"}</label>
               <div className="inline">
                 <input id="ky" className="input code" style={{ flex: 1 }} type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste a key from aistudio.google.com" />
                 <button className="btn btn-primary btn-sm" style={{ height: 42 }} disabled={busy || key.trim().length < 10} onClick={saveKey}>{busy ? "Checking…" : "Save and test"}</button>
                 {a?.key_last4 && <button className="btn btn-ghost btn-sm" style={{ height: 42 }} onClick={async () => { try { ai.setData(await post<AiStatus>("/ai/test")); } catch (e) { toast(errorText(e)); } }}>Test</button>}
-                {a?.key_last4 && <button className="btn btn-danger btn-sm" style={{ height: 42 }} data-tip="Delete the stored key. Sift keeps working without AI" onClick={async () => { try { await del("/ai/key"); ai.reload(); } catch (e) { toast(errorText(e)); } }}>Remove</button>}
+                {a?.key_last4 && <button className="btn btn-danger btn-sm" style={{ height: 42 }} data-tip="Delete the stored key. Sift keeps working without AI" onClick={async () => { if (!(await confirmDialog({ title: "Remove your AI key?", body: "Sift deletes the stored key and keeps working without AI: unhandled mail arrives as normal priority.", confirm: "Remove key", danger: true }))) return; try { await del("/ai/key"); ai.reload(); } catch (e) { toast(errorText(e)); } }}>Remove</button>}
               </div>
             </div>
             <p className="dim" style={{ fontSize: 13, marginTop: 8 }}>Stored encrypted on your server and never shown again after saving.</p>

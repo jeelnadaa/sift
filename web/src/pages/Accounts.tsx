@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { del, get, type Account } from "../api";
 import { Top } from "../App";
-import { Banner, Tag, errorText, toast, useLoad } from "../components";
+import { Banner, confirmDialog, errorText, Tag, toast, useLoad } from "../components";
 import { accountColor, fullTime, safeUrl } from "../util";
 
 const STATUS: Record<Account["status"], [string, string]> = { active: ["Active", "ok"], needs_reconnect: ["Needs reconnect", "urgent"], blocked: ["Blocked", "warn"] };
@@ -18,7 +18,8 @@ export function Accounts() {
     } catch (e) { toast(errorText(e)); }
   }
   async function remove(a: Account) {
-    if (!confirm(`Remove ${a.email}? This stops its watch, deletes its tokens and deletes its stored mail from Sift. Gmail itself is untouched.`)) return;
+    if (!(await confirmDialog({ title: `Remove ${a.email}?`, confirm: "Remove account", danger: true,
+      body: "Sift stops watching it, deletes its tokens and deletes its stored mail, filing and timelines from Sift. Gmail itself is untouched, and you can connect it again later." }))) return;
     try { await del(`/accounts/${a.id}`); accounts.reload(); toast("Account removed"); } catch (e) { toast(errorText(e)); }
   }
 

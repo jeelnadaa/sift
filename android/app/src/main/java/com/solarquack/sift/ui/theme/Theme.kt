@@ -77,8 +77,20 @@ private val typography = Typography(
     labelSmall = TextStyle(fontFamily = Satoshi, fontWeight = FontWeight.Bold, fontSize = 10.5.sp, letterSpacing = 1.4.sp),
 )
 
+/** Everything in the app (text, spacing, touch targets) is drawn 8% larger than the system's
+ * base size, on top of the user's own font-size setting (owner, 2026-10-24: "scale a bit bigger"). */
+const val UI_SCALE = 1.08f
+
 @Composable
 fun SiftTheme(content: @Composable () -> Unit) {
+    val base = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density * UI_SCALE, base.fontScale),
+    ) { SiftMaterial(content) }
+}
+
+@Composable
+private fun SiftMaterial(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Ink.signal, onPrimary = Ink.signalInk, background = Ink.bg, onBackground = Ink.text,

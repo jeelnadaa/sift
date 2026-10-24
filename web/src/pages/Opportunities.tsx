@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Opportunity, type OpportunityDetail } from "../api";
 import { Top } from "../App";
-import { Avatar, Banner, Modal, Tag, errorText, toast, useLoad } from "../components";
+import { Avatar, Banner, confirmDialog, errorText, Modal, Tag, TextField, toast, useLoad } from "../components";
 import { fullTime, humanize, safeUrl } from "../util";
 
 const KIND_TONE: Record<string, string> = { assessment_link: "urgent", interview: "urgent", result: "ok", registration: "normal", placement_announcement: "normal" };
@@ -86,14 +86,14 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
         <button className="btn btn-ghost btn-sm" onClick={() => { setAliases(d.aliases.join(", ")); setEditing(true); }} data-tip="Other names this company goes by, so its mail lands here">Edit aliases</button>
         <button className="btn btn-ghost btn-sm" onClick={() => save({ status: d.status === "active" ? "closed" : "active" })}>{d.status === "active" ? "Close" : "Reopen"}</button>
         <button className="btn btn-danger btn-sm" style={{ marginLeft: "auto" }} onClick={async () => {
-          if (!confirm(`Delete the ${d.company} timeline? The mail stays.`)) return;
+          if (!(await confirmDialog({ title: `Delete the ${d.company} timeline?`, body: "Only the timeline goes. The mail stays in Gmail and in Sift.", confirm: "Delete timeline", danger: true }))) return;
           try { await del(`/opportunities/${id}`); onChanged(); navigate("/opportunities"); } catch (e) { toast(errorText(e)); }
         }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>
       </div>
       {editing && (
         <Modal title={`Aliases for ${d.company}`} onClose={() => setEditing(false)}
           foot={<><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} data-tip="Close without saving">Cancel</button><button className="btn btn-primary btn-sm" onClick={() => { setEditing(false); save({ aliases: aliases.split(",").map((s) => s.trim()).filter(Boolean) }); }} data-tip="Save changes">Save</button></>}>
-          <div className="field"><label htmlFor="al">Other names, comma separated</label><input id="al" className="input" value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Acme, ACME Ltd" /></div>
+          <div className="field"><label htmlFor="al">Other names, comma separated</label><TextField id="al" value={aliases} onChange={setAliases} placeholder="Acme, ACME Ltd" /></div>
           <p className="dim" style={{ fontSize: 13, marginTop: 8 }}>Mail naming any of these lands on this timeline.</p>
         </Modal>
       )}
@@ -108,7 +108,7 @@ function NewOpportunity({ onClose, onCreated }: { onClose: () => void; onCreated
       foot={<><button className="btn btn-ghost btn-sm" onClick={onClose} data-tip="Close without saving">Cancel</button><button className="btn btn-primary btn-sm" disabled={!company.trim()} onClick={async () => {
         try { onCreated(await post<Opportunity>("/opportunities", { company: company.trim(), aliases: [] })); } catch (e) { toast(errorText(e)); }
       }}>Create</button></>}>
-      <div className="field"><label htmlFor="co">Company</label><input id="co" className="input" value={company} onChange={(e) => setCompany(e.target.value)} autoFocus /></div>
+      <div className="field"><label htmlFor="co">Company</label><TextField id="co" value={company} onChange={setCompany} autoFocus maxLength={200} /></div>
     </Modal>
   );
 }

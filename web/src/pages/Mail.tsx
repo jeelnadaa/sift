@@ -44,9 +44,7 @@ export function MailDetail() {
   const last = findFolder(tree.data?.folders ?? [], tree.data?.last_used_id);
   return (
     <>
-      <Top title={m?.subject ?? "Mail"}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} data-tip="Go back to the previous page">Back</button>
-      </Top>
+      <Top title={m?.subject ?? "Mail"} back />
       <section className="page">
         {mail.error && <Banner tone="err">{mail.error}</Banner>}
         {m && (

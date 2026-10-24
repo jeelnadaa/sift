@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { del, get, post, put, type Account, type Action, type Cond, type Draft, type FolderTree, type Preview, type Rule } from "../api";
 import { Top } from "../App";
-import { Banner, FolderPicker, errorText, toast, useLoad } from "../components";
+import { Banner, confirmDialog, errorText, FolderPicker, Select, TextField, toast, useLoad } from "../components";
 import { KINDS, describe, exceptionGroups, groupsToTree, kind, rowsToTree, treeToRows, type Row } from "../ruleForm";
 import { ACTION_LABELS, findFolder } from "../util";
 
@@ -57,7 +57,8 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
 
   async function save() {
     if (!conditions) { setError("Add at least one condition."); return; }
-    if (hidesImportant && !confirm(`${preview!.important_matches} matching mail(s) look important. Save anyway?`)) return;
+    if (hidesImportant && !(await confirmDialog({ title: "Save anyway?", danger: true, confirm: "Save anyway",
+      body: `${preview!.important_matches} matching mail(s) look important (urgent, needs action, or on a company timeline). This rule would quiet mail like them.` }))) return;
     setSaving(true);
     // keep extras this form doesn't edit (category, tag); folder comes from the picker
     const { type: _t, folder_id: _f, ...extras } = source?.action ?? ({} as Action);
@@ -70,16 +71,21 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
     } catch (e) { setError(errorText(e)); } finally { setSaving(false); }
   }
 
+  async function remove() {
+    if (!existing) return;
+    const ok = await confirmDialog({ title: `Delete "${existing.name}"?`, body: "The rule stops working right away. Mail it already handled stays where it is.", confirm: "Delete rule", danger: true });
+    if (!ok) return;
+    try { await del(`/rules/${existing.id}`); toast("Rule deleted"); onDone(); } catch (e) { toast(errorText(e)); }
+  }
+  const actions = <>
+    <button className="btn btn-primary btn-sm" disabled={saving || !name.trim() || !conditions} onClick={save} data-tip={!conditions ? "Add at least one condition first" : !name.trim() ? "Give the rule a name first" : "Save this rule. It applies to new mail from now on"}>{saving ? "Saving…" : "Save rule"}</button>
+    <button className="btn btn-ghost btn-sm" onClick={onDone} data-tip="Close without saving">Cancel</button>
+    {existing && <button className="btn btn-danger btn-sm" onClick={remove} data-tip="Delete this rule (mail itself is never deleted)">Delete</button>}
+  </>;
+
   return (
     <>
-      <Top title={existing ? "Edit rule" : "New rule"}>
-        <button className="btn btn-ghost btn-sm" onClick={onDone} data-tip="Close without saving">Cancel</button>
-        {existing && <button className="btn btn-danger btn-sm" onClick={async () => {
-          if (!confirm(`Delete "${existing.name}"?`)) return;
-          try { await del(`/rules/${existing.id}`); onDone(); } catch (e) { toast(errorText(e)); }
-        }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>}
-        <button className="btn btn-primary btn-sm" disabled={saving || !name.trim() || !conditions} onClick={save}>{saving ? "Saving…" : "Save rule"}</button>
-      </Top>
+      <Top title={existing ? "Edit rule" : "New rule"} back="/rules">{actions}</Top>
       <section className="page">
         <div className="split wide">
           <div className="card">
@@ -87,7 +93,7 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
             {draft?.notes?.length && !existing ? <Banner tone="warn">{draft.notes.join(" ")}</Banner> : null}
             {error && <Banner tone="err">{error}</Banner>}
             <div className="field" style={{ marginBottom: 16 }}><label htmlFor="rn">Name</label>
-              <input id="rn" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bank alerts: silent" maxLength={200} /></div>
+              <TextField id="rn" value={name} onChange={setName} placeholder="Bank alerts: silent" maxLength={200} /></div>
 
             <div className="field" style={{ marginBottom: 16 }}><label>Scope</label>
               <div className="tabs" style={{ margin: 0 }}>
@@ -145,6 +151,7 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
               <a className="link" onClick={() => setPicking(true)}>{folderId ? "Change" : "Pick"}</a>
               {folderId && <a className="link dim" onClick={() => setFolderId(null)} data-tip="Stop filing matching mail in a folder">Remove</a>}
             </div>
+            <div className="inline form-actions">{actions}</div>
           </div>
 
           <div className="card" style={{ background: "var(--bg-2)", borderColor: hidesImportant ? "rgba(255,90,60,.5)" : undefined, position: "sticky", top: 90 }}>
@@ -181,11 +188,10 @@ function CondRow({ row, onChange, onRemove, exc }: { row: Row; onChange: (r: Row
   const k = kind(row.kind);
   return (
     <div className={`cond ${exc ? "exc" : ""}`}>
-      <select className="input" value={row.kind} onChange={(e) => onChange({ kind: e.target.value, text: row.text })} aria-label="Condition">
-        {KINDS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-      </select>
-      {k.key !== "attachment" && <input className={`input ${k.key === "subject_regex" ? "code" : ""}`} value={row.text} placeholder={k.hint} aria-label={k.inputLabel}
-        inputMode={k.field === "amount" ? "decimal" : undefined} onChange={(e) => onChange({ kind: row.kind, text: e.target.value })} />}
+      <Select value={row.kind} ariaLabel="Condition" options={KINDS.map((x) => ({ value: x.key, label: x.label, hint: x.inputLabel || undefined }))}
+        onChange={(v) => onChange({ kind: v, text: row.text })} />
+      {k.key !== "attachment" && <TextField value={row.text} placeholder={k.hint} ariaLabel={k.inputLabel} code={k.key === "subject_regex"}
+        inputMode={k.field === "amount" ? "decimal" : undefined} onChange={(v) => onChange({ kind: row.kind, text: v })} />}
       {onRemove && <button className="chip" onClick={onRemove} aria-label="Remove condition" data-tip="Remove this condition">✕</button>}
     </div>
   );

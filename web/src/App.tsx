@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
-import { Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
+import { DialogHost, Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
 import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
 import { MailDetail } from "./pages/Mail";
@@ -35,6 +35,7 @@ export function App() {
       </Routes>
       <Toaster />
       <TooltipLayer />
+      <DialogHost />
     </>
   );
 }
@@ -160,9 +161,18 @@ export async function fileDropped(messageId: string, f: Folder) {
   }
 }
 
-export function Top({ title, children }: { title: string; children?: ReactNode }) {
+/** Page header. `back` puts "‹ Back" above the title on the left (where the eye starts);
+ * the page's actions sit in a row right under the title, never tucked in the far corner. */
+export function Top({ title, children, back }: { title: string; children?: ReactNode; back?: boolean | string }) {
+  const navigate = useNavigate();
   useEffect(() => { document.title = `${title} · Sift`; }, [title]);
-  return <div className="top"><h1>{title}</h1>{children && <div className="actions">{children}</div>}</div>;
+  return (
+    <div className="top">
+      {back && <button className="back" onClick={() => (typeof back === "string" ? navigate(back) : navigate(-1))} data-tip="Back to where you were  (Alt + ←)">‹ Back</button>}
+      <h1>{title}</h1>
+      {children && <div className="actions">{children}</div>}
+    </div>
+  );
 }
 
 function Icons() {

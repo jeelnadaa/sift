@@ -2,7 +2,7 @@ import { useEffect, useState, type DragEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Folder, type FolderTree, type FolderView } from "../api";
 import { Top, fileDropped, foldersChanged } from "../App";
-import { Banner, FolderPicker, MailRow, Modal, Pager, Toggle, errorText, toast, useLoad, usePages } from "../components";
+import { Banner, errorText, FolderPicker, MailRow, Modal, Pager, TextField, toast, Toggle, useLoad, usePages } from "../components";
 import { FOLDER_COLORS, findFolder, flatten, subtreeIds } from "../util";
 
 const MAIL = "application/x-sift-mail";
@@ -139,7 +139,7 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
       </div>
       <p className="dim" style={{ fontSize: 13, margin: "-8px 0 14px" }}>{NOTIFY.find(([m]) => m === f.notify_mode)?.[2]}</p>
       <div className="inline" style={{ marginBottom: 14 }}>
-        <input className="input" style={{ flex: 1, minWidth: 200 }} placeholder="Search this folder: sender or subject words" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search this folder" />
+        <TextField placeholder="Search this folder: sender or subject words" value={q} onChange={setQ} ariaLabel="Search this folder" maxLength={200} />
         <span className="inline dim" style={{ fontSize: 13 }}><Toggle on={includeSub} onChange={setIncludeSub} label="Include subfolders" /> Include subfolders</span>
       </div>
       {view.error && <Banner tone="err">{view.error}</Banner>}
@@ -197,8 +197,8 @@ function FolderForm({ title, initialName = "", initialColor = null, onSave, onCl
     <Modal title={title} onClose={onClose} foot={<><button className="btn btn-ghost btn-sm" onClick={onClose} data-tip="Close without saving">Cancel</button>
       <button className="btn btn-primary btn-sm" disabled={!name.trim()} onClick={() => onSave(name.trim(), color)} data-tip="Save changes">Save</button></>}>
       <div className="stack">
-        <div className="field"><label htmlFor="fn">Name</label><input id="fn" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Placements" autoFocus
-          onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onSave(name.trim(), color); }} /></div>
+        <div className="field"><label htmlFor="fn">Name</label><TextField id="fn" value={name} onChange={setName} placeholder="e.g. Placements" autoFocus maxLength={120}
+          onEnter={() => { if (name.trim()) onSave(name.trim(), color); }} /></div>
         <div className="field"><label>Color</label>
           <div className="inline">
             {FOLDER_COLORS.map((c) => (

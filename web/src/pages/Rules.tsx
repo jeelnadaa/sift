@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { del, get, post, put, type Category, type Draft, type Rule, type Suggestion } from "../api";
 import { Top } from "../App";
-import { Banner, Modal, Tag, Toggle, errorText, toast, useLoad } from "../components";
+import { Banner, confirmDialog, errorText, Modal, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { describe } from "../ruleForm";
 import { actionLabel, actionTier } from "../util";
 
@@ -43,8 +43,8 @@ export function Rules() {
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="field"><label htmlFor="pe">Plain-English rule</label>
             <div className="inline">
-              <input id="pe" className="input" style={{ flex: 1 }} value={text} onChange={(e) => setText(e.target.value)} maxLength={500}
-                placeholder="Silence Slice and Kotak transaction mail but keep fraud alerts" onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) convert(); }} />
+              <TextField id="pe" value={text} onChange={setText} maxLength={500}
+                placeholder="Silence Slice and Kotak transaction mail but keep fraud alerts" onEnter={() => { if (text.trim()) convert(); }} />
               <button className="btn btn-primary btn-sm" style={{ height: 42 }} disabled={!text.trim() || converting} onClick={convert}>{converting ? "Drafting…" : "Convert"}</button>
             </div>
           </div>
@@ -114,11 +114,11 @@ function Categories() {
       <p className="dim" style={{ fontSize: 13 }}>Your own categories tell the AI what to look for, in plain English.</p>
       {editing && (
         <Modal title={editing.id ? "Edit category" : "New category"} onClose={() => setEditing(null)} foot={<>
-          {editing.id && <button className="btn btn-danger btn-sm" onClick={async () => { try { await del(`/categories/${editing.id}`); setEditing(null); cats.reload(); } catch (e) { toast(errorText(e)); } }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>}
+          {editing.id && <button className="btn btn-danger btn-sm" onClick={async () => { if (!(await confirmDialog({ title: `Delete the ${editing.name} category?`, body: "Mail already sorted keeps its category; new mail won't use it.", confirm: "Delete", danger: true }))) return; try { await del(`/categories/${editing.id}`); setEditing(null); cats.reload(); } catch (e) { toast(errorText(e)); } }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>}
           <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} data-tip="Close without saving">Cancel</button>
           <button className="btn btn-primary btn-sm" disabled={!editing.name.trim() || !editing.definition.trim()} onClick={save} data-tip="Save changes">Save</button></>}>
           <div className="stack">
-            <div className="field"><label htmlFor="cn">Name</label><input id="cn" className="input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Hostel notices" /></div>
+            <div className="field"><label htmlFor="cn">Name</label><TextField id="cn" value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} placeholder="Hostel notices" maxLength={80} /></div>
             <div className="field"><label htmlFor="cd">What belongs here</label><textarea id="cd" className="input" rows={3} value={editing.definition} onChange={(e) => setEditing({ ...editing, definition: e.target.value })} placeholder="Mail from the hostel office about timings, fees or rooms" /></div>
           </div>
         </Modal>

@@ -35,9 +35,13 @@ aside { border-right: 1px solid var(--line); background: var(--bg-2); display: f
 .collapsed aside { overflow: visible; }
 
 main { overflow-y: auto; position: relative; }
-.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px; padding: 16px 32px; background: rgba(10,10,11,.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); min-height: 73px; }
-.top h1 { font-size: 28px; }
-.top .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.top { position: sticky; top: 0; z-index: 5; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px 32px 14px; background: rgba(10,10,11,.88); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); min-height: 73px; justify-content: center; }
+.top h1 { font-size: 28px; max-width: 100%; overflow-wrap: anywhere; }
+/* page actions: a row right under the title, primary first, so they are found where reading starts */
+.top .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.top .back { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 6px; margin-left: -6px; border-radius: var(--r-sm); color: var(--text-2); font-weight: 700; font-size: 13.5px; }
+.top .back:hover { background: var(--surface-2); color: var(--text); }
+.form-actions { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 .page { padding: 28px 32px 80px; max-width: 1280px; animation: rise .5s var(--ease-out); }
 .page h2 { font-size: 22px; margin-bottom: 16px; }
 .lede { color: var(--text-2); margin-bottom: 24px; max-width: 64ch; }
@@ -158,3 +162,24 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .pager.bottom { margin: 14px 0 0; }
 .btn:disabled { opacity: .4; cursor: default; }
 .row .num { width: 26px; flex: none; text-align: right; color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* growing text field: wraps long text instead of scrolling sideways */
+textarea.input.grow { resize: none; height: 42px; min-height: 42px; padding: 10px 14px; line-height: 20px; overflow-wrap: anywhere; white-space: pre-wrap; display: block; width: 100%; }
+.cond textarea.input.grow { min-height: 34px; height: 34px; padding: 6px 12px; flex: 1; min-width: 180px; width: auto; }
+.inline > textarea.input.grow { flex: 1; width: auto; min-width: 200px; }
+
+/* custom dropdown */
+.select { position: relative; display: inline-block; min-width: 200px; }
+.field .select { display: block; }
+.select-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer; }
+.select-btn span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-btn .caret { color: var(--text-3); transition: transform .2s var(--ease-out); }
+.select.open .select-btn { border-color: var(--signal); box-shadow: 0 0 0 4px rgba(200,255,61,.1); }
+.select.open .caret { transform: rotate(180deg); }
+.select-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; min-width: 100%; max-height: 300px; overflow-y: auto; list-style: none; padding: 6px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: 0 14px 40px rgba(0,0,0,.5); animation: rise .18s var(--ease-out); }
+.select-menu li { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--text-2); white-space: nowrap; }
+.select-menu li small { color: var(--text-3); font-size: 12px; white-space: normal; }
+.select-menu li.active { background: var(--surface); color: var(--text); }
+.select-menu li.chosen { color: var(--signal); font-weight: 700; }
+.cond .select { min-width: 210px; }
+.cond .select .select-btn { height: 34px; }

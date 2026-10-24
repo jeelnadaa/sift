@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, patch, post, put, type Draft, type Group, type GroupingStatus } from "../api";
 import { Top } from "../App";
-import { Banner, FolderPicker, GroupRow, MailRow, Modal, Toggle, errorText, toast, useLoad } from "../components";
+import { Banner, errorText, FolderPicker, GroupRow, inputDialog, MailRow, Modal, TextField, toast, Toggle, useLoad } from "../components";
 
 export function Groups() {
   const navigate = useNavigate();
@@ -56,8 +56,7 @@ export function GroupDetail() {
   const sender = d?.items?.[0]?.sender;
   return (
     <>
-      <Top title={d?.title ?? "Group"}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} data-tip="Go back to the previous page">Back</button>
+      <Top title={d?.title ?? "Group"} back="/groups">
         {d && <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(d.title)} data-tip="Give it a new name">Rename</button>}
       </Top>
       <section className="page">
@@ -76,8 +75,8 @@ export function GroupDetail() {
               <button className={`chip ${selecting ? "on" : ""}`} onClick={() => { setSelecting(!selecting); setSelected(new Set()); }} data-tip="Pick mails to move into a new group">Split</button>
               <button className="chip" onClick={() => setMerging(true)} data-tip="Move everything here into another one, then remove this">Merge into…</button>
               <button className="chip" onClick={async () => {
-                const name = prompt("Tag every mail in this group as:");
-                if (name?.trim()) run(`Tagged ${d.count} mails`, () => post(`/groups/${id}/tag`, { name: name.trim() }));
+                const name = await inputDialog({ title: "Tag this group", label: "Tag every mail in it as", placeholder: "e.g. Money", confirm: "Tag" });
+                if (name) run(`Tagged ${d.count} mails`, () => post(`/groups/${id}/tag`, { name }));
               }} data-tip="Tag every mail in this group">Tag</button>
               {sender && <button className="chip" onClick={() => run(`Mail from ${sender} won't be grouped`, () => put("/grouping/preferences", { sender_or_domain: sender, mode: "never" }))}>Never group {sender}</button>}
             </div>
@@ -102,7 +101,8 @@ export function GroupDetail() {
       {renaming !== null && (
         <Modal title="Rename group" onClose={() => setRenaming(null)} foot={<><button className="btn btn-ghost btn-sm" onClick={() => setRenaming(null)} data-tip="Close without saving">Cancel</button>
           <button className="btn btn-primary btn-sm" disabled={!renaming.trim()} onClick={() => { const t = renaming.trim(); setRenaming(null); run(null, () => patch(`/groups/${id}`, { title: t })); }} data-tip="Save changes">Save</button></>}>
-          <input className="input" style={{ width: "100%" }} value={renaming} onChange={(e) => setRenaming(e.target.value)} autoFocus aria-label="Group name" />
+          <TextField value={renaming} onChange={setRenaming} autoFocus ariaLabel="Group name" maxLength={200}
+            onEnter={() => { const t = renaming.trim(); if (t) { setRenaming(null); run(null, () => patch(`/groups/${id}`, { title: t })); } }} />
         </Modal>
       )}
       {filing && <FolderPicker title={filing === "file" ? "File the whole group in…" : "File mail like this in…"}
