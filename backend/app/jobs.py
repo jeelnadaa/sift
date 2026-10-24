@@ -118,7 +118,16 @@ def handle_follow_ups(payload: dict) -> None:
         log.info("sent %d follow-up reminder(s)", n)
 
 
+def handle_ai_task(payload: dict) -> None:
+    import uuid
+
+    from app.folder_ai import run_task
+
+    run_task(uuid.UUID(payload["task_id"]))
+
+
 HANDLERS = {
+    "ai_task": handle_ai_task,
     "send_outbox": handle_send_outbox,
     "follow_ups": handle_follow_ups,
     "wake_snoozes": handle_wake_snoozes,

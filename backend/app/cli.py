@@ -7,7 +7,10 @@
   accounts                list connected Gmail accounts and their status
   check                   check every active account for new mail once, now
   set-password EMAIL      set the app sign-in password (asks for it; never shown)
-  starter-rules EMAIL     add the starter rule: bank transactions silent, fraud alerts kept
+  starter-rules EMAIL     add the starter setup: bank rule, Placements folder (AI filing, sorted by company)
+  reset-data EMAIL --yes  clear everything Sift stored for EMAIL (mail copies, timelines, to-dos, folders,
+                          rules, history); keeps sign-in, Gmail connections, AI key, phones and settings.
+                          Take a backup first (scripts/backup.ps1 or backup.sh)
   demo EMAIL              run the sample emails through the pipeline (real notifications)
   demo-clear EMAIL        delete the demo account and its messages
 """
@@ -26,7 +29,11 @@ def create_user(email: str) -> None:
         if db.scalar(select(User).where(User.email == email.lower())):
             print("user exists")
             return
-        db.add(User(email=email.lower()))
+        user = User(email=email.lower())
+        db.add(user)
+        db.flush()
+        from app import starter
+        starter.setup(db, user)
         db.commit()
     print("created", email.lower())
 
@@ -98,13 +105,27 @@ def set_password(email: str) -> None:
 
 
 def starter_rules(email: str) -> None:
+    from app import starter
     from app.db import get_sessionmaker
-    from app.demo import ensure_starter_rules
 
     with get_sessionmaker()() as db:
-        added = ensure_starter_rules(db, _user(db, email))
+        starter.setup(db, _user(db, email))
         db.commit()
-    print(f"added {len(added)} rule(s)" if added else "starter rule already present")
+    print("starter setup present: bank rule, Placements folder")
+
+
+def reset_data(email: str, confirm: str = "") -> None:
+    from app import starter
+    from app.db import get_sessionmaker
+
+    if confirm != "--yes":
+        print("This deletes everything Sift stored for", email, "(not Gmail). Run again with --yes to do it.")
+        sys.exit(1)
+    with get_sessionmaker()() as db:
+        counts = starter.reset(db, _user(db, email).id)
+        db.commit()
+    print("cleared:", ", ".join(f"{k} {v}" for k, v in counts.items() if v))
+    print("starter setup added: bank rule, Placements folder")
 
 
 def demo(email: str) -> None:
@@ -141,7 +162,7 @@ def demo_clear(email: str) -> None:
 
 def main(argv: list[str]) -> None:
     commands = {"create-user": create_user, "gen-key": gen_key, "fake-push": fake_push, "connect-url": connect_url, "accounts": accounts, "check": check,
-                "set-password": set_password, "starter-rules": starter_rules, "demo": demo, "demo-clear": demo_clear}
+                "set-password": set_password, "starter-rules": starter_rules, "reset-data": reset_data, "demo": demo, "demo-clear": demo_clear}
     if len(argv) < 1 or argv[0] not in commands:
         print(__doc__)
         sys.exit(1)

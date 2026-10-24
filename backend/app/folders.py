@@ -281,6 +281,7 @@ def folder_json(f: Folder, threads: int = 0, unread: int = 0, unread_total: int 
         "id": str(f.id), "parent_id": str(f.parent_id) if f.parent_id else None, "name": f.name, "color": f.color,
         "icon": f.icon, "position": f.position, "pinned": f.pinned, "notify_mode": f.notify_mode,
         "smart": f.saved_search_id is not None, "threads": threads, "unread": unread, "unread_total": unread_total,
+        "ai_rule": f.ai_rule, "auto_sort": f.auto_sort, "auto_sort_instruction": f.auto_sort_instruction,
         "children": children if children is not None else [],
     }
 

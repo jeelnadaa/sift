@@ -82,5 +82,31 @@ fun UsageScreen(onBack: () -> Unit) {
         val calls = u.days.sumOf { it.calls }
         val tokens = u.days.sumOf { it.inputTokens + it.outputTokens }
         Text("${fmt.format(calls)} AI calls · ${fmt.format(tokens)} tokens in 30 days", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+
+        SectionLabel("Everyday AI work")
+        SiftCard {
+            Text("Done for every new mail and when you use AI features, last 30 days.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            if (u.automatic.isEmpty()) Text("Nothing yet.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+            u.automatic.forEach { a ->
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text(a.label, color = Ink.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text(fmt.format(a.tokens), color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        SectionLabel("AI tasks you ran")
+        SiftCard {
+            Text("Work you asked for on a folder (open a folder → ✦ AI).", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            if (u.tasks.isEmpty()) Text("None yet.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+            u.tasks.forEach { t ->
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${mapOf("timelines" to "Timelines", "todos" to "To-dos", "sort" to "Sorting")[t.kind]} · ${t.folderName}", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
+                        Text(if (t.status == "running" || t.status == "queued") "running" else "${t.changed} ${TASK_DONE[t.kind]}", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(fmt.format(t.tokens), color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
     }
 }

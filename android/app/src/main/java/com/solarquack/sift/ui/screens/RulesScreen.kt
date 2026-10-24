@@ -87,11 +87,16 @@ fun RulesScreen(onEdit: () -> Unit) {
     var sentence by remember { mutableStateOf("") }
     var drafting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var folderRules by remember { mutableStateOf<List<com.solarquack.sift.data.FolderDto>>(emptyList()) }
 
     fun load() = scope.launch {
         try {
             val api = Api.get(context)
             rules = api.rules()
+            folderRules = runCatching {
+                fun flat(fs: List<com.solarquack.sift.data.FolderDto>): List<com.solarquack.sift.data.FolderDto> = fs.flatMap { listOf(it) + flat(it.children) }
+                flat(api.folders().folders).filter { it.aiRule != null || it.autoSort != null }
+            }.getOrDefault(emptyList())
             suggestions = runCatching { api.suggestions() }.getOrDefault(emptyList())
             ai = runCatching { api.ai() }.getOrNull()
             error = null
@@ -112,6 +117,23 @@ fun RulesScreen(onEdit: () -> Unit) {
             Text("Rules", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
             Text("Checked in order; the first match wins. Sender rules only match mail Gmail verified.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
             error?.let { Spacer(Modifier.height(8.dp)); Banner(it, Ink.urgent, "Retry") { load() } }
+
+            // folders that file or sort with the AI are rules too; they're changed on the folder
+            if (folderRules.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                SiftCard {
+                    Text("Folder AI rules", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                    Text("Run after the AI reads a new mail. Change them on the folder (More → Folders → ✦ AI).", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    folderRules.forEach { f ->
+                        val parts = listOfNotNull(
+                            f.aiRule?.let { r -> "files " + (r.categories.map { CATEGORY_LABELS[it] ?: it } + if (r.timeline) listOf("timeline mail") else emptyList()).joinToString(", ").lowercase() + " here" },
+                            f.autoSort?.let { if (it == "ai") "sorts by “${f.autoSortInstruction}”" else "sorts into subfolders by $it" },
+                        )
+                        Text(f.name, color = Ink.text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
+                        Text(parts.joinToString("; ").replaceFirstChar { it.uppercase() }, color = Ink.text2, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
 
             // plain-English rule (needs the user's own key)
             val aiOn = ai?.aiEnabled == true

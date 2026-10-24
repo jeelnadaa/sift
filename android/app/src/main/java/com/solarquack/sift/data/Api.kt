@@ -20,6 +20,10 @@ import java.util.concurrent.TimeUnit
 
 interface SiftApi {
     @POST("api/v1/auth/login") suspend fun login(@Body body: LoginRequest): LoginResponse
+    @POST("api/v1/auth/register") suspend fun register(@Body body: LoginRequest): LoginResponse
+    @GET("api/v1/auth/options") suspend fun authOptions(): AuthOptions
+    @POST("api/v1/folders/{id}/ai-tasks") suspend fun startAiTask(@Path("id") id: String, @Body body: AiTaskIn): AiTaskDto
+    @GET("api/v1/ai-tasks") suspend fun aiTasks(): AiTaskList
     @GET("api/v1/me") suspend fun me(): UserDto
 
     @GET("api/v1/messages") suspend fun messages(
@@ -191,8 +195,11 @@ object Api {
     }
 }
 
-/** A short message for the user, without stack traces. */
+/** A short message for the user, without stack traces. A cancelled coroutine (the screen was
+ * left, or a newer save replaced this one) is not an error: it is re-thrown so the coroutine just
+ * ends, and nothing is shown. Every `catch (t: Throwable) { … t.userMessage() }` relies on this. */
 fun Throwable.userMessage(): String = when (this) {
+    is kotlinx.coroutines.CancellationException -> throw this
     is HttpException -> when (code()) {
         401 -> "Signed out. Sign in again."
         404 -> "Not found."

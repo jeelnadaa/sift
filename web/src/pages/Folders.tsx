@@ -1,4 +1,5 @@
 import { useEffect, useState, type DragEvent } from "react";
+import { FolderAi } from "./FolderAi";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Folder, type FolderTree, type FolderView } from "../api";
 import { Top, fileDropped, foldersChanged } from "../App";
@@ -138,6 +139,7 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
         <button className="chip" style={{ color: "var(--urgent)" }} onClick={() => setDialog("delete")} data-tip="Delete for good (mail itself is never deleted)">Delete</button>
       </div>
       <p className="dim" style={{ fontSize: 13, margin: "-8px 0 14px" }}>{NOTIFY.find(([m]) => m === f.notify_mode)?.[2]}</p>
+      <FolderAi f={f} onChanged={() => { onChanged(); view.reload(); }} />
       <div className="inline" style={{ marginBottom: 14 }}>
         <TextField placeholder="Search this folder: sender or subject words" value={q} onChange={setQ} ariaLabel="Search this folder" maxLength={200} />
         <span className="inline dim" style={{ fontSize: 13 }}><Toggle on={includeSub} onChange={setIncludeSub} label="Include subfolders" /> Include subfolders</span>

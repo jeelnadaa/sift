@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     jwt_days: int = 30
     # Failed sign-ins allowed per email (and per client address) in a 15-minute window.
     login_attempts: int = 8
+    # REGISTRATION=open lets anyone create a Sift account on this server (rate-limited per
+    # address); closed hides "Create an account" and refuses sign-ups (add users with the CLI).
+    registration: str = "open"
 
     # Interactive API docs at /docs. Off by default because the API is reachable from the internet.
     api_docs: bool = False

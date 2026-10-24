@@ -313,7 +313,8 @@ data class CategoryIn(val name: String, val definition: String)
 data class UsageDay(val day: String, val calls: Int = 0, @SerialName("input_tokens") val inputTokens: Int = 0, @SerialName("output_tokens") val outputTokens: Int = 0)
 
 @Serializable
-data class UsageDto(val days: List<UsageDay> = emptyList(), @SerialName("tokens_today") val tokensToday: Int = 0, @SerialName("daily_token_cap") val dailyTokenCap: Int = 0)
+data class UsageDto(val days: List<UsageDay> = emptyList(), @SerialName("tokens_today") val tokensToday: Int = 0, @SerialName("daily_token_cap") val dailyTokenCap: Int = 0,
+                    val automatic: List<UsagePurpose> = emptyList(), val tasks: List<AiTaskDto> = emptyList())
 
 // ---- folders (brief section 18) ----
 
@@ -332,7 +333,40 @@ data class FolderDto(
     val unread: Int = 0,
     @SerialName("unread_total") val unreadTotal: Int = 0,
     val children: List<FolderDto> = emptyList(),
+    @SerialName("ai_rule") val aiRule: AiRuleDto? = null,
+    @SerialName("auto_sort") val autoSort: String? = null,
+    @SerialName("auto_sort_instruction") val autoSortInstruction: String? = null,
 )
+
+@Serializable
+data class AiRuleDto(val categories: List<String> = emptyList(), val timeline: Boolean = false)
+
+@Serializable
+data class AiTaskDto(
+    val id: String,
+    @SerialName("folder_id") val folderId: String? = null,
+    @SerialName("folder_name") val folderName: String = "",
+    val kind: String,
+    val status: String,
+    val total: Int = 0,
+    val done: Int = 0,
+    val changed: Int = 0,
+    val note: String? = null,
+    val tokens: Int = 0,
+    @SerialName("created_at") val createdAt: String,
+)
+
+@Serializable
+data class AiTaskList(val tasks: List<AiTaskDto> = emptyList())
+
+@Serializable
+data class AiTaskIn(val kind: String, @SerialName("include_subfolders") val includeSubfolders: Boolean = true, val instruction: String? = null)
+
+@Serializable
+data class UsagePurpose(val purpose: String, val label: String, val calls: Int = 0, val tokens: Int = 0)
+
+@Serializable
+data class AuthOptions(val registration: Boolean = false)
 
 @Serializable
 data class FolderTree(val folders: List<FolderDto> = emptyList(), @SerialName("max_depth") val maxDepth: Int = 10, @SerialName("last_used_id") val lastUsedId: String? = null)
@@ -347,6 +381,9 @@ data class FolderPatch(
     val pinned: Boolean? = null,
     @SerialName("notify_mode") val notifyMode: String? = null,
     @SerialName("clear_color") val clearColor: Boolean = false,
+    @SerialName("ai_rule") val aiRule: AiRuleDto? = null,
+    @SerialName("auto_sort") val autoSort: String? = null,
+    @SerialName("auto_sort_instruction") val autoSortInstruction: String? = null,
 )
 
 @Serializable
@@ -600,6 +637,7 @@ data class DraftDto(
     @SerialName("account_email") val accountEmail: String = "",
     @SerialName("draft_id") val draftId: String,
     @SerialName("thread_id") val threadId: String? = null,
+    val version: String? = null,
     val to: List<String> = emptyList(),
     val cc: List<String> = emptyList(),
     val bcc: List<String> = emptyList(),
@@ -672,7 +710,22 @@ data class DraftCreateIn(
 )
 
 @Serializable
-data class DraftFieldsIn(val to: List<String>, val cc: List<String>, val bcc: List<String>, val subject: String, val body: String)
+data class DraftFieldsIn(val to: List<String>, val cc: List<String>, val bcc: List<String>, val subject: String, val body: String,
+                         @SerialName("base_version") val baseVersion: String? = null)
+
+@Serializable
+private data class DraftChangedDetail(val code: String? = null, val draft: DraftDto? = null)
+
+@Serializable
+private data class DraftChangedError(val detail: DraftChangedDetail? = null)
+
+/** The other device's version when a save was refused because the draft changed meanwhile. */
+fun Throwable.draftChanged(): DraftDto? {
+    if (this !is retrofit2.HttpException || code() != 409) return null
+    val body = runCatching { response()?.errorBody()?.string() }.getOrNull() ?: return null
+    val err = runCatching { Api.json.decodeFromString(DraftChangedError.serializer(), body) }.getOrNull() ?: return null
+    return err.detail?.takeIf { it.code == "draft_changed" }?.draft
+}
 
 @Serializable
 data class SendIn(@SerialName("send_at") val sendAt: String? = null, @SerialName("follow_up_days") val followUpDays: Int? = null)

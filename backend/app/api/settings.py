@@ -5,12 +5,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import folder_ai
 from app import backup, jobs, user_settings
 from app.config import get_settings
 from app.db import get_db
 from app.llm import service as llm
 from app.llm.base import LlmError
-from app.models import TokenUsage, User
+from app.models import AiTask, TokenUsage, User
 from app.security import current_user
 
 router = APIRouter(prefix="/api/v1")
@@ -101,5 +102,26 @@ def usage(days: int = 30, user: User = Depends(current_user), db: Session = Depe
         select(TokenUsage.day, func.count(), func.sum(TokenUsage.input_tokens), func.sum(TokenUsage.output_tokens))
         .where(TokenUsage.user_id == user.id, TokenUsage.day >= since).group_by(TokenUsage.day).order_by(TokenUsage.day)
     )
+    # everyday work (every new mail, searches, rules…) as one line per kind; explicit AI tasks one by one
+    auto = db.execute(
+        select(TokenUsage.purpose, func.count(), func.sum(TokenUsage.input_tokens + TokenUsage.output_tokens))
+        .where(TokenUsage.user_id == user.id, TokenUsage.day >= since, TokenUsage.task_id.is_(None))
+        .group_by(TokenUsage.purpose).order_by(func.sum(TokenUsage.input_tokens + TokenUsage.output_tokens).desc()))
+    tasks = db.scalars(select(AiTask).where(AiTask.user_id == user.id).order_by(AiTask.created_at.desc()).limit(30))
     return {"days": [{"day": d.isoformat(), "calls": c, "input_tokens": int(i or 0), "output_tokens": int(o or 0)} for d, c, i, o in rows],
-            "tokens_today": llm.tokens_today(db, user.id), "daily_token_cap": user_settings.get(db, user.id)["daily_token_cap"]}
+            "tokens_today": llm.tokens_today(db, user.id), "daily_token_cap": user_settings.get(db, user.id)["daily_token_cap"],
+            "automatic": [{"purpose": p, "label": PURPOSE_LABELS.get(p, p.replace("_", " ").capitalize()), "calls": c, "tokens": int(t or 0)} for p, c, t in auto],
+            "tasks": [folder_ai.task_json(db, t) for t in tasks]}
+
+
+PURPOSE_LABELS = {
+    "extract": "Reading each new mail", "embed": "Search by meaning (index)", "search": "Plain-English search",
+    "rule": "Plain-English rules", "reply": "AI reply drafts", "sort": "Sorting new mail into subfolders",
+    "validate": "Checking your key", "categories": "Custom categories",
+}
+
+
+@router.get("/ai-tasks")
+def ai_tasks(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    return {"tasks": [folder_ai.task_json(db, t) for t in db.scalars(
+        select(AiTask).where(AiTask.user_id == user.id).order_by(AiTask.created_at.desc()).limit(30))]}

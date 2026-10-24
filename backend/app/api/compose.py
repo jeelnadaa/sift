@@ -9,7 +9,10 @@ saves of one draft are serialized with a Postgres advisory lock, so an autosave 
 attachment being added at the same moment.
 """
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -76,8 +79,8 @@ def _from(db: Session, user: User, account: GmailAccount) -> tuple[str, str]:
     return account.email, user_settings.get(db, user.id)["sender_name"]
 
 
-def _draft_json(account: GmailAccount, draft_id: str, thread_id: str | None, d: compose.Draft) -> dict:
-    return {"account_id": str(account.id), "account_email": account.email, "draft_id": draft_id, "thread_id": thread_id,
+def _draft_json(account: GmailAccount, draft_id: str, thread_id: str | None, d: compose.Draft, version: str | None = None) -> dict:
+    return {"account_id": str(account.id), "account_email": account.email, "draft_id": draft_id, "thread_id": thread_id, "version": version,
             "to": d.to, "cc": d.cc, "bcc": d.bcc, "subject": d.subject, "body": d.body,
             "in_reply_to": d.in_reply_to, "references": d.references,
             "attachments": [{"index": i, "filename": a.filename, "mime": a.mime, "size": len(a.data)} for i, a in enumerate(d.attachments)],
@@ -149,10 +152,11 @@ def create_draft(body: DraftIn, user: User = Depends(current_user), db: Session 
         if body.forward_gmail_id:
             d.attachments = compose.forward_attachments(p, p.get_full(body.forward_gmail_id))
         created = p.create_draft(compose.build(*name, d), body.thread_id)
-        return created["id"], created.get("message", {}).get("threadId") or body.thread_id
+        m = created.get("message", {})
+        return created["id"], m.get("threadId") or body.thread_id, m.get("id")
 
-    draft_id, thread_id = _gmail(db, account, work)
-    return _draft_json(account, draft_id, thread_id, d)
+    draft_id, thread_id, version = _gmail(db, account, work)
+    return _draft_json(account, draft_id, thread_id, d, version)
 
 
 @router.get("/compose/drafts")
@@ -160,20 +164,34 @@ def list_drafts(user: User = Depends(current_user), db: Session = Depends(get_db
     """Gmail drafts of every connected account (newest first), with Sift's schedule if any."""
     scheduled = {(r.account_id, r.draft_id): r for r in db.scalars(select(Outbox).where(Outbox.user_id == user.id, Outbox.status.in_(("scheduled", "sending"))))}
     out, failed = [], []
-    for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id, GmailAccount.status == "active",
-                                                   GmailAccount.encrypted_refresh_token.is_not(None))):
+    accounts = list(db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id, GmailAccount.status == "active",
+                                                          GmailAccount.encrypted_refresh_token.is_not(None))))
+
+    def of_account(a: GmailAccount) -> list[dict] | None:
+        # each draft's headers are one Gmail request; fetched a few at a time, not one by one
         try:
             p = account_service.provider_for(a)
-            for item in p.list_drafts(25):
-                meta = p.get_draft_meta(item["id"])
-                m = meta.get("message", {})
-                headers = {h["name"].lower(): h["value"] for h in (m.get("payload") or {}).get("headers") or []}
-                row = scheduled.get((a.id, item["id"]))
-                out.append({"account_id": str(a.id), "account_email": a.email, "draft_id": item["id"], "thread_id": m.get("threadId"),
-                            "subject": headers.get("subject", ""), "to": headers.get("to", ""), "snippet": m.get("snippet", ""),
-                            "updated_ms": int(m.get("internalDate") or 0), "outbox": outbox.outbox_json(row) if row else None})
-        except (AuthRevoked, GmailError):
-            failed.append(a.email)
+            items = p.list_drafts(25)
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                metas = list(pool.map(lambda item: p.get_draft_meta(item["id"]), items))
+        except (AuthRevoked, GmailError, httpx.HTTPError):
+            return None
+        rows = []
+        for item, meta in zip(items, metas):
+            m = meta.get("message", {})
+            headers = {h["name"].lower(): h["value"] for h in (m.get("payload") or {}).get("headers") or []}
+            row = scheduled.get((a.id, item["id"]))
+            rows.append({"account_id": str(a.id), "account_email": a.email, "draft_id": item["id"], "thread_id": m.get("threadId"),
+                         "subject": headers.get("subject", ""), "to": headers.get("to", ""), "snippet": m.get("snippet", ""),
+                         "updated_ms": int(m.get("internalDate") or 0), "outbox": outbox.outbox_json(row) if row else None})
+        return rows
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for a, rows in zip(accounts, pool.map(of_account, accounts)):
+            if rows is None:
+                failed.append(a.email)
+            else:
+                out.extend(rows)
     out.sort(key=lambda x: -x["updated_ms"])
     return {"drafts": out, "failed_accounts": failed}
 
@@ -182,8 +200,8 @@ def list_drafts(user: User = Depends(current_user), db: Session = Depends(get_db
 def get_draft(account_id: uuid.UUID, draft_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     account = _account(db, user, account_id, write=False)
     _check_id(draft_id)
-    raw, thread_id = _gmail(db, account, lambda p: p.get_draft_raw(draft_id))
-    out = _draft_json(account, draft_id, thread_id, compose.parse(raw))
+    raw, thread_id, version = _gmail(db, account, lambda p: p.get_draft_raw(draft_id))
+    out = _draft_json(account, draft_id, thread_id, compose.parse(raw), version)
     row = db.scalar(select(Outbox).where(Outbox.account_id == account.id, Outbox.draft_id == draft_id, Outbox.status.in_(("scheduled", "sending"))))
     out["outbox"] = outbox.outbox_json(row) if row else None
     return out
@@ -200,8 +218,15 @@ def _not_sending(db: Session, account: GmailAccount, draft_id: str) -> None:
         raise HTTPException(409, "This mail is being sent")
 
 
+class DraftUpdate(DraftFields):
+    # The version (message id) this edit started from. When the draft changed since (another
+    # device or Gmail itself saved it), the answer is 409 draft_changed with the latest draft, so
+    # nobody's text is overwritten silently. Leave it out to overwrite on purpose ("keep mine").
+    base_version: str | None = Field(default=None, max_length=64)
+
+
 @router.put("/compose/drafts/{account_id}/{draft_id}")
-def update_draft(account_id: uuid.UUID, draft_id: str, body: DraftFields, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+def update_draft(account_id: uuid.UUID, draft_id: str, body: DraftUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Autosave: new recipients/subject/text; reply headers and attachments are kept."""
     account = _account(db, user, account_id, write=True)
     _check_id(draft_id)
@@ -211,14 +236,17 @@ def update_draft(account_id: uuid.UUID, draft_id: str, body: DraftFields, user: 
     name = _from(db, user, account)
 
     def work(p):
-        raw, thread_id = p.get_draft_raw(draft_id)
+        raw, thread_id, version = p.get_draft_raw(draft_id)
         old = compose.parse(raw)
+        if body.base_version and version and body.base_version != version:
+            raise HTTPException(409, {"code": "draft_changed", "message": "This draft was changed on another device or in Gmail.",
+                                      "draft": _draft_json(account, draft_id, thread_id, old, version)})
         fields.in_reply_to, fields.references, fields.attachments = old.in_reply_to, old.references, old.attachments
-        p.update_draft(draft_id, compose.build(*name, fields), thread_id)
-        return thread_id
+        updated = p.update_draft(draft_id, compose.build(*name, fields), thread_id)
+        return thread_id, (updated.get("message") or {}).get("id")
 
-    thread_id = _gmail(db, account, work)
-    out = _draft_json(account, draft_id, thread_id, fields)
+    thread_id, version = _gmail(db, account, work)
+    out = _draft_json(account, draft_id, thread_id, fields, version)
     db.commit()  # releases the lock
     return out
 
@@ -266,15 +294,15 @@ async def add_attachment(account_id: uuid.UUID, draft_id: str, request: Request,
         name = _from(db, user, account)
 
         def work(p):
-            raw, thread_id = p.get_draft_raw(draft_id)
+            raw, thread_id, _ = p.get_draft_raw(draft_id)
             d = compose.parse(raw)
             d.attachments.append(compose.Attachment(compose.safe_filename(filename), mime, data))
-            p.update_draft(draft_id, compose.build(*name, d), thread_id)
-            return thread_id, d
+            updated = p.update_draft(draft_id, compose.build(*name, d), thread_id)
+            return thread_id, d, (updated.get("message") or {}).get("id")
 
-        thread_id, d = _gmail(db, account, work)
+        thread_id, d, version = _gmail(db, account, work)
         db.commit()
-        return _draft_json(account, draft_id, thread_id, d)
+        return _draft_json(account, draft_id, thread_id, d, version)
 
     return await run_in_threadpool(sync)
 
@@ -288,17 +316,17 @@ def remove_attachment(account_id: uuid.UUID, draft_id: str, index: int, user: Us
     name = _from(db, user, account)
 
     def work(p):
-        raw, thread_id = p.get_draft_raw(draft_id)
+        raw, thread_id, _ = p.get_draft_raw(draft_id)
         d = compose.parse(raw)
         if not 0 <= index < len(d.attachments):
             raise HTTPException(404, "no such attachment")
         d.attachments.pop(index)
-        p.update_draft(draft_id, compose.build(*name, d), thread_id)
-        return thread_id, d
+        updated = p.update_draft(draft_id, compose.build(*name, d), thread_id)
+        return thread_id, d, (updated.get("message") or {}).get("id")
 
-    thread_id, d = _gmail(db, account, work)
+    thread_id, d, version = _gmail(db, account, work)
     db.commit()
-    return _draft_json(account, draft_id, thread_id, d)
+    return _draft_json(account, draft_id, thread_id, d, version)
 
 
 # ---- sending -----------------------------------------------------------------------------------
@@ -319,7 +347,7 @@ def send(account_id: uuid.UUID, draft_id: str, body: SendIn, user: User = Depend
     account = _account(db, user, account_id, write=True)
     _check_id(draft_id)
     _lock(db, account.id, draft_id)
-    raw, thread_id = _gmail(db, account, lambda p: p.get_draft_raw(draft_id))
+    raw, thread_id, _ = _gmail(db, account, lambda p: p.get_draft_raw(draft_id))
     d = compose.parse(raw)
     recipients = d.to + d.cc + d.bcc
     if not recipients:

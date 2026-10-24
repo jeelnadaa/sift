@@ -9,6 +9,20 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.solarquack.sift.ui.SiftIcons
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -90,7 +104,7 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.weight(1f)) {
                 NavHost(nav, startDestination = start) {
                     composable("login") { LoginScreen { nav.navigate("feed") { popUpTo("login") { inclusive = true } } } }
-                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }, onWrite = { nav.navigate(compose()) }) }
+                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }) }
                     composable(
                         "compose?mode={mode}&message={message}&account={account}&gmail={gmail}&draft={draft}",
                         arguments = listOf("mode", "message", "account", "gmail", "draft").map { name ->
@@ -145,32 +159,57 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                // Deals, To-do and Rules keep their own add button in this corner
+                val fab = route != null && (route in setOf("feed", "silenced", "search", "folders", "outbox", "more", "accounts") ||
+                    route.startsWith("folder/") || route.startsWith("group/") || route.startsWith("read/"))
+                if (fab) WriteFab(Modifier.align(Alignment.BottomEnd)) { nav.navigate(compose()) }
             }
             if (route != null && route != "login") BottomBar(nav, route)
         }
     }
 
+    /** Bottom tabs, drawn by hand to match DESIGN.md: line icons, a small-cornered tinted block
+     * behind the active icon (not Material's pill), 13 sp labels. */
     @Composable
     private fun BottomBar(nav: NavHostController, route: String) {
-        NavigationBar(containerColor = Ink.bg2, tonalElevation = androidx.compose.ui.unit.Dp(0f)) {
-            listOf("feed" to "Feed", "deals" to "Deals", "todo" to "To-do", "more" to "More").forEach { (dest, label) ->
-                val selected = when (dest) {
-                    "feed" -> route == "feed" || route.startsWith("mail") || route.startsWith("group/") || route == "search" || route.startsWith("read/")
-                    "deals" -> route == "deals" || route.startsWith("deal/")
-                    "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage", "folders", "outbox") || route.startsWith("scan/") || route.startsWith("folder/")
-                    else -> route == dest
-                }
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = { nav.go(dest) },
-                    icon = { Text(ICONS.getValue(dest), fontSize = 25.sp) },
-                    label = { Text(label, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Ink.signal, selectedTextColor = Ink.text, indicatorColor = Ink.signal.copy(alpha = 0.16f),
-                        unselectedIconColor = Ink.text3, unselectedTextColor = Ink.text3,
-                    ),
-                )
+        Column(Modifier.fillMaxWidth().background(Ink.bg2)) {
+            androidx.compose.material3.HorizontalDivider(color = Ink.line)
+            Row(Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(Triple("feed", "Feed", SiftIcons.Feed), Triple("deals", "Deals", SiftIcons.Deals), Triple("todo", "To-do", SiftIcons.Todo), Triple("more", "More", SiftIcons.More))
+                    .forEach { (dest, label, icon) ->
+                        val selected = when (dest) {
+                            "feed" -> route == "feed" || route.startsWith("mail") || route.startsWith("group/") || route == "search" || route.startsWith("read/") || route.startsWith("compose")
+                            "deals" -> route == "deals" || route.startsWith("deal/")
+                            "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage", "folders", "outbox") || route.startsWith("scan/") || route.startsWith("folder/")
+                            else -> route == dest
+                        }
+                        Column(
+                            Modifier.weight(1f).fillMaxHeight()
+                                .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.Tab, onClick = { nav.go(dest) }),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                        ) {
+                            Box(
+                                Modifier.size(width = 58.dp, height = 32.dp).background(if (selected) Ink.signal.copy(alpha = 0.14f) else Color.Transparent, Radius.sm),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(icon, contentDescription = null, tint = if (selected) Ink.signal else Ink.text3, modifier = Modifier.size(25.dp)) }
+                            Text(label, color = if (selected) Ink.text else Ink.text3, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
             }
+        }
+    }
+
+    /** The floating Write button: same corner on every list screen (like Gmail's compose). */
+    @Composable
+    private fun WriteFab(modifier: Modifier, onClick: () -> Unit) {
+        Row(
+            modifier.padding(18.dp).shadow(10.dp, Radius.lg).height(58.dp).background(Ink.signal, Radius.lg).clickable(onClick = onClick)
+                .padding(start = 18.dp, end = 22.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(SiftIcons.Pen, contentDescription = null, tint = Ink.signalInk, modifier = Modifier.size(24.dp))
+            Text("Write", color = Ink.signalInk, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp), modifier = Modifier.padding(start = 10.dp))
         }
     }
 

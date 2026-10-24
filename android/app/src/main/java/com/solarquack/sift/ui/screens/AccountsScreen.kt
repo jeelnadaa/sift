@@ -72,7 +72,7 @@ fun AccountsScreen(onScan: (String) -> Unit = {}) {
     }
     LaunchedEffect(Unit) { load() }
 
-    Column(Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Accounts", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
         error?.let { Banner(it, Ink.urgent, "Retry") { load() } }
         accounts.forEach { a ->

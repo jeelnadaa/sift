@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +65,17 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var registering by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf("") }
+    var canRegister by remember { mutableStateOf(false) }
+    LaunchedEffect(server) {
+        // ask this server whether it takes sign-ups (after the address stops changing)
+        kotlinx.coroutines.delay(400)
+        canRegister = runCatching {
+            Session.setServer(context, server)
+            Api.get(context).authOptions().registration
+        }.getOrDefault(false)
+    }
 
     Column(
         Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp, vertical = 56.dp),
@@ -82,16 +94,22 @@ fun LoginScreen(onSignedIn: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Field(server, { server = it }, "Server address", keyboard = KeyboardType.Uri)
         Field(email, { email = it }, "Email", keyboard = KeyboardType.Email)
-        Field(password, { password = it }, "Password", password = true)
+        Field(password, { password = it }, if (registering) "Password (at least 10 characters)" else "Password", password = true)
+        if (registering) Field(confirm, { confirm = it }, "Password again", password = true)
         error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodyMedium) }
-        PrimaryButton(if (busy) "Signing in…" else "Sign in", Modifier.fillMaxWidth(), enabled = !busy && server.isNotBlank() && email.isNotBlank() && password.isNotBlank()) {
+        PrimaryButton(
+            if (busy) (if (registering) "Creating your account…" else "Signing in…") else if (registering) "Create account" else "Sign in",
+            Modifier.fillMaxWidth(), enabled = !busy && server.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
+        ) {
+            if (registering && password != confirm) { error = "The two passwords don't match"; return@PrimaryButton }
             busy = true
             error = null
             scope.launch {
                 try {
                     Session.signOut(context)
                     Session.setServer(context, server)
-                    val res = Api.get(context).login(LoginRequest(email.trim(), password))
+                    val api = Api.get(context)
+                    val res = if (registering) api.register(LoginRequest(email.trim(), password)) else api.login(LoginRequest(email.trim(), password))
                     Session.signIn(context, server, res.user.email, res.token)
                     runCatching { Push.registerDevice(context) }
                     onSignedIn()
@@ -100,6 +118,11 @@ fun LoginScreen(onSignedIn: () -> Unit) {
                 } finally {
                     busy = false
                 }
+            }
+        }
+        if (canRegister) {
+            com.solarquack.sift.ui.GhostButton(if (registering) "I already have an account" else "Create an account", Modifier.fillMaxWidth()) {
+                registering = !registering; error = null
             }
         }
         Text(

@@ -130,7 +130,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
     fun add(token: String) = run((query.split(" ").filter { it.isNotBlank() && it != token } + token).joinToString(" "))
     val aiOn = sem?.aiEnabled == true
 
-    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), state = listState, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp)) {
         item {
             Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
             Text("Search", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(bottom = 8.dp))
@@ -248,7 +248,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
 /** A conversation Sift never stored (older mail found by search), read straight from Gmail. */
 @Composable
 fun ReadThreadScreen(accountId: String, threadId: String, onBack: () -> Unit, onWrite: ((String, String, String) -> Unit)? = null) {
-    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(18.dp)) {
+    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
         item {
             Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
             Text("Older mail Sift never processed, read straight from Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))

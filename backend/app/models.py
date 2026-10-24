@@ -291,6 +291,7 @@ class TokenUsage(Base):
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(120), nullable=False)
     purpose: Mapped[str] = mapped_column(String(40), default="extract", server_default="extract", nullable=False)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_tasks.id", ondelete="SET NULL"), index=True)  # set = spent by an explicit AI task
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = created()
@@ -324,6 +325,13 @@ class Folder(Base):
     # default: mail filed here notifies as usual; always: notify even digest mail; mute: never notify
     notify_mode: Mapped[str] = mapped_column(String(10), default="default", server_default="default", nullable=False)
     saved_search_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("saved_searches.id", ondelete="CASCADE"))  # set = smart folder
+    # AI filing: after the AI reads a new mail, it is filed here when its category is in
+    # {"categories": [...]} or (with "timeline": true) when it joined a company timeline.
+    ai_rule: Mapped[dict | None] = mapped_column(JSONB)
+    # Sort mail filed here into subfolders, created as needed: company, sender, or ai (by
+    # `auto_sort_instruction`, e.g. "one folder per course").
+    auto_sort: Mapped[str | None] = mapped_column(String(10))
+    auto_sort_instruction: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created()
 
 
@@ -528,3 +536,32 @@ class FollowUp(Base):
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(10), default="waiting", server_default="waiting", nullable=False)
     created_at: Mapped[datetime] = created()
+
+
+AI_TASK_KINDS = ("timelines", "todos", "sort")
+AI_TASK_STATUSES = ("queued", "running", "done", "stopped", "failed")
+
+
+class AiTask(Base):
+    """Something the user asked the AI to do over a folder (and its subfolders): build company
+    timelines, make to-dos, or sort into subfolders. Its token use is counted separately."""
+    __tablename__ = "ai_tasks"
+    __table_args__ = (
+        CheckConstraint(_in("kind", AI_TASK_KINDS), name="kind_valid"),
+        CheckConstraint(_in("status", AI_TASK_STATUSES), name="status_valid"),
+        Index("ix_ai_tasks_user_created", "user_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("folders.id", ondelete="SET NULL"))
+    folder_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    include_subfolders: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    instruction: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default="queued", server_default="queued", nullable=False)
+    total: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    done: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    changed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)  # timelines joined / to-dos made / mails moved
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

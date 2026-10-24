@@ -43,6 +43,7 @@ class FakeGmail:
         self.sent: list[str] = []
         self.fail_send: Exception | None = None
         self.n = 0
+        self.versions: dict[str, str] = {}
 
     def get_full(self, mid):
         assert mid == "orig1"
@@ -58,18 +59,22 @@ class FakeGmail:
         self.n += 1
         did = f"d{self.n}"
         self.drafts[did] = (raw, thread_id)
+        self.versions[did] = f"m{self.n}"
         return {"id": did, "message": {"id": f"m{self.n}", "threadId": thread_id or f"new{self.n}"}}
 
     def update_draft(self, did, raw, thread_id):
         if did not in self.drafts:
             raise GmailError(404, "gone")
         self.drafts[did] = (raw, thread_id)
-        return {"id": did}
+        self.n += 1
+        self.versions[did] = f"m{self.n}"
+        return {"id": did, "message": {"id": f"m{self.n}"}}
 
     def get_draft_raw(self, did):
         if did not in self.drafts:
             raise GmailError(404, "gone")
-        return self.drafts[did]
+        raw, thread = self.drafts[did]
+        return raw, thread, self.versions.get(did)
 
     def get_draft_meta(self, did):
         if did not in self.drafts:
@@ -434,3 +439,21 @@ def test_compose_settings_are_validated(client, db, world):
     assert client.patch("/api/v1/settings", headers=H(user), json={"undo_send_seconds": 99}).status_code == 422
     s = client.patch("/api/v1/settings", headers=H(user), json={"sender_name": "Jeel Nadaa", "signature": "Jeel\r\nSift"}).json()
     assert s["sender_name"] == "Jeel Nadaa" and s["signature"] == "Jeel\nSift"
+
+
+def test_two_devices_editing_one_draft_never_overwrite_each_other_silently(client, db, world):
+    user, acc, msg, g = world
+    d = new_draft(client, user, acc).json()
+    url = f"/api/v1/compose/drafts/{acc.id}/{d['draft_id']}"
+    # the laptop saves first
+    pc = client.put(url, headers=H(user), json={"to": ["asha@acme.com"], "body": "from the laptop", "base_version": d["version"]})
+    assert pc.status_code == 200 and pc.json()["version"] != d["version"]
+    # the phone still has the old version: refused, with the laptop's text to show
+    phone = client.put(url, headers=H(user), json={"to": ["asha@acme.com"], "body": "from the phone", "base_version": d["version"]})
+    assert phone.status_code == 409
+    detail = phone.json()["detail"]
+    assert detail["code"] == "draft_changed" and detail["draft"]["body"] == "from the laptop"
+    assert compose.parse(g.drafts[d["draft_id"]][0]).body == "from the laptop"
+    # "keep mine": saving without a base version overwrites on purpose
+    assert client.put(url, headers=H(user), json={"to": ["asha@acme.com"], "body": "from the phone"}).status_code == 200
+    assert compose.parse(g.drafts[d["draft_id"]][0]).body == "from the phone"

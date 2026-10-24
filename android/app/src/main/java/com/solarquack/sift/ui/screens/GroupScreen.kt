@@ -135,7 +135,7 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
     LaunchedEffect(id) { load() }
 
     val group = g
-    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(18.dp)) {
+    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
         item {
             Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
             error?.let { Banner(it, Ink.urgent) }

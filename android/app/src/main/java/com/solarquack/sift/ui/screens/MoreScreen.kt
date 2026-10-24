@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,7 +22,7 @@ import com.solarquack.sift.ui.theme.Ink
 /** Everything that is not a daily view (mobile design: Feed, Deals, To-do, More). */
 @Composable
 fun MoreScreen(onNavigate: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().background(Ink.bg).padding(18.dp)) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
         Text("More", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
         SectionLabel("Write")
         Item("Outbox", "Drafts, scheduled mail, follow-up reminders") { onNavigate("outbox") }

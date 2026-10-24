@@ -71,6 +71,10 @@ export function ComposePage() {
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
+  // set when another device (or Gmail) saved this draft since we loaded it: autosave pauses until
+  // the user loads their version or keeps this one
+  const [conflict, setConflict] = useState<DraftData | null>(null);
+  const conflictRef = useRef<DraftData | null>(null);
   const draftRef = useRef<DraftData | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -128,14 +132,27 @@ export function ComposePage() {
   latest.current = { fields: { to, cc, bcc, subject, body }, accountId, threading };
 
   /** Queue one save; resolves to the draft after it (or null when it failed). */
-  function save(): Promise<DraftData | null> {
+  function save(overwrite = false): Promise<DraftData | null> {
     const { fields: snapshot, accountId: acc, threading: thr } = latest.current;
     const run = async (): Promise<DraftData | null> => {
+      if (conflictRef.current && !overwrite) return null; // waiting for the user's choice
       setState("saving");
       const current = draftRef.current;
-      const r = await withWriteAccess(() => current
-        ? put<DraftData>(`/compose/drafts/${current.account_id}/${current.draft_id}`, snapshot)
-        : post<DraftData>("/compose/drafts", { ...snapshot, account_id: acc, ...thr }));
+      let r: DraftData | undefined;
+      try {
+        r = await withWriteAccess(() => current
+          ? put<DraftData>(`/compose/drafts/${current.account_id}/${current.draft_id}`, { ...snapshot, base_version: overwrite ? undefined : current.version })
+          : post<DraftData>("/compose/drafts", { ...snapshot, account_id: acc, ...thr }), true);
+      } catch (e) {
+        if (e instanceof ApiError && e.code === "draft_changed") {
+          const theirs = (e.body as { detail: { draft: DraftData } }).detail.draft;
+          conflictRef.current = theirs;
+          setConflict(theirs);
+          setState("idle");
+          return null;
+        }
+        toast(errorText(e));
+      }
       if (!r) { setState("error"); return null; }
       draftRef.current = r;
       setDraft(r);
@@ -164,6 +181,24 @@ export function ComposePage() {
   async function flush(): Promise<DraftData | null> {
     setDirty(false);
     return save();
+  }
+
+  function loadTheirs() {
+    const d = conflictRef.current;
+    if (!d) return;
+    conflictRef.current = null;
+    setConflict(null);
+    draftRef.current = d;
+    setDraft(d); setTo(d.to); setCc(d.cc); setBcc(d.bcc); setSubject(d.subject); setBody(d.body);
+    setDirty(false);
+    setState("saved");
+  }
+
+  function keepMine() {
+    conflictRef.current = null;
+    setConflict(null);
+    setDirty(false);
+    save(true);
   }
 
   async function changeAccount(id: string) {
@@ -310,6 +345,13 @@ export function ComposePage() {
       <section className="page" style={{ maxWidth: 1000 }}>
         {scheduled && (
           <Banner tone="ok" action="Unschedule" onAction={unschedule}>Scheduled to send {fullTime(scheduled.send_at)}. Changes you make here are sent too.</Banner>
+        )}
+        {conflict && (
+          <div className="banner warn" role="alert">
+            <span>This draft was changed on another device or in Gmail{conflict.subject ? ` (“${conflict.subject}”)` : ""}. Saving is paused so neither version is lost.</span>
+            <button className="btn btn-ghost btn-sm" onClick={loadTheirs} data-tip="Replace what's here with the other device's version">Load that version</button>
+            <button className="btn btn-ghost btn-sm" onClick={keepMine} data-tip="Save what's here over the other version">Keep mine</button>
+          </div>
         )}
         {badRecipients.length > 0 && <Banner tone="err">Check {badRecipients.map(bareOf).join(", ")}: not an email address.</Banner>}
         <div className="compose">

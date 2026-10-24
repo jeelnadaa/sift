@@ -1,6 +1,8 @@
 import { get, type AiStatus, type Usage } from "../api";
 import { Top } from "../App";
 import { Banner, useLoad } from "../components";
+import { fullTime } from "../util";
+import { TASK_DONE } from "./FolderAi";
 
 export function UsagePage() {
   const usage = useLoad(() => get<Usage>("/usage", { days: 30 }));
@@ -40,6 +42,36 @@ export function UsagePage() {
           <div className="inline" style={{ justifyContent: "space-between", marginBottom: 10 }}><b>Daily cap</b><span className="mono muted">{fmt(u?.tokens_today ?? 0)} / {fmt(u?.daily_token_cap ?? 0)}</span></div>
           <div className="bar" data-tip={`${pct}% of today's cap used`} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%`, background: pct > 85 ? "var(--warn)" : undefined }} /></div>
           <p className="dim" style={{ fontSize: 13, marginTop: 8 }}>At the cap Sift stops calling the AI until tomorrow and delivers mail as normal priority. Change the cap in Settings.</p>
+        </div>
+        <div className="grid2" style={{ marginBottom: 16 }}>
+          <div className="card"><b>Everyday AI work</b>
+            <p className="dim" style={{ fontSize: 13, margin: "4px 0 10px" }}>Done for every new mail and when you use AI features, last 30 days.</p>
+            {!u?.automatic.length ? <p className="dim">Nothing yet.</p> : (
+              <div className="stack" style={{ gap: 8 }}>
+                {u.automatic.map((a) => (
+                  <div key={a.purpose} className="inline" style={{ justifyContent: "space-between" }}>
+                    <span>{a.label}</span><span className="mono muted" data-tip={`${fmt(a.calls)} AI call${a.calls === 1 ? "" : "s"}`}>{fmt(a.tokens)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="card"><b>AI tasks you ran</b>
+            <p className="dim" style={{ fontSize: 13, margin: "4px 0 10px" }}>Work you asked for on a folder (Folders → ✦ AI for this folder).</p>
+            {!u?.tasks.length ? <p className="dim">None yet.</p> : (
+              <div className="stack" style={{ gap: 8 }}>
+                {u.tasks.map((t) => (
+                  <div key={t.id} className="inline" style={{ justifyContent: "space-between" }}>
+                    <span data-tip={`${fullTime(t.created_at)}${t.note ? `\n${t.note}` : ""}`}>
+                      {{ timelines: "Timelines", todos: "To-dos", sort: "Sorting" }[t.kind]} · {t.folder_name}
+                      <span className="dim"> · {t.status === "running" || t.status === "queued" ? "running" : `${t.changed} ${TASK_DONE[t.kind]}`}</span>
+                    </span>
+                    <span className="mono muted">{fmt(t.tokens)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="card"><b>Last 30 days</b>
           {u && u.days.length === 0 ? <p className="dim" style={{ marginTop: 10 }}>No AI calls yet.</p> : (

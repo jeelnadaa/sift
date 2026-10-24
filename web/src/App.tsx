@@ -134,6 +134,11 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
         </div>
       </aside>
       <main>
+        {location.pathname !== "/compose" && (
+          <button className="fab" onClick={() => navigate("/compose")} data-tip="Write a new mail  (C)" aria-label="Write a new mail">
+            <Icon name="pen" /><span>Write</span>
+          </button>
+        )}
         <Routes>
           <Route path="/" element={<Feed />} />
           <Route path="/mail/:id" element={<MailDetail />} />

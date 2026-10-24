@@ -113,6 +113,7 @@ export interface Account { id: string; email: string; status: "active" | "needs_
 export interface Folder {
   id: string; parent_id: string | null; name: string; color: string | null; icon: string | null; position: number;
   pinned: boolean; notify_mode: "default" | "always" | "mute"; smart: boolean; threads: number; unread: number; unread_total: number;
+  ai_rule: { categories: string[]; timeline: boolean } | null; auto_sort: "company" | "sender" | "ai" | null; auto_sort_instruction: string | null;
   children: Folder[];
 }
 export interface FolderTree { folders: Folder[]; max_depth: number; last_used_id: string | null }
@@ -150,7 +151,7 @@ export interface OutboxItem {
   send_at: string; later: boolean; follow_up_days: number | null; status: "scheduled" | "sending" | "sent" | "cancelled" | "failed"; error: string | null; sent_at: string | null;
 }
 export interface DraftData {
-  account_id: string; account_email: string; draft_id: string; thread_id: string | null; to: string[]; cc: string[]; bcc: string[];
+  account_id: string; account_email: string; draft_id: string; thread_id: string | null; version: string | null; to: string[]; cc: string[]; bcc: string[];
   subject: string; body: string; in_reply_to: string | null; references: string | null; attachments: DraftAttachment[];
   attachments_size: number; attachments_limit: number; outbox?: OutboxItem | null;
 }
@@ -161,5 +162,13 @@ export interface ReplyContext {
 }
 export interface FollowUpItem { id: string; account_id: string; thread_id: string; subject: string | null; recipients: string | null; sent_at: string; due_at: string; status: "waiting" | "replied" | "reminded" | "cancelled" }
 export interface AiStatus { ai_enabled: boolean; status: string; provider: string | null; model: string | null; key_last4: string | null; tokens_today: number; daily_token_cap: number; suggested_model: string | null }
-export interface Usage { days: { day: string; calls: number; input_tokens: number; output_tokens: number }[]; tokens_today: number; daily_token_cap: number }
+export interface AiTask {
+  id: string; folder_id: string | null; folder_name: string; kind: "timelines" | "todos" | "sort"; include_subfolders: boolean; instruction: string | null;
+  status: "queued" | "running" | "done" | "stopped" | "failed"; total: number; done: number; changed: number; note: string | null; tokens: number;
+  created_at: string; finished_at: string | null;
+}
+export interface Usage {
+  days: { day: string; calls: number; input_tokens: number; output_tokens: number }[]; tokens_today: number; daily_token_cap: number;
+  automatic: { purpose: string; label: string; calls: number; tokens: number }[]; tasks: AiTask[];
+}
 export interface GroupingStatus { grouping_enabled: "not_asked" | "yes" | "no"; prompts: number; should_ask: boolean }

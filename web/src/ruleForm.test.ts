@@ -50,7 +50,7 @@ suite("util", () => {
   });
 
   it("flattens the folder tree depth first and finds subtrees", () => {
-    const f = (id: string, children: Folder[] = []): Folder => ({ id, parent_id: null, name: id, color: null, icon: null, position: 0, pinned: false, notify_mode: "default", smart: false, threads: 0, unread: 0, unread_total: 0, children });
+    const f = (id: string, children: Folder[] = []): Folder => ({ id, parent_id: null, name: id, color: null, icon: null, position: 0, pinned: false, notify_mode: "default", smart: false, ai_rule: null, auto_sort: null, auto_sort_instruction: null, threads: 0, unread: 0, unread_total: 0, children });
     const tree = [f("a", [f("a1", [f("a1x")]), f("a2")]), f("b")];
     expect(flatten(tree).map(([x, d]) => `${x.id}:${d}`)).toEqual(["a:0", "a1:1", "a1x:2", "a2:1", "b:0"]);
     expect(flatten(tree, new Set(["a"])).map(([x]) => x.id)).toEqual(["a", "a1", "a2", "b"]);

@@ -159,11 +159,13 @@ class GmailProvider:
         meta = {"id": draft_id, "message": {"threadId": thread_id} if thread_id else {}}
         return self._upload("PUT", f"/drafts/{draft_id}", meta, raw)
 
-    def get_draft_raw(self, draft_id: str) -> tuple[bytes, str | None]:
-        """The draft's whole message (RFC 822 bytes) and its thread id."""
+    def get_draft_raw(self, draft_id: str) -> tuple[bytes, str | None, str | None]:
+        """The draft's whole message (RFC 822 bytes), its thread id, and its message id. Gmail
+        gives a draft a new message id on every update, so the id is the draft's version."""
         d = self._call("GET", f"/drafts/{draft_id}", params={"format": "raw"})
-        raw = d.get("message", {}).get("raw", "")
-        return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)), d.get("message", {}).get("threadId")
+        m = d.get("message", {})
+        raw = m.get("raw", "")
+        return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)), m.get("threadId"), m.get("id")
 
     def get_draft_meta(self, draft_id: str) -> dict:
         return self._call("GET", f"/drafts/{draft_id}", params={"format": "metadata"})

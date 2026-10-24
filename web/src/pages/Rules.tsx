@@ -4,6 +4,9 @@ import { del, get, post, put, type Category, type Draft, type Rule, type Suggest
 import { Top } from "../App";
 import { Banner, confirmDialog, errorText, Modal, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { describe } from "../ruleForm";
+import { flatten } from "../util";
+import { CATEGORY_LABELS } from "./FolderAi";
+import type { FolderTree } from "../api";
 import { actionLabel, actionTier } from "../util";
 
 export function Rules() {
@@ -40,6 +43,7 @@ export function Rules() {
     <>
       <Top title="Rules & categories"><button className="btn btn-primary btn-sm" onClick={() => navigate("/rules/new", { state: null })} data-tip="Build a rule with conditions, exceptions and an action">+ New rule</button></Top>
       <section className="page">
+        <FolderAiRules />
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="field"><label htmlFor="pe">Plain-English rule</label>
             <div className="inline">
@@ -124,5 +128,35 @@ function Categories() {
         </Modal>
       )}
     </>
+  );
+}
+
+/** Folders that file or sort mail with the AI: rules too, so they're listed here, and changed on
+ * the folder itself. */
+function FolderAiRules() {
+  const navigate = useNavigate();
+  const tree = useLoad(() => get<FolderTree>("/folders"), []);
+  const list = flatten(tree.data?.folders ?? []).map(([f]) => f).filter((f) => f.ai_rule || f.auto_sort);
+  if (!list.length) return null;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <b>Folder AI rules</b>
+      <p className="dim" style={{ fontSize: 13, margin: "4px 0 10px" }}>These run after the AI has read a new mail. Change them on the folder.</p>
+      <div className="list">
+        {list.map((f) => (
+          <div key={f.id} className="row click" onClick={() => navigate(`/folders/${f.id}`)}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: f.color ?? "var(--text-3)", flex: "none" }} />
+            <div className="main">
+              <div className="who">{f.name}</div>
+              <div className="subj">
+                {[f.ai_rule && `Files ${[...f.ai_rule.categories.map((c) => CATEGORY_LABELS[c] ?? c), ...(f.ai_rule.timeline ? ["timeline mail"] : [])].join(", ").toLowerCase()} here`,
+                  f.auto_sort && `sorts into subfolders ${f.auto_sort === "ai" ? `by “${f.auto_sort_instruction}”` : `by ${f.auto_sort}`}`].filter(Boolean).join("; ")}
+              </div>
+            </div>
+            <Tag tone="ok">AI</Tag>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

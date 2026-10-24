@@ -101,7 +101,7 @@ fun FoldersScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
         Text("Yours, in Sift. Filing never moves or changes mail in Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
         error?.let { Box(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) { Banner(it, Ink.urgent) } }
         val t = tree
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
             if (t != null && t.folders.isEmpty()) item {
                 Text("No folders yet. Make one, then file mail into it from any mail, or let a rule do it.", color = Ink.text3,
                     style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))
@@ -340,7 +340,15 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
                 }
             }
         }
-        Text(v?.folder?.name ?: "", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 18.dp, top = 2.dp))
+        var aiOpen by remember { mutableStateOf(false) }
+        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(v?.folder?.name ?: "", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f))
+            v?.folder?.takeIf { !it.smart }?.let { folder ->
+                Text(if (folder.aiRule != null || folder.autoSort != null) "✦ AI on" else "✦ AI", color = Ink.signal, style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.background(Ink.surface, Radius.md).clickable { aiOpen = true }.padding(horizontal = 12.dp, vertical = 10.dp))
+            }
+        }
+        if (aiOpen) v?.folder?.let { folder -> FolderAiSheet(folder, onDismiss = { aiOpen = false; load() }, onChanged = { load() }) }
         Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
             Field(query, { query = it }, "Search this folder", placeholder = "Sender or subject words")
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -349,7 +357,7 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
             }
         }
         error?.let { Box(Modifier.padding(horizontal = 14.dp)) { Banner(it, Ink.urgent, "Retry") { load() } } }
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp)) {
             if (v != null && v.items.isEmpty()) item {
                 Text(if (query.isBlank()) "Nothing filed here yet. Open a mail and tap File in folder." else "No mail here matches.",
                     color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))

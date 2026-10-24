@@ -1,6 +1,6 @@
 """Folders API (brief sections 13 and 18)."""
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -60,8 +60,17 @@ def create(body: FolderIn, user: User = Depends(current_user), db: Session = Dep
     return folders.folder_json(f)
 
 
+class AiRuleIn(BaseModel):
+    categories: list[str] = Field(default_factory=list, max_length=30)
+    timeline: bool = False
+
+
 class FolderPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    ai_rule: AiRuleIn | None = None  # file new mail here by what the AI understood
+    clear_ai_rule: bool = False
+    auto_sort: str | None = Field(default=None, pattern="^(company|sender|ai|off)$")  # off = stop sorting
+    auto_sort_instruction: str | None = Field(default=None, max_length=500)
     color: str | None = Field(default=None, pattern=COLOR)
     icon: str | None = Field(default=None, max_length=40)
     pinned: bool | None = None
@@ -76,7 +85,48 @@ def edit(folder_id: uuid.UUID, body: FolderPatch, user: User = Depends(current_u
     clear = tuple(k for k, on in (("color", body.clear_color), ("icon", body.clear_icon)) if on)
     _run(db, folders.edit, f, name=body.name, color=body.color, icon=body.icon, pinned=body.pinned,
          notify_mode=body.notify_mode, clear=clear)
+    if f.saved_search_id is not None and (body.ai_rule or body.auto_sort not in (None, "off")):
+        raise HTTPException(422, "a smart folder shows a search; mail can't be filed or sorted into it")
+    if body.clear_ai_rule:
+        f.ai_rule = None
+    elif body.ai_rule is not None:
+        cats = sorted({c.strip().lower() for c in body.ai_rule.categories if c.strip()})[:30]
+        f.ai_rule = {"categories": cats, "timeline": body.ai_rule.timeline} if cats or body.ai_rule.timeline else None
+    if body.auto_sort is not None:
+        f.auto_sort = None if body.auto_sort == "off" else body.auto_sort
+    if body.auto_sort_instruction is not None:
+        f.auto_sort_instruction = body.auto_sort_instruction.strip() or None
+    if f.auto_sort == "ai" and not f.auto_sort_instruction:
+        raise HTTPException(422, "say how the AI should sort, e.g. \"one folder per course\"")
+    db.commit()
     return folders.folder_json(f)
+
+
+class AiTaskIn(BaseModel):
+    kind: str = Field(pattern="^(timelines|todos|sort)$")
+    include_subfolders: bool = True
+    instruction: str | None = Field(default=None, max_length=500)  # sort: how to group (else the folder's own setting)
+
+
+@router.post("/{folder_id}/ai-tasks", status_code=202)
+def start_ai_task(folder_id: uuid.UUID, body: AiTaskIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Ask the AI to work over the mail in this folder (and its subfolders). Runs in the background."""
+    from app import folder_ai, jobs
+    from app.llm import service as llm
+    from app.models import AiTask
+
+    f = _folder(db, user, folder_id)
+    if f.saved_search_id is not None:
+        raise HTTPException(422, "AI tasks work on folders mail is filed into, not on smart folders")
+    needs_ai = body.kind != "sort" or body.instruction or f.auto_sort in (None, "ai", "company")
+    if needs_ai and not llm.ai_enabled(db, user.id):
+        raise HTTPException(409, "Add an API key to enable AI tasks")
+    if db.scalar(select(AiTask).where(AiTask.folder_id == f.id, AiTask.status.in_(("queued", "running")))):
+        raise HTTPException(409, "An AI task is already running on this folder")
+    task = folder_ai.create_task(db, user.id, f, body.kind, body.include_subfolders, body.instruction)
+    db.commit()
+    jobs.enqueue_sync("ai_task", {"task_id": str(task.id)}, dedupe_key=f"ai_task:{task.id}")
+    return folder_ai.task_json(db, task)
 
 
 class MoveIn(BaseModel):
@@ -190,8 +240,18 @@ def _file(db: Session, user: User, f, body: FileIn) -> dict:
     msgs = _messages(db, user, body.message_ids)
 
     def run():
-        threads = {(m.account_id, m.thread_id) for m in msgs}
-        return sum(folders.file_thread(db, user.id, f, a, t) for a, t in threads)
+        from app import folder_ai
+
+        latest: dict[tuple, Message] = {}
+        for m in msgs:
+            k = (m.account_id, m.thread_id)
+            if k not in latest or (m.received_at or datetime.min.replace(tzinfo=UTC)) > (latest[k].received_at or datetime.min.replace(tzinfo=UTC)):
+                latest[k] = m
+        filed = sum(folders.file_thread(db, user.id, f, a, t) for a, t in latest)
+        if f.auto_sort:  # a folder that sorts itself: the mail goes on into its subfolder
+            for m in latest.values():
+                folder_ai.sort_if_needed(db, f, m)
+        return filed
 
     return {"filed": _run(db, run), "folder_id": str(f.id)}
 

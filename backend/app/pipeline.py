@@ -21,7 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import grouping, heuristics, notify, opportunities, outbox, rules, todos, user_settings
+from app import folder_ai, grouping, heuristics, notify, opportunities, outbox, rules, todos, user_settings
 from app.fingerprint import fingerprint, normalize_subject
 from app.llm import service as llm
 from app.mail.base import AuthRevoked, MailProvider
@@ -159,6 +159,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
         msg.priority, msg.category, msg.status = "normal", msg.category or "other", "processed"
         outcome = Outcome(msg.id, "normal", "error")
 
+    folder_ai.on_processed(db, msg)  # AI filing and auto-sort into subfolders; never raises
     snooze_service.on_new_mail(db, msg)  # a reply wakes its snoozed conversation
     outbox.on_new_mail(db, msg, account)  # ...and resolves a "remind me if no reply"
     if msg.status == "processed":
@@ -291,11 +292,15 @@ def _parse_deadline(value: str | None) -> datetime | None:
     return d if d.tzinfo else None
 
 
-def _timeline_and_todos(db: Session, msg: Message, ext: dict) -> dict:
+def _timeline_and_todos(db: Session, msg: Message, ext: dict, *, timeline_too: bool = True, todos_too: bool = True,
+                        force_timeline: bool = False) -> dict:
+    """Company timeline, to-do and deadline reminder from the AI's reading of a mail. AI tasks on
+    a folder use the flags: only timelines (forced: the user said this folder is about companies)
+    or only to-dos."""
     ext = dict(ext)
     kind = opportunities.EVENT_KIND.get(ext.get("category") or "")
     opp = None
-    if kind or ext.get("opportunity") not in (None, "none"):
+    if timeline_too and (kind or ext.get("opportunity") not in (None, "none") or (force_timeline and ext.get("company"))):
         keys = {}
         for k, oid in (ext.get("opportunity_keys") or {}).items():
             o = db.get(Opportunity, uuid.UUID(oid))
@@ -312,6 +317,8 @@ def _timeline_and_todos(db: Session, msg: Message, ext: dict) -> dict:
             # unresolved: the notification asks "which company?" (up to 3 recent drives, or "new")
             ext["company_question"] = [{"id": str(o.id), "name": o.company} for o in result.candidates]
 
+    if not todos_too:
+        return ext
     deadline = _parse_deadline(ext.get("deadline"))
     title = (ext.get("summary") or msg.subject or "Mail needs action").strip()
     if opp is not None and opp.company.lower() not in title.lower():

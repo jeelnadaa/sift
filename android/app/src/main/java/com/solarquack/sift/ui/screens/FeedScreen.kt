@@ -138,10 +138,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 Text("⌕ Search", color = Ink.text2, style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.background(Ink.surface, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 10.dp))
             }
-            onWrite?.let { go ->
-                Text("✎ Write", color = Ink.signalInk, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 8.dp).background(Ink.signal, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 10.dp))
-            }
+
         }
         accounts.filter { it.status == "active" && it.stalled }.forEach { a ->
             Box(Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
@@ -173,7 +170,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             Text("Saved and searchable, never notified. Check here if a rule looks too greedy.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
         }
         PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.fillMaxSize()) {
-            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
                 error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
                 if (!loading && error == null && items.isEmpty()) {
                     item {

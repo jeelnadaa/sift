@@ -58,6 +58,7 @@ import com.solarquack.sift.data.DraftFieldsIn
 import com.solarquack.sift.data.OutboxDto
 import com.solarquack.sift.data.SendIn
 import com.solarquack.sift.data.WriteAccessAccount
+import com.solarquack.sift.data.draftChanged
 import com.solarquack.sift.data.userMessage
 import com.solarquack.sift.data.writeAccessNeeded
 import com.solarquack.sift.ui.Banner
@@ -129,6 +130,9 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
     var sending by remember { mutableStateOf<OutboxDto?>(null) }
     var needAccess by remember { mutableStateOf<Pair<List<WriteAccessAccount>, suspend () -> Unit>?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
+    // set when another device (or Gmail) saved this draft since it was loaded here: autosave
+    // pauses until the user loads that version or keeps this one
+    var conflict by remember { mutableStateOf<DraftDto?>(null) }
     val lock = remember { Mutex() }
 
     fun toast(s: String) = android.widget.Toast.makeText(context, s, android.widget.Toast.LENGTH_SHORT).show()
@@ -163,29 +167,39 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
 
     /** Run a write; when the account needs write access, ask once and retry. */
     suspend fun <T> withAccess(block: suspend () -> T): T? = try { block() } catch (t: Throwable) {
+        val theirs = t.draftChanged()
         val need = t.writeAccessNeeded()
-        if (need != null) needAccess = need to { block() } else info = t.userMessage()
+        when {
+            theirs != null -> { conflict = theirs; saveText = "" }
+            need != null -> needAccess = need to { block() }
+            else -> info = t.userMessage()
+        }
         null
     }
 
-    suspend fun save(): DraftDto? = lock.withLock {
+    suspend fun save(overwrite: Boolean = false): DraftDto? = lock.withLock {
+        if (conflict != null && !overwrite) return@withLock null
         saveText = "Saving to Gmail drafts…"
-        val fields = DraftFieldsIn(parseList(to), parseList(cc), parseList(bcc), subject, body)
         val current = draft
-        val r = withAccess {
-            val api = Api.get(context)
-            if (current != null) api.saveDraft(current.accountId, current.draftId, fields)
-            else api.createDraft(DraftCreateIn(accountId, fields.to, fields.cc, fields.bcc, fields.subject, fields.body, threadId, inReplyTo, references, forwardGmailId))
-        }
-        if (r != null) { draft = r; saveText = "Saved in Gmail drafts" } else saveText = "Couldn't save"
+        val fields = DraftFieldsIn(parseList(to), parseList(cc), parseList(bcc), subject, body, if (overwrite) null else current?.version)
+        val r = try {
+            withAccess {
+                val api = Api.get(context)
+                if (current != null) api.saveDraft(current.accountId, current.draftId, fields)
+                else api.createDraft(DraftCreateIn(accountId, fields.to, fields.cc, fields.bcc, fields.subject, fields.body, threadId, inReplyTo, references, forwardGmailId))
+            }
+        } catch (t: Throwable) { if (t is kotlinx.coroutines.CancellationException) throw t; null }
+        if (r != null) { draft = r; saveText = "Saved in Gmail drafts" } else if (conflict == null) saveText = "Couldn't save"
         r
     }
 
+    // Autosave 1.5 s after the last change. The save itself runs in the screen's scope, not in
+    // this effect, so a keystroke during a save can't cancel it halfway.
     LaunchedEffect(to, cc, bcc, subject, body, dirty, ready) {
         if (!ready || !dirty || accountId.isEmpty()) return@LaunchedEffect
         delay(1500)
         dirty = false
-        save()
+        scope.launch { save() }
     }
 
     // leaving: keep what was typed (saved in the background, the screen may be gone by then)
@@ -258,6 +272,12 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
                     catch (t: Throwable) { sending = null; onDone(t.userMessage()) }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            GhostButton("Send now", Modifier.fillMaxWidth()) {
+                scope.launch {
+                    try { Api.get(context).sendNow(r.id); onDone("Sending now") } catch (t: Throwable) { onDone(t.userMessage()) }
+                }
+            }
         }
         return
     }
@@ -283,6 +303,17 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
             Spacer(Modifier.height(10.dp))
         }
         info?.let { Banner(it, Ink.urgent, "OK") { info = null }; Spacer(Modifier.height(10.dp)) }
+        conflict?.let { theirs ->
+            Banner("This draft was changed on another device or in Gmail. Saving is paused so neither version is lost.", Ink.warn)
+            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GhostButton("Load that version", Modifier.weight(1f)) {
+                    conflict = null; dirty = false; draft = theirs
+                    to = theirs.to.joinToString(", "); cc = theirs.cc.joinToString(", "); bcc = theirs.bcc.joinToString(", ")
+                    subject = theirs.subject; body = theirs.body; saveText = "Saved in Gmail drafts"
+                }
+                GhostButton("Keep mine", Modifier.weight(1f)) { conflict = null; dirty = false; scope.launch { save(overwrite = true) } }
+            }
+        }
 
         // From: fixed for replies, forwards and drafts already saved in an account
         SectionLabel("From")

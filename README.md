@@ -185,9 +185,23 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 
 **If mail stops coming in:** Sift records every check. If an account can't be checked for 15 minutes, your phone gets "Sift can't check your mail", the feed shows a red banner with the reason, and Accounts shows when each account was last checked. When checks work again you get "Sift is checking mail again"; mail that arrived meanwhile is caught up automatically. `/health` also reports `mail_checks` (ok / stalled (n)) for uptime monitors.
 
+**Accounts and sign-up:** the sign-in page (web and phone) has **Create an account** while `REGISTRATION=open` (the default; sign-ups are rate-limited per network address, passwords need 10+ characters). Set `REGISTRATION=closed` in `.env` to hide it and add users with `python -m app.cli create-user EMAIL` + `set-password`. Every new account starts with the bank rule and a **Placements** folder (see below).
+
+**AI on folders:** open a folder → **✦ AI for this folder** (phone: ✦ AI next to the folder name).
+- *File new mail here when the AI reads it as…* placement drive, online test, interview, result, recruiter… or mail that joins a company timeline. Runs after the AI has read a new mail (needs a key).
+- *Sort into subfolders:* by company (one subfolder per company, made as needed, no extra AI cost), by sender (no AI), or by your own instruction ("one folder per course code"; one small AI call per mail). Filing by hand into such a folder sorts too.
+- *Ask the AI* to build company timelines, make to-dos, or sort the mail already in the folder (and its subfolders, up to 300 mails a run). Mail the AI never read is read once. You get a notification when it's done.
+- The starter **Placements** folder does this out of the box: placement mail is filed there and sorted into one subfolder per company, and those mails form the company timelines (Deals). The Rules page lists these folder AI rules.
+- Token usage now shows **Everyday AI work** (reading each new mail, search, rules, replies, sorting) as one line each, and **AI tasks you ran** one by one with their tokens.
+
+**How company timelines work:** when the AI reads a new mail (with your key) it returns its category, the company, deadlines and links, and which of your current companies it belongs to (it is shown the list). A placement-type mail (drive, registration, test, interview, result, recruiter) is put on that company's timeline, or a new one is started; when the AI isn't sure, the notification asks you which company. Mail in the same conversation, from a domain you confirmed for a company, or arriving right after a related mail joins the same timeline without asking the AI again.
+
+**Starting over:** `python -m app.cli reset-data EMAIL --yes` clears everything Sift stored for that user (mail copies, timelines, to-dos, folders, rules, tags, notifications, token history, demo account) and keeps sign-in, connected Gmail accounts, the AI key, phones and settings; then adds the starter setup again. Gmail itself is not touched. Take a backup first (§9).
+
 **Writing mail (Phase 4):** web: **Write** at the top of the sidebar (or press `C`); on a mail, **Reply** (`R`), **Reply all** (`A`) and **Forward** (`F`), also under each message of a conversation. Phone: **✎ Write** on the feed, **↩ Reply** / **↪ Forward** on a mail (Reply all is in Actions), and More → Outbox.
-- Every mail you write is a **Gmail draft** from the first change on (autosaved after you stop typing), so you can finish it in Gmail too. Attachments (25 MB in total) are added to the draft; a forward carries the original's attachments.
-- **Send** waits for the undo window (Settings → Writing mail: Off, 5, 10 (default), 20 or 30 s) and shows **Undo**; undone mail goes back to your drafts.
+- Every mail you write is a **Gmail draft** from the first change on (autosaved after you stop typing), so you can finish it in Gmail too. If the same draft is open on two devices, a save never overwrites the other one silently: you get "changed on another device" with **Load that version** or **Keep mine**.
+- New mail: the floating **Write** button (bottom right on the web and on the phone's lists), the sidebar's Write, or `C`. Attachments (25 MB in total) are added to the draft; a forward carries the original's attachments.
+- **Send** waits for the undo window (Settings → Writing mail: Off, 5, 10 (default), 20 or 30 s) and shows **Undo** (and **Send now** on the phone); undone mail goes back to your drafts.
 - **Send later** (this evening, tomorrow morning, Monday morning, or any day and time) keeps it as a draft and Sift sends it on time. **Sift's server must be running then**; if it was off, the mail goes out as soon as it is back.
 - **Remind me if no reply** (1, 2, 3 or 7 days): a notification if nobody else has written in the conversation by then.
 - **Draft with AI** (replies, with your own key): pick "Accept", "Decline politely"… or say what to write. Phone numbers and IDs are hidden from the AI; it only fills the text box and nothing is sent until you press Send. Without a key the button says to add one.

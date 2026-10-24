@@ -52,6 +52,8 @@ class FakeLlm:
         if system.startswith("You turn a person's description"):
             q = getattr(self, "search_query", "from:walmart newer_than:7d")
             return LlmResult(text=json.dumps({"query": q, "explanation": "Mail from Walmart in the last 7 days"}), input_tokens=90, output_tokens=20)
+        if system.startswith("You file one email into a subfolder"):
+            return LlmResult(text=json.dumps({"folder": getattr(self, "sort_folder", "Course Updates")}), input_tokens=50, output_tokens=5)
         if system.startswith("You draft an email reply"):
             return LlmResult(text=json.dumps({"body": "Thanks, I'll attend. [your availability]"}), input_tokens=200, output_tokens=20)
         if system.startswith("Convert the user's sentence"):
