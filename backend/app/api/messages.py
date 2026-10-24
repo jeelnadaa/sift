@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
-from app import rule_tools
+from app import grouping, rule_tools
 from app.db import get_db
 from app.mail.base import AuthRevoked
 from app.mail.message import extract_body
@@ -48,9 +48,12 @@ def list_messages(
     view: str = Query(default="feed", pattern="^(feed|silenced|all)$"),
     before: datetime | None = None,
     limit: int = Query(default=50, ge=1, le=200),
+    grouped: bool = False,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
+    """`grouped=true` folds mail in groups into group rows when the user turned grouping on
+    (brief section 21); urgent mail keeps its own row too. Items then carry "type"."""
     q = select(Message).where(Message.user_id == user.id)
     if view == "feed":
         q = q.where(Message.status.in_(FEED_STATUSES))
@@ -60,10 +63,16 @@ def list_messages(
         q = q.where(Message.priority == priority)
     if account_id:
         q = q.where(Message.account_id == account_id)
+    accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id))}
+    if grouped and view == "feed" and grouping.enabled(db, user.id):
+        rows, groups, next_before = grouping.feed_page(db, user.id, q, before, limit)
+        items = [{"type": "mail", **message_json(m, accounts.get(m.account_id))} for m in rows]
+        items += [grouping.group_json(g, ms) for g, ms in groups]
+        items.sort(key=lambda i: i["received_at"] or "", reverse=True)
+        return {"items": items, "next_before": next_before, "grouped": True}
     if before:
         q = q.where(Message.received_at < before)
     rows = list(db.scalars(q.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
-    accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id))}
     items = [message_json(m, accounts.get(m.account_id)) for m in rows]
     return {"items": items, "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None}
 

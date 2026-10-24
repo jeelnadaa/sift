@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import fcm, folders, user_settings
+from app import fcm, folders, grouping, user_settings
 from app.models import Device, GmailAccount, Message, Notification
 
 log = logging.getLogger(__name__)
@@ -73,10 +73,10 @@ def payload(n: Notification, msg: Message, account: GmailAccount) -> dict:
 def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notification | None:
     if msg.priority not in NOTIFY_PRIORITIES:
         return None
-    # Per-folder setting (brief section 18). Mute never holds back urgent mail; "always" raises
-    # digest mail to a normal (sounding) notification.
+    # Per-folder setting (brief section 18) and muted groups (section 21). Mute never holds back
+    # urgent mail; a folder set to "always" raises digest mail to a normal (sounding) notification.
     mode = folders.notify_mode_for(db, msg)
-    if mode == "mute" and msg.priority != "urgent":
+    if msg.priority != "urgent" and mode != "always" and (mode == "mute" or grouping.is_muted(db, msg)):
         return None
     priority = "normal" if mode == "always" and msg.priority == "digest" else msg.priority
     stmt = insert(Notification).values(

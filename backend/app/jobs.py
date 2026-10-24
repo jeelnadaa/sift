@@ -71,7 +71,19 @@ def handle_onboarding_scan(payload: dict) -> None:
     run(payload["scan_id"])
 
 
+def handle_grouping_backfill(payload: dict) -> None:
+    import uuid
+
+    from app.grouping import backfill
+
+    with get_sessionmaker()() as db:
+        n = backfill(db, uuid.UUID(payload["user_id"]))
+        db.commit()
+    log.info("grouping backfill grouped %d mail(s)", n)
+
+
 HANDLERS = {
+    "grouping_backfill": handle_grouping_backfill,
     "onboarding_scan": handle_onboarding_scan,
     "send_reminders": handle_send_reminders,
     "resend_notifications": handle_resend_notifications,
