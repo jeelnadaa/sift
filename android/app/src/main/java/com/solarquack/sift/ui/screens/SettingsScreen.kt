@@ -221,6 +221,38 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
             }
         }
 
+        settings?.let { s ->
+            SectionLabel("Writing mail")
+            SiftCard {
+                var name by remember(s.senderName) { mutableStateOf(s.senderName) }
+                var sig by remember(s.signature) { mutableStateOf(s.signature) }
+                com.solarquack.sift.ui.Field(name, { name = it.take(100) }, "Your name", placeholder = "Shown next to your address")
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = sig, onValueChange = { sig = it.take(2000) }, label = { Text("Signature") }, minLines = 3, maxLines = 8,
+                    modifier = Modifier.fillMaxWidth(), shape = com.solarquack.sift.ui.theme.Radius.md,
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = Ink.signal, unfocusedBorderColor = Ink.line2,
+                        focusedLabelColor = Ink.signal, unfocusedLabelColor = Ink.text3, cursorColor = Ink.signal, focusedContainerColor = Ink.bg2, unfocusedContainerColor = Ink.bg2),
+                )
+                if (name.trim() != s.senderName || sig != s.signature) {
+                    Spacer(Modifier.height(8.dp))
+                    PrimaryButton("Save") {
+                        scope.launch {
+                            try {
+                                settings = Api.get(context).patchSettings(buildJsonObject { put("sender_name", JsonPrimitive(name.trim())); put("signature", JsonPrimitive(sig)) })
+                            } catch (t: Throwable) { error = t.userMessage() }
+                        }
+                    }
+                }
+                Text("Undo send", color = Ink.text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 14.dp))
+                Text("How long you can take a mail back after pressing Send", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 5, 10, 20, 30).forEach { n -> com.solarquack.sift.ui.Chip(if (n == 0) "Off" else "$n s", s.undoSendSeconds == n) { patch("undo_send_seconds", n) } }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         SectionLabel("Mail")
         settings?.let { s ->
             SiftCard {

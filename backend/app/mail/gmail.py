@@ -4,6 +4,8 @@ Quota (per user, per minute: 6,000 units): history.list = 2, messages.get = 20 (
 watch = 100. Polling every 5 s costs 24 units per account per minute.
 """
 import base64
+import json
+import secrets
 
 import httpx
 
@@ -11,6 +13,7 @@ from app.mail.base import AuthRevoked, Changes, CursorExpired, Profile, Watch
 from app.mail.message import METADATA_HEADERS
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
+UPLOAD = "https://gmail.googleapis.com/upload/gmail/v1/users/me"
 SKIP_LABELS = {"DRAFT", "SENT"}  # mail I wrote is not "new mail"
 
 
@@ -26,8 +29,10 @@ class GmailProvider:
         self._headers = {"Authorization": f"Bearer {access_token}"}
 
     def _call(self, method: str, path: str, **kw) -> dict:
-        r = self._client.request(method, API + path, headers=self._headers, **kw)
-        if r.status_code == 200:
+        return self._handle(self._client.request(method, API + path, headers=self._headers, **kw))
+
+    def _handle(self, r: httpx.Response) -> dict:
+        if 200 <= r.status_code < 300:
             return r.json() if r.content else {}
         try:
             message = r.json().get("error", {}).get("message", "")
@@ -132,6 +137,47 @@ class GmailProvider:
 
     def create_label(self, name: str) -> dict:
         return self._call("POST", "/labels", json={"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"})
+
+    # ---- drafts and sending (Phase 4; gmail.modify covers both) ------------------------------------
+
+    def _upload(self, method: str, path: str, metadata: dict, raw: bytes) -> dict:
+        """multipart/related upload: JSON metadata (e.g. the thread) + the whole message as
+        message/rfc822, so large attachments don't need base64 inside JSON."""
+        boundary = "sift-" + secrets.token_hex(12)
+        body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{json.dumps(metadata)}\r\n"
+                f"--{boundary}\r\nContent-Type: message/rfc822\r\n\r\n").encode() + raw + f"\r\n--{boundary}--\r\n".encode()
+        headers = {**self._headers, "Content-Type": f"multipart/related; boundary={boundary}"}
+        r = self._client.request(method, UPLOAD + path, params={"uploadType": "multipart"}, headers=headers, content=body, timeout=120)
+        return self._handle(r)
+
+    def create_draft(self, raw: bytes, thread_id: str | None) -> dict:
+        """Returns the Draft: {"id", "message": {"id", "threadId"}}."""
+        meta = {"message": {"threadId": thread_id}} if thread_id else {"message": {}}
+        return self._upload("POST", "/drafts", meta, raw)
+
+    def update_draft(self, draft_id: str, raw: bytes, thread_id: str | None) -> dict:
+        meta = {"id": draft_id, "message": {"threadId": thread_id} if thread_id else {}}
+        return self._upload("PUT", f"/drafts/{draft_id}", meta, raw)
+
+    def get_draft_raw(self, draft_id: str) -> tuple[bytes, str | None]:
+        """The draft's whole message (RFC 822 bytes) and its thread id."""
+        d = self._call("GET", f"/drafts/{draft_id}", params={"format": "raw"})
+        raw = d.get("message", {}).get("raw", "")
+        return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)), d.get("message", {}).get("threadId")
+
+    def get_draft_meta(self, draft_id: str) -> dict:
+        return self._call("GET", f"/drafts/{draft_id}", params={"format": "metadata"})
+
+    def list_drafts(self, limit: int = 25) -> list[dict]:
+        return self._call("GET", "/drafts", params={"maxResults": limit}).get("drafts", [])
+
+    def delete_draft(self, draft_id: str) -> None:
+        """Discards a draft (the user's own unsent text; Gmail has no trash for drafts)."""
+        self._call("DELETE", f"/drafts/{draft_id}")
+
+    def send_draft(self, draft_id: str) -> dict:
+        """Sends it; returns the sent Message ({"id", "threadId", "labelIds"})."""
+        return self._call("POST", "/drafts/send", json={"id": draft_id})
 
     def start_watch(self, topic: str) -> Watch:
         w = self._call("POST", "/watch", json={"topicName": topic, "labelIds": ["INBOX"], "labelFilterBehavior": "INCLUDE"})

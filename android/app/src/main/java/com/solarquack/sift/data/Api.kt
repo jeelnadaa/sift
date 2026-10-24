@@ -62,6 +62,31 @@ interface SiftApi {
     @GET("api/v1/settings") suspend fun settings(): SettingsDto
     @PATCH("api/v1/settings") suspend fun patchSettings(@Body changes: JsonObject): SettingsDto
 
+    // ---- writing mail (Phase 4) ----
+    @GET("api/v1/compose/context") suspend fun replyContext(
+        @Query("mode") mode: String, @Query("message_id") messageId: String? = null,
+        @Query("account_id") accountId: String? = null, @Query("gmail_id") gmailId: String? = null,
+    ): ReplyContextDto
+    @POST("api/v1/compose/drafts") suspend fun createDraft(@Body body: DraftCreateIn): DraftDto
+    @GET("api/v1/compose/drafts") suspend fun drafts(): DraftList
+    @GET("api/v1/compose/drafts/{account}/{draft}") suspend fun draft(@Path("account") accountId: String, @Path("draft") draftId: String): DraftDto
+    @PUT("api/v1/compose/drafts/{account}/{draft}") suspend fun saveDraft(@Path("account") accountId: String, @Path("draft") draftId: String, @Body body: DraftFieldsIn): DraftDto
+    @DELETE("api/v1/compose/drafts/{account}/{draft}") suspend fun discardDraft(@Path("account") accountId: String, @Path("draft") draftId: String): OkResponse
+    @POST("api/v1/compose/drafts/{account}/{draft}/attachments") suspend fun addAttachment(
+        @Path("account") accountId: String, @Path("draft") draftId: String, @Query("filename") filename: String, @Body file: okhttp3.RequestBody,
+    ): DraftDto
+    @DELETE("api/v1/compose/drafts/{account}/{draft}/attachments/{index}") suspend fun removeAttachment(
+        @Path("account") accountId: String, @Path("draft") draftId: String, @Path("index") index: Int,
+    ): DraftDto
+    @POST("api/v1/compose/drafts/{account}/{draft}/send") suspend fun send(@Path("account") accountId: String, @Path("draft") draftId: String, @Body body: SendIn): OutboxDto
+    @GET("api/v1/outbox") suspend fun outbox(): OutboxList
+    @POST("api/v1/outbox/{id}/cancel") suspend fun cancelSend(@Path("id") id: String): OutboxDto
+    @POST("api/v1/outbox/{id}/send-now") suspend fun sendNow(@Path("id") id: String): OutboxDto
+    @PATCH("api/v1/outbox/{id}") suspend fun reschedule(@Path("id") id: String, @Body body: SendAtIn): OutboxDto
+    @GET("api/v1/follow-ups") suspend fun followUps(): FollowUpList
+    @POST("api/v1/follow-ups/{id}/cancel") suspend fun cancelFollowUp(@Path("id") id: String): FollowUpDto
+    @POST("api/v1/compose/ai-draft") suspend fun aiDraft(@Body body: AiDraftIn): AiDraftOut
+
     @GET("api/v1/ai") suspend fun ai(): AiStatus
     @PUT("api/v1/ai/key") suspend fun saveKey(@Body body: KeyIn): AiStatus
     @POST("api/v1/ai/test") suspend fun testKey(): AiStatus
@@ -147,7 +172,8 @@ object Api {
         cached?.let { if (it.first == key) return it.second }
         val client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)  // attachments and sending go through Gmail
+            .writeTimeout(120, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
                 if (token != null) req.header("Authorization", "Bearer $token")

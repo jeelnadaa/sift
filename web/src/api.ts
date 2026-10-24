@@ -63,6 +63,23 @@ export const put = <T,>(path: string, body: unknown) => request<T>("PUT", path, 
 export const patch = <T,>(path: string, body: unknown) => request<T>("PATCH", path, body);
 export const del = <T,>(path: string, query?: Record<string, unknown>) => request<T>("DELETE", path, undefined, query);
 
+/** Sends a file as the raw request body (its type in Content-Type), e.g. a mail attachment. */
+export async function upload<T>(path: string, file: File, query: Record<string, string>): Promise<T> {
+  const url = new URL("/api/v1" + path, location.origin);
+  for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+  const headers: Record<string, string> = { "Content-Type": file.type || "application/octet-stream" };
+  const token = session.token();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res: Response;
+  try { res = await fetch(url, { method: "POST", headers, body: file }); } catch { throw new ApiError(0, "Can't reach the Sift server."); }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    if (res.status === 401) { session.clear(); onSignedOut(); }
+    throw new ApiError(res.status, res.status === 413 ? "Attachments are limited to 25 MB in total." : detail(data, res.status), data);
+  }
+  return data as T;
+}
+
 // ---- types (mirror the API's JSON) ----
 
 export type Priority = "urgent" | "normal" | "digest" | "silent";
@@ -123,7 +140,26 @@ export interface Todo { id: string; title: string; notes: string | null; due_at:
 export interface ScanSender { key: string; kind: string; name: string | null; count: number; sample_subject: string | null; hints: string[]; suggested: string }
 export interface Scan { id: string; account_id: string; status: string; scanned: number; senders: ScanSender[]; error: string | null; applied_at: string | null }
 
-export interface Settings { timezone: string; daily_token_cap: number; resend_urgent: boolean; resend_after_minutes: number; resend_limit: number; grouping_enabled: string; load_remote_images: boolean }
+export interface Settings { timezone: string; daily_token_cap: number; resend_urgent: boolean; resend_after_minutes: number; resend_limit: number; grouping_enabled: string; load_remote_images: boolean;
+  sender_name: string; signature: string; undo_send_seconds: number }
+
+// ---- writing mail (Phase 4) ----
+export interface DraftAttachment { index: number; filename: string; mime: string; size: number }
+export interface OutboxItem {
+  id: string; account_id: string; account_email?: string | null; draft_id: string; thread_id: string | null; subject: string | null; recipients: string | null;
+  send_at: string; later: boolean; follow_up_days: number | null; status: "scheduled" | "sending" | "sent" | "cancelled" | "failed"; error: string | null; sent_at: string | null;
+}
+export interface DraftData {
+  account_id: string; account_email: string; draft_id: string; thread_id: string | null; to: string[]; cc: string[]; bcc: string[];
+  subject: string; body: string; in_reply_to: string | null; references: string | null; attachments: DraftAttachment[];
+  attachments_size: number; attachments_limit: number; outbox?: OutboxItem | null;
+}
+export interface DraftSummary { account_id: string; account_email: string; draft_id: string; thread_id: string | null; subject: string; to: string; snippet: string; updated_ms: number; outbox: OutboxItem | null }
+export interface ReplyContext {
+  account_id: string; account_email: string; mode: string; to: string[]; cc: string[]; subject: string; body: string;
+  in_reply_to: string | null; references: string | null; thread_id: string | null; forward_gmail_id: string | null; attachments: { filename: string; mime: string; size: number }[];
+}
+export interface FollowUpItem { id: string; account_id: string; thread_id: string; subject: string | null; recipients: string | null; sent_at: string; due_at: string; status: "waiting" | "replied" | "reminded" | "cancelled" }
 export interface AiStatus { ai_enabled: boolean; status: string; provider: string | null; model: string | null; key_last4: string | null; tokens_today: number; daily_token_cap: number; suggested_model: string | null }
 export interface Usage { days: { day: string; calls: number; input_tokens: number; output_tokens: number }[]; tokens_today: number; daily_token_cap: number }
 export interface GroupingStatus { grouping_enabled: "not_asked" | "yes" | "no"; prompts: number; should_ask: boolean }

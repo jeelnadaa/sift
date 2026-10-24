@@ -55,7 +55,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit, onOpenGroup: (String) -> Unit = {}, onSearch: (() -> Unit)? = null) {
+fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit, onOpenGroup: (String) -> Unit = {}, onSearch: (() -> Unit)? = null, onWrite: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
@@ -136,7 +136,11 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             Text(if (silenced) "Silenced" else "Feed", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f))
             onSearch?.let { go ->
                 Text("⌕ Search", color = Ink.text2, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.background(Ink.surface, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 8.dp))
+                    modifier = Modifier.background(Ink.surface, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 10.dp))
+            }
+            onWrite?.let { go ->
+                Text("✎ Write", color = Ink.signalInk, style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 8.dp).background(Ink.signal, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 10.dp))
             }
         }
         accounts.filter { it.status == "active" && it.stalled }.forEach { a ->

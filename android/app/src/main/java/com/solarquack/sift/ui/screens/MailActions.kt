@@ -94,7 +94,7 @@ fun MailActionsButton(m: MessageDto, extra: List<SheetItem>, onChanged: () -> Un
     )
     val all = gmail + extra + danger
 
-    PrimaryButton("Actions", modifier = Modifier.fillMaxWidth()) { sheetOpen = true }
+    GhostButton("Actions…", modifier = Modifier.fillMaxWidth()) { sheetOpen = true }
 
     if (sheetOpen) {
         ModalBottomSheet(
@@ -128,36 +128,10 @@ fun MailActionsButton(m: MessageDto, extra: List<SheetItem>, onChanged: () -> Un
     }
 
     needAccess?.let { (accounts, retry) ->
-        AlertDialog(
-            onDismissRequest = { needAccess = null },
-            title = { Text("Allow Sift to change mail?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Archive, labels, read/unread, star, trash and snooze change mail in Gmail, so Google asks once per account. Sift never sends or deletes mail on its own.",
-                        color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
-                    accounts.forEach { a ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(a.email, color = Ink.text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            Text("Allow in Google", color = Ink.signal, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable {
-                                scope.launch {
-                                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.get(context).writeAccessUrl(a.id).authUrl))) }
-                                    catch (t: Throwable) { onInfo(t.userMessage()) }
-                                }
-                            }.padding(6.dp))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                PrimaryButton("I've allowed it, try again") {
-                    val r = retry
-                    needAccess = null
-                    scope.launch { try { r() } catch (t: Throwable) { onInfo(t.userMessage()) } }
-                }
-            },
-            dismissButton = { TextButton(onClick = { needAccess = null }) { Text("Not now", color = Ink.text2) } },
-            containerColor = Ink.surface, shape = Radius.xl,
-        )
+        WriteAccessDialog(accounts, onDismiss = { needAccess = null }, onInfo = onInfo) {
+            needAccess = null
+            scope.launch { try { retry() } catch (t: Throwable) { onInfo(t.userMessage()) } }
+        }
     }
 
     if (snoozing) SnoozeDialog(onDismiss = { snoozing = false }) { until ->
@@ -229,6 +203,38 @@ private fun SnoozeDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        containerColor = Ink.surface, shape = Radius.xl,
+    )
+}
+
+/** "Allow Sift to change mail?": opens Google's page for each account; "try again" re-runs the
+ * action that needed it (mail actions, and writing and sending mail). */
+@Composable
+fun WriteAccessDialog(accounts: List<WriteAccessAccount>, onDismiss: () -> Unit, onInfo: (String) -> Unit, onRetry: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Allow Sift to change mail?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Archive, labels, read/unread, star, trash, snooze, and writing and sending mail change things in Gmail, so Google asks once per account. Sift never sends or deletes mail on its own: only when you press Send.",
+                    color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
+                accounts.forEach { a ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(a.email, color = Ink.text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text("Allow in Google", color = Ink.signal, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable {
+                            scope.launch {
+                                try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.get(context).writeAccessUrl(a.id).authUrl))) }
+                                catch (t: Throwable) { onInfo(t.userMessage()) }
+                            }
+                        }.padding(6.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = { PrimaryButton("I've allowed it, try again", onClick = onRetry) },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now", color = Ink.text2) } },
         containerColor = Ink.surface, shape = Radius.xl,
     )
 }

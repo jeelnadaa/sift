@@ -247,12 +247,12 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
 
 /** A conversation Sift never stored (older mail found by search), read straight from Gmail. */
 @Composable
-fun ReadThreadScreen(accountId: String, threadId: String, onBack: () -> Unit) {
+fun ReadThreadScreen(accountId: String, threadId: String, onBack: () -> Unit, onWrite: ((String, String, String) -> Unit)? = null) {
     androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(18.dp)) {
         item {
             Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
             Text("Older mail Sift never processed, read straight from Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
-            ThreadView(null, accountId, threadId)
+            ThreadView(null, accountId, threadId, onWrite = onWrite)
         }
     }
 }

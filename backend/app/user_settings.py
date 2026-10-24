@@ -15,6 +15,11 @@ DEFAULTS: dict = {
     "grouping_enabled": "not_asked",  # brief section 21
     # Remote images in mail load automatically, always through Sift's image proxy (owner, 2026-10-24).
     "load_remote_images": True,
+    # Writing mail (Phase 4): the name shown to recipients, a signature added to new mail, and
+    # how long "Undo" stays available after Send (0 sends at once).
+    "sender_name": "",
+    "signature": "",
+    "undo_send_seconds": 10,
 }
 EDITABLE = {
     "timezone": str,
@@ -23,13 +28,18 @@ EDITABLE = {
     "resend_after_minutes": int,
     "resend_limit": int,
     "load_remote_images": bool,
+    "sender_name": str,
+    "signature": str,
+    "undo_send_seconds": int,
 }
+MAX_LENGTH = {"sender_name": 100, "signature": 2000, "timezone": 64}
 
 # Allowed ranges for numbers (a phone or browser can send anything).
 RANGES = {
     "daily_token_cap": (0, 10_000_000),
     "resend_after_minutes": (1, 60),
     "resend_limit": (0, 10),
+    "undo_send_seconds": (0, 30),
 }
 
 
@@ -60,6 +70,14 @@ def update(db: Session, user_id: uuid.UUID, changes: dict, account_id: uuid.UUID
         if EDITABLE[k] is bool and not isinstance(v, bool):
             raise ValueError(f"{k} must be true or false")
         clean[k] = EDITABLE[k](v)
+        if EDITABLE[k] is str:
+            if not isinstance(v, str):
+                raise ValueError(f"{k} must be text")
+            clean[k] = v.strip() if k != "signature" else v.replace("\r\n", "\n").strip("\n")
+            if k == "sender_name" and any(c in clean[k] for c in "\r\n<>\""):
+                raise ValueError("sender_name can't contain line breaks, quotes or < >")
+            if len(clean[k]) > MAX_LENGTH.get(k, 500):
+                raise ValueError(f"{k} is too long")
         if k in RANGES and not RANGES[k][0] <= clean[k] <= RANGES[k][1]:
             lo, hi = RANGES[k]
             raise ValueError(f"{k} must be between {lo:,} and {hi:,}")

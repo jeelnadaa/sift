@@ -37,7 +37,7 @@ Two independent choices, both set in `.env`, no code changes:
 2. APIs & Services → Library → enable **Gmail API**.
 3. APIs & Services → **OAuth consent screen** (Google Auth Platform):
    - User type **External**, publishing status **Testing**.
-   - Data access / scopes: add `https://www.googleapis.com/auth/gmail.readonly` and, for Phase 3c (archive, labels, read state, star, snooze), `https://www.googleapis.com/auth/gmail.modify`. Sift asks for `gmail.modify` only per account, the first time you use one of those actions in it.
+   - Data access / scopes: add `https://www.googleapis.com/auth/gmail.readonly` and, for Phase 3c and 4 (archive, labels, read state, star, snooze, and writing and sending mail), `https://www.googleapis.com/auth/gmail.modify`. Sift asks for `gmail.modify` only per account, the first time you use one of those actions in it. `gmail.modify` covers drafts and sending, so Phase 4 needs no further scope.
    - Audience → **Test users**: add every Gmail address you will connect.
 4. APIs & Services → Credentials → Create credentials → **OAuth client ID** → **Web application**. Authorized redirect URIs:
    - `http://localhost:8000/api/v1/accounts/oauth/callback` (laptop)
@@ -184,6 +184,16 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 **Rules (Phase 2b):** More → Rules. Create rules in the editor (live "N of your last 500 mails would match" preview), describe one in plain English (needs your AI key; you review the draft before saving), accept suggestions for templates that keep repeating, or tap "Ignore mails like this" on any mail or notification. When you connect a new account, Sift reads the last 30 days of headers (no bodies, no AI) and lists top senders so you can set their actions in bulk (Accounts → First scan). Your own categories live under More → Categories, and token usage under More → Token usage.
 
 **If mail stops coming in:** Sift records every check. If an account can't be checked for 15 minutes, your phone gets "Sift can't check your mail", the feed shows a red banner with the reason, and Accounts shows when each account was last checked. When checks work again you get "Sift is checking mail again"; mail that arrived meanwhile is caught up automatically. `/health` also reports `mail_checks` (ok / stalled (n)) for uptime monitors.
+
+**Writing mail (Phase 4):** web: **Write** at the top of the sidebar (or press `C`); on a mail, **Reply** (`R`), **Reply all** (`A`) and **Forward** (`F`), also under each message of a conversation. Phone: **✎ Write** on the feed, **↩ Reply** / **↪ Forward** on a mail (Reply all is in Actions), and More → Outbox.
+- Every mail you write is a **Gmail draft** from the first change on (autosaved after you stop typing), so you can finish it in Gmail too. Attachments (25 MB in total) are added to the draft; a forward carries the original's attachments.
+- **Send** waits for the undo window (Settings → Writing mail: Off, 5, 10 (default), 20 or 30 s) and shows **Undo**; undone mail goes back to your drafts.
+- **Send later** (this evening, tomorrow morning, Monday morning, or any day and time) keeps it as a draft and Sift sends it on time. **Sift's server must be running then**; if it was off, the mail goes out as soon as it is back.
+- **Remind me if no reply** (1, 2, 3 or 7 days): a notification if nobody else has written in the conversation by then.
+- **Draft with AI** (replies, with your own key): pick "Accept", "Decline politely"… or say what to write. Phone numbers and IDs are hidden from the AI; it only fills the text box and nothing is sent until you press Send. Without a key the button says to add one.
+- **Outbox** (web sidebar, phone More): drafts of every account, scheduled mail (send now, change time, unschedule), follow-ups, and what Sift sent or couldn't send (you get a notification if a mail can't be sent; it stays in your drafts).
+- Settings → Writing mail: your name (shown next to your address) and a plain-text signature.
+- Sending uses the same per-account permission as archiving (Accounts → Allow changes); the composer asks for it the first time.
 
 **Changing mail (Phase 3c):** the mail page has Archive (or Move to inbox), Mark read/unread, Star, Label…, Snooze…, Spam and Trash; search results can be marked read, archived or snoozed in bulk. They act on whole conversations, like Gmail's buttons. Each account starts read-only: the first time you change mail in it, Sift asks you to allow it in Google (Accounts also has **Allow changes**). Trash is Gmail's own trash (Gmail empties it after 30 days); Sift never deletes mail or sends anything on its own. On the web, press Z within a few seconds to undo archive, trash, spam, read or star.
 - **Snooze** hides the conversation until the time you pick (later today, tomorrow, this weekend, next week, or any time). It comes back to your feed with a "Back from snooze" notification; with write access it's also archived in Gmail and returns to the inbox, marked unread. A reply brings it back early. Find snoozed mail with the feed's **Snoozed** chip (search `is:snoozed`).

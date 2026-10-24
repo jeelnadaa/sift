@@ -122,6 +122,9 @@ data class SettingsDto(
     @SerialName("resend_after_minutes") val resendAfterMinutes: Int = 5,
     @SerialName("resend_limit") val resendLimit: Int = 3,
     @SerialName("load_remote_images") val loadRemoteImages: Boolean = true,
+    @SerialName("sender_name") val senderName: String = "",
+    val signature: String = "",
+    @SerialName("undo_send_seconds") val undoSendSeconds: Int = 10,
 )
 
 @Serializable
@@ -472,7 +475,8 @@ data class ThreadMessageDto(
 )
 
 @Serializable
-data class ThreadDto(val subject: String = "", val account: String? = null, val images: Boolean = false, val messages: List<ThreadMessageDto> = emptyList())
+data class ThreadDto(val subject: String = "", val account: String? = null, @SerialName("account_id") val accountId: String? = null,
+                     val images: Boolean = false, val messages: List<ThreadMessageDto> = emptyList())
 
 // ---- search (Phase 3b) ----
 
@@ -566,3 +570,126 @@ data class WriteAccessError(val detail: WriteAccessDetail? = null)
 
 @Serializable
 data class AuthUrl(@SerialName("auth_url") val authUrl: String)
+
+// ---- writing mail (Phase 4) ----
+
+@Serializable
+data class DraftAttachmentDto(val index: Int, val filename: String, val mime: String = "", val size: Long = 0)
+
+@Serializable
+data class OutboxDto(
+    val id: String,
+    @SerialName("account_id") val accountId: String,
+    @SerialName("account_email") val accountEmail: String? = null,
+    @SerialName("draft_id") val draftId: String,
+    @SerialName("thread_id") val threadId: String? = null,
+    val subject: String? = null,
+    val recipients: String? = null,
+    @SerialName("send_at") val sendAt: String,
+    val later: Boolean = false,
+    @SerialName("follow_up_days") val followUpDays: Int? = null,
+    val status: String,
+    val error: String? = null,
+    @SerialName("sent_at") val sentAt: String? = null,
+    @SerialName("undo_seconds") val undoSeconds: Int = 0,
+)
+
+@Serializable
+data class DraftDto(
+    @SerialName("account_id") val accountId: String,
+    @SerialName("account_email") val accountEmail: String = "",
+    @SerialName("draft_id") val draftId: String,
+    @SerialName("thread_id") val threadId: String? = null,
+    val to: List<String> = emptyList(),
+    val cc: List<String> = emptyList(),
+    val bcc: List<String> = emptyList(),
+    val subject: String = "",
+    val body: String = "",
+    @SerialName("in_reply_to") val inReplyTo: String? = null,
+    val references: String? = null,
+    val attachments: List<DraftAttachmentDto> = emptyList(),
+    @SerialName("attachments_size") val attachmentsSize: Long = 0,
+    @SerialName("attachments_limit") val attachmentsLimit: Long = 25L * 1024 * 1024,
+    val outbox: OutboxDto? = null,
+)
+
+@Serializable
+data class DraftSummaryDto(
+    @SerialName("account_id") val accountId: String,
+    @SerialName("account_email") val accountEmail: String = "",
+    @SerialName("draft_id") val draftId: String,
+    val subject: String = "",
+    val to: String = "",
+    val snippet: String = "",
+    @SerialName("updated_ms") val updatedMs: Long = 0,
+    val outbox: OutboxDto? = null,
+)
+
+@Serializable
+data class DraftList(val drafts: List<DraftSummaryDto> = emptyList(), @SerialName("failed_accounts") val failedAccounts: List<String> = emptyList())
+
+@Serializable
+data class OutboxList(val scheduled: List<OutboxDto> = emptyList(), val recent: List<OutboxDto> = emptyList())
+
+@Serializable
+data class FollowUpDto(
+    val id: String,
+    @SerialName("account_id") val accountId: String,
+    @SerialName("thread_id") val threadId: String,
+    val subject: String? = null,
+    val recipients: String? = null,
+    @SerialName("sent_at") val sentAt: String,
+    @SerialName("due_at") val dueAt: String,
+    val status: String,
+)
+
+@Serializable
+data class FollowUpList(@SerialName("follow_ups") val followUps: List<FollowUpDto> = emptyList())
+
+@Serializable
+data class ReplyContextDto(
+    @SerialName("account_id") val accountId: String,
+    @SerialName("account_email") val accountEmail: String = "",
+    val to: List<String> = emptyList(),
+    val cc: List<String> = emptyList(),
+    val subject: String = "",
+    val body: String = "",
+    @SerialName("in_reply_to") val inReplyTo: String? = null,
+    val references: String? = null,
+    @SerialName("thread_id") val threadId: String? = null,
+    @SerialName("forward_gmail_id") val forwardGmailId: String? = null,
+    val attachments: List<DraftAttachmentDto> = emptyList(),
+)
+
+@Serializable
+data class DraftCreateIn(
+    @SerialName("account_id") val accountId: String,
+    val to: List<String>, val cc: List<String>, val bcc: List<String>, val subject: String, val body: String,
+    @SerialName("thread_id") val threadId: String? = null,
+    @SerialName("in_reply_to") val inReplyTo: String? = null,
+    val references: String? = null,
+    @SerialName("forward_gmail_id") val forwardGmailId: String? = null,
+)
+
+@Serializable
+data class DraftFieldsIn(val to: List<String>, val cc: List<String>, val bcc: List<String>, val subject: String, val body: String)
+
+@Serializable
+data class SendIn(@SerialName("send_at") val sendAt: String? = null, @SerialName("follow_up_days") val followUpDays: Int? = null)
+
+@Serializable
+data class SendAtIn(@SerialName("send_at") val sendAt: String)
+
+@Serializable
+data class AiDraftIn(
+    @SerialName("message_id") val messageId: String? = null,
+    @SerialName("account_id") val accountId: String? = null,
+    @SerialName("gmail_id") val gmailId: String? = null,
+    val instructions: String = "",
+)
+
+@Serializable
+data class AiDraftOut(val body: String)
+
+@Serializable
+data class OkResponse(val ok: Boolean = true)

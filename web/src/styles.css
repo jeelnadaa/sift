@@ -217,3 +217,36 @@ mark { background: rgba(200,255,61,.25); color: var(--text); border-radius: 2px;
 .chip:disabled { opacity: .45; cursor: default; }
 .search-note { font-size: 12.5px; color: var(--text-3); line-height: 1.5; padding: 8px 12px; border-left: 2px solid var(--line-2); background: var(--bg-2); border-radius: 0 var(--r-sm) var(--r-sm) 0; }
 .search-note b { color: var(--text-2); font-weight: 700; }
+
+/* ---- writing mail (Phase 4) ---- */
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-act { background: none; border: 0; color: var(--bg); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 2px 4px; border-radius: var(--r-xs); }
+.toast-act:hover { background: rgba(0,0,0,.08); }
+.compose { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.compose-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); min-height: 50px; }
+.compose-row > label { color: var(--text-3); font-size: 13px; }
+.compose-row .input, .compose-row textarea.input.grow { border: 0; background: transparent; padding-left: 0; padding-right: 0; }
+.compose-row .input:focus { box-shadow: none; }
+.rcpt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; position: relative; min-width: 0; }
+.rcpt .chip { height: 26px; cursor: default; max-width: 100%; }
+.rcpt .chip.bad { border-color: var(--urgent); color: var(--urgent); }
+.rcpt input { flex: 1; min-width: 160px; border: 0; background: transparent; color: var(--text); font: inherit; padding: 6px 0; outline: none; }
+.rcpt-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 280px; max-width: 100%; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r); padding: 4px; box-shadow: 0 12px 30px rgba(0,0,0,.4); }
+.rcpt-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: var(--r-sm); background: none; border: 0; color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; }
+.rcpt-menu button small { color: var(--text-3); margin-left: 6px; }
+.rcpt-menu button.on, .rcpt-menu button:hover { background: var(--surface); }
+.compose-body { display: block; width: 100%; min-height: 300px; resize: vertical; border: 0; background: transparent; color: var(--text); font: 15px/1.65 var(--font-body); padding: 16px 14px; outline: none; }
+.compose-atts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
+.compose-atts .chip { cursor: default; }
+.compose-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); }
+.compose-foot .select { min-width: 190px; }
+.save-state { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
+.ai-box { margin: 0 14px 12px; padding: 12px; border: 1px dashed var(--line-2); border-radius: var(--r); background: var(--bg-2); }
+.reply-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+@media (max-width: 700px) { .compose-row { grid-template-columns: 1fr; gap: 2px; } }
+.write-btn { margin: 4px 0 14px; width: 100%; justify-content: center; gap: 10px; height: 42px; }
+.write-btn .ico { stroke: currentColor; }
+.collapsed .write-btn { padding: 0; }
+.collapsed .write-btn .lbl { display: none; }
+.row .subj { color: var(--text-2); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .time { color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }

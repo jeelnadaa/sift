@@ -21,7 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import grouping, heuristics, notify, opportunities, rules, todos, user_settings
+from app import grouping, heuristics, notify, opportunities, outbox, rules, todos, user_settings
 from app.fingerprint import fingerprint, normalize_subject
 from app.llm import service as llm
 from app.mail.base import AuthRevoked, MailProvider
@@ -160,6 +160,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
         outcome = Outcome(msg.id, "normal", "error")
 
     snooze_service.on_new_mail(db, msg)  # a reply wakes its snoozed conversation
+    outbox.on_new_mail(db, msg, account)  # ...and resolves a "remind me if no reply"
     if msg.status == "processed":
         grouping.assign_if_enabled(db, msg)  # display only; before notify so a muted group is known
     if notify.notify_message(db, msg, account):

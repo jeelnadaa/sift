@@ -9,6 +9,8 @@
   Watches are (re)started hourly when missing or due within a day.
 - Both: catch up all accounts at startup; every minute re-send unacknowledged urgent notifications
   and send due deadline reminders; prune finished jobs hourly (Postgres queue).
+- Outbox (Phase 4): every tick, when a mail is due (undo window over, or send-later time
+  reached), queue `send_outbox`; every minute, queue follow-up reminders.
 Checks are deduped per account, so a slow check never piles up duplicates.
 """
 import asyncio
@@ -19,7 +21,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from app import intake, jobs
+from app import intake, jobs, outbox
 from app.config import get_settings, setup_logging
 from app.db import get_sessionmaker
 from app.models import GmailAccount
@@ -30,6 +32,11 @@ HOUR = 3600
 MINUTE = 60
 
 _last_safety: dict[uuid.UUID, float] = {}  # account id -> monotonic time of the last safety check
+
+
+def _outbox_due() -> bool:
+    with get_sessionmaker()() as db:
+        return outbox.any_due(db)
 
 
 def tick_interval() -> int:
@@ -84,10 +91,13 @@ async def run() -> None:
         started = time.monotonic()
         try:
             await queue_checks()
+            if await asyncio.to_thread(_outbox_due):
+                await jobs.enqueue("send_outbox", {}, dedupe_key="send_outbox")
             if started - last_minute >= MINUTE or last_minute == 0.0:
                 await jobs.enqueue("resend_notifications", {}, dedupe_key="resend_notifications")
                 await jobs.enqueue("send_reminders", {}, dedupe_key="send_reminders")
                 await jobs.enqueue("wake_snoozes", {}, dedupe_key="wake_snoozes")
+                await jobs.enqueue("follow_ups", {}, dedupe_key="follow_ups")
                 # run here, not as a job: it must still alert when the worker itself is down
                 await asyncio.to_thread(intake.watch)
                 last_minute = started

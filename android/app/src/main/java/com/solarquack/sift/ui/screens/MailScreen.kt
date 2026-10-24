@@ -56,7 +56,7 @@ import com.solarquack.sift.ui.theme.Ink
 
 /** Mail detail: Sift's view of the mail, then the whole conversation (Phase 3a reader). */
 @Composable
-fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}) {
+fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}, onWrite: (mode: String, messageId: String) -> Unit = { _, _ -> }) {
     val context = LocalContext.current
     var m by remember { mutableStateOf<MessageDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -139,7 +139,13 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             })
         }
         Spacer(Modifier.height(14.dp))
-        MailActionsButton(msg, extra, onChanged = reload, onLeave = onBack, onInfo = info)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PrimaryButton("↩ Reply", Modifier.weight(1f)) { onWrite("reply", msg.id) }
+            GhostButton("↪ Forward", Modifier.weight(1f)) { onWrite("forward", msg.id) }
+        }
+        Spacer(Modifier.height(8.dp))
+        MailActionsButton(msg, listOf(SheetItem("Reply all", "To everyone on this mail", section = "Write") { onWrite("reply_all", msg.id) }) + extra,
+            onChanged = reload, onLeave = onBack, onInfo = info)
 
         CompanySection(msg, onOpenOpportunity, onChanged = reload, pickRequest = companyPick)
         if (msg.todoId != null) Box(Modifier.padding(top = 10.dp)) { Tag("On your to-do list", Ink.signal) }

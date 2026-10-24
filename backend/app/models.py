@@ -472,3 +472,59 @@ class Job(Base):
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created()
+
+
+OUTBOX_STATUSES = ("scheduled", "sending", "sent", "cancelled", "failed")
+FOLLOW_UP_STATUSES = ("waiting", "replied", "reminded", "cancelled")
+
+
+class Outbox(Base):
+    """A Gmail draft waiting to be sent by Sift (Phase 4): right after Send (the undo window) or at
+    a chosen time (send later). The mail itself lives only in the Gmail draft, so it can be seen
+    and edited in Gmail; Sift keeps the draft id, the time and a short summary for its lists."""
+    __tablename__ = "outbox"
+    __table_args__ = (
+        CheckConstraint(_in("status", OUTBOX_STATUSES), name="status_valid"),
+        Index("ix_outbox_due", "status", "send_at"),
+        Index("uq_outbox_pending_draft", "account_id", "draft_id", unique=True,
+              postgresql_where=text("status IN ('scheduled', 'sending')")),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gmail_accounts.id", ondelete="CASCADE"), nullable=False)
+    draft_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    thread_id: Mapped[str | None] = mapped_column(String(64))
+    subject: Mapped[str | None] = mapped_column(Text)
+    recipients: Mapped[str | None] = mapped_column(Text)  # "a@x.com, b@y.com" for the list
+    send_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    later: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)  # send later vs undo window
+    follow_up_days: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(10), default="scheduled", server_default="scheduled", nullable=False)
+    sending_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    sent_gmail_id: Mapped[str | None] = mapped_column(String(64))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = created()
+
+
+class FollowUp(Base):
+    """"Remind me if there's no reply" for a sent mail (Phase 4). Resolved as soon as someone
+    else writes in the conversation; otherwise one notification when it's due."""
+    __tablename__ = "follow_ups"
+    __table_args__ = (
+        CheckConstraint(_in("status", FOLLOW_UP_STATUSES), name="status_valid"),
+        Index("ix_follow_ups_due", "status", "due_at"),
+        Index("ix_follow_ups_thread", "account_id", "thread_id"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gmail_accounts.id", ondelete="CASCADE"), nullable=False)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    sent_gmail_id: Mapped[str | None] = mapped_column(String(64))
+    subject: Mapped[str | None] = mapped_column(Text)
+    recipients: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), default="waiting", server_default="waiting", nullable=False)
+    created_at: Mapped[datetime] = created()

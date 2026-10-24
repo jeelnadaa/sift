@@ -27,16 +27,25 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
 
 export const errorText = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : String(e));
 
-let toastFn: (s: string) => void = () => {};
+interface ToastAction { label: string; run: () => void }
+let toastFn: (s: string, action?: ToastAction, ms?: number) => void = () => {};
 export function toast(s: string) { toastFn(s); }
+/** A toast with one button (e.g. "Undo" after Send), shown for `ms`. */
+export function actionToast(s: string, action: ToastAction, ms: number) { toastFn(s, action, ms); }
 export function Toaster() {
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; action?: ToastAction } | null>(null);
   useEffect(() => {
     let timer: number | undefined;
-    toastFn = (s) => { setMsg(s); window.clearTimeout(timer); timer = window.setTimeout(() => setMsg(null), 2600); };
+    toastFn = (text, action, ms = 2600) => { setMsg({ text, action }); window.clearTimeout(timer); timer = window.setTimeout(() => setMsg(null), ms); };
     return () => window.clearTimeout(timer);
   }, []);
-  return msg ? <div className="toast" role="status">{msg}</div> : null;
+  if (!msg) return null;
+  return (
+    <div className="toast" role="status">
+      {msg.text}
+      {msg.action && <button className="toast-act" onClick={() => { const a = msg.action; setMsg(null); a?.run(); }}>{msg.action.label}</button>}
+    </div>
+  );
 }
 
 /** One custom tooltip for the whole app. Any element with `data-tip` (or a plain `title`,

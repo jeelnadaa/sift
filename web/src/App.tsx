@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Logo } from "./Logo";
+import { ComposePage } from "./pages/Compose";
+import { OutboxPage } from "./pages/Outbox";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
 import { DialogHost, Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
@@ -22,6 +24,9 @@ import { UsagePage } from "./pages/Usage";
 import { SettingsPage } from "./pages/Settings";
 
 const SIDEBAR_KEY = "sift.sidebar";
+
+/** The last page that isn't the composer: where Send and Discard go back to. */
+export let lastPage = "/";
 
 /** Fires when folders change, so the sidebar's drop targets refresh. */
 export const foldersChanged = () => dispatchEvent(new Event("sift:folders"));
@@ -48,6 +53,7 @@ export function App() {
 const NAV: { h: string; items: [string, string, string, string][] }[] = [
   { h: "Inbox", items: [
     ["/", "Feed", "feed", "All new mail from every account, newest first"],
+    ["/outbox", "Outbox", "send", "Drafts, mail scheduled to send later, follow-up reminders"],
     ["/todo", "To-do", "todo", "Mail that needs action, with deadlines and reminders"],
     ["/opportunities", "Opportunities", "opps", "One timeline per company: announcements, tests, interviews, results"],
     ["/groups", "Groups", "groups", "Similar mail stacked together (display only)"]] },
@@ -77,12 +83,14 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) return;
       if (e.key === "[") toggle();
+      if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); navigate("/compose"); }
       if (e.key === "/") { e.preventDefault(); navigate("/search"); setTimeout(() => (document.querySelector(".search-box textarea") as HTMLElement | null)?.focus(), 50); }
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, []);
   useEffect(() => { get<Account[]>("/accounts").then(setAccounts).catch(() => {}); }, [location.pathname]);
+  useEffect(() => { if (location.pathname !== "/compose") lastPage = location.pathname + location.search; }, [location]);
   useEffect(() => {
     const load = () => get<{ folders: Folder[] }>("/folders").then((t) => setFolders(t.folders)).catch(() => {});
     load();
@@ -100,6 +108,9 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
           <Logo />
           <button className="collapse" onClick={toggle} data-tip={collapsed ? "Expand sidebar  ( [ )" : "Collapse sidebar  ( [ )"} aria-label="Toggle sidebar"><Icon name="chev" /></button>
         </div>
+        <button className="btn btn-primary write-btn" onClick={() => navigate("/compose")} data-tip={collapsed ? "Write a new mail  (C)" : "Write a new mail  (C)"} aria-label="Write">
+          <Icon name="pen" /><span className="lbl">Write</span>
+        </button>
         <nav className="nav">
           {NAV.map((g) => (
             <div className="nav-group" key={g.h}>
@@ -128,6 +139,8 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
           <Route path="/mail/:id" element={<MailDetail />} />
           <Route path="/read/:accountId/:threadId" element={<ReadThread />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/compose" element={<ComposeKeyed />} />
+          <Route path="/outbox" element={<OutboxPage />} />
           <Route path="/todo" element={<Todos />} />
           <Route path="/opportunities" element={<Opportunities />} />
           <Route path="/opportunities/:id" element={<Opportunities />} />
@@ -208,8 +221,16 @@ function Icons() {
       <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-7" /></symbol>
       <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" /></symbol>
       <symbol id="i-chev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6" /></symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l4.5-1 10-10a2.1 2.1 0 00-3-3l-10 10L4 20z" /><path d="M14 7l3 3" /></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5L4 12z" /><path d="M11.5 13.5L20 4" /></symbol>
     </defs></svg>
   );
+}
+
+/** A fresh composer for every /compose link (reply → new mail must not keep the old state). */
+function ComposeKeyed() {
+  const location = useLocation();
+  return <ComposePage key={location.search} />;
 }
 
 /** A conversation Sift never stored (older mail found by search), read straight from Gmail. */

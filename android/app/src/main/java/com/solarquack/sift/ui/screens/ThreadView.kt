@@ -55,7 +55,7 @@ fun fileSize(n: Long): String = when {
 /** The whole conversation, fetched live and never stored. The newest message, the one opened and
  * unread ones start open. Remote images stay blocked until "Load images". */
 @Composable
-fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? = null) {
+fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? = null, onWrite: ((mode: String, accountId: String, gmailId: String) -> Unit)? = null) {
     val context = LocalContext.current
     var images by remember { mutableStateOf(false) }
     var thread by remember { mutableStateOf<ThreadDto?>(null) }
@@ -83,7 +83,9 @@ fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? 
         }
         if (t.messages.size > 1) Text("${t.messages.size} messages in this conversation", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
         t.messages.forEach { m ->
-            MessageCard(m, expanded = m.gmailId in open, current = m.id == messageId) {
+            val acc = t.accountId
+            MessageCard(m, expanded = m.gmailId in open, current = m.id == messageId,
+                onWrite = if (onWrite != null && acc != null) { mode -> onWrite(mode, acc, m.gmailId) } else null) {
                 open = if (m.gmailId in open) open - m.gmailId else open + m.gmailId
             }
         }
@@ -91,7 +93,7 @@ fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? 
 }
 
 @Composable
-private fun MessageCard(m: ThreadMessageDto, expanded: Boolean, current: Boolean, onToggle: () -> Unit) {
+private fun MessageCard(m: ThreadMessageDto, expanded: Boolean, current: Boolean, onWrite: ((String) -> Unit)? = null, onToggle: () -> Unit) {
     val context = LocalContext.current
     val server = Session.server(context).trimEnd('/')
     Column(
@@ -114,6 +116,16 @@ private fun MessageCard(m: ThreadMessageDto, expanded: Boolean, current: Boolean
                 val url = m.htmlUrl
                 if (url != null) MailWebView(server + url)
                 else Text(m.text.ifBlank { m.snippet }, color = Ink.text2, style = MaterialTheme.typography.bodyLarge)
+                onWrite?.let { write ->
+                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("reply" to "↩ Reply", "reply_all" to "Reply all", "forward" to "↪ Forward").forEach { (mode, label) ->
+                            if (mode != "reply_all" || m.to.size + m.cc.size > 1) {
+                                Text(label, color = Ink.signal, style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.background(Ink.bg2, Radius.md).clickable { write(mode) }.padding(horizontal = 12.dp, vertical = 10.dp))
+                            }
+                        }
+                    }
+                }
                 m.attachments.forEach { a ->
                     Row(
                         Modifier.fillMaxWidth().padding(top = 8.dp).background(Ink.bg2, Radius.md).border(1.dp, Ink.line2, Radius.md)

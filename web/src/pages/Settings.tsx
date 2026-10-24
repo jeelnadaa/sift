@@ -103,6 +103,8 @@ export function SettingsPage() {
           )}
         </div>
 
+        {s && <WritingSettings s={s} change={change} />}
+
         <div className="settings-sec"><h2>Data</h2>
           <div className="set-row"><div>Export folders, rules, tags, categories &amp; settings<small>One JSON file. No mail, tokens or keys.</small></div>
             <button className="btn btn-ghost btn-sm" onClick={exportBackup} data-tip="Download folders, rules, tags, categories and settings as JSON. No mail or keys">Export</button></div>
@@ -112,5 +114,25 @@ export function SettingsPage() {
         </div>
       </section>
     </>
+  );
+}
+
+/** Name shown to recipients, signature added to new mail, and the undo window after Send. */
+function WritingSettings({ s, change }: { s: Settings; change: (c: Partial<Settings>) => void }) {
+  const [name, setName] = useState<string | null>(null);
+  const [sig, setSig] = useState<string | null>(null);
+  return (
+    <div className="settings-sec"><h2>Writing mail</h2>
+      <div className="set-row"><div>Your name<small>Shown to people you write to, next to your address</small></div>
+        <div style={{ width: 280 }}><TextField value={name ?? s.sender_name} onChange={setName} maxLength={100} ariaLabel="Your name" placeholder="e.g. Asha Rao"
+          onBlur={() => { if (name !== null && name.trim() !== s.sender_name) change({ sender_name: name.trim() }); setName(null); }} /></div></div>
+      <div className="set-row" style={{ alignItems: "flex-start" }}><div>Signature<small>Added below new mail, replies and forwards. Plain text.</small></div>
+        <textarea className="input" style={{ width: 280, minHeight: 90, resize: "vertical" }} value={sig ?? s.signature} maxLength={2000} aria-label="Signature"
+          onChange={(e) => setSig(e.target.value)} onBlur={() => { if (sig !== null && sig !== s.signature) change({ signature: sig }); setSig(null); }} /></div>
+      <div className="set-row"><div>Undo send<small>How long you can take a mail back after pressing Send</small></div>
+        <div className="inline">{[0, 5, 10, 20, 30].map((n) => (
+          <button key={n} className={`chip ${s.undo_send_seconds === n ? "on" : ""}`} onClick={() => change({ undo_send_seconds: n })}>{n ? `${n} s` : "Off"}</button>
+        ))}</div></div>
+    </div>
   );
 }

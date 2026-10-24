@@ -34,6 +34,23 @@ export async function mailAction(target: Target, action: MailAction, label?: str
   }
 }
 
+/** Runs `fn`; when Gmail write access is missing for an account, asks for it once (the same
+ * dialog as mail actions) and runs it again. Resolves undefined when the user gave up or it failed
+ * for another reason (the error is shown as a toast unless `rethrow`). */
+export async function withWriteAccess<T>(fn: () => Promise<T>, rethrow = false): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof ApiError && e.code === "needs_write_access") {
+      const accounts = (e.body as { detail: { accounts: { id: string; email: string }[] } }).detail.accounts;
+      return new Promise((resolve) => askAccess({ accounts, retry: async () => { const r = await withWriteAccess(fn, rethrow); resolve(r); return r !== undefined; } }));
+    }
+    if (rethrow) throw e;
+    toast(errorText(e));
+    return undefined;
+  }
+}
+
 function toastWithUndo(text: string, target: Target, action: MailAction) {
   const undo = UNDO[action];
   toast(undo ? `${text} · press Z to undo` : text);
@@ -66,7 +83,7 @@ export function WriteAccessHost() {
       <button className="btn btn-primary btn-sm" disabled={opened.size === 0} data-tip={opened.size ? "Run the action now that access is granted" : "Allow it in Google first"}
         onClick={async () => { const x = p; setP(null); await x.retry(); }}>I've allowed it, try again</button>
     </>}>
-      <p className="muted">Archive, labels, read/unread, star, trash and snooze change mail in Gmail, so Google asks you once per account. Sift still never sends or deletes mail on its own.</p>
+      <p className="muted">Archive, labels, read/unread, star, trash, snooze, and writing and sending mail change things in Gmail, so Google asks you once per account. Sift still never sends or deletes mail on its own: only when you press Send.</p>
       <div className="stack" style={{ marginTop: 12 }}>
         {p.accounts.map((a) => (
           <div key={a.id} className="inline" style={{ justifyContent: "space-between" }}>

@@ -101,7 +101,26 @@ def handle_wake_snoozes(payload: dict) -> None:
         log.info("woke %d snoozed conversation(s)", n)
 
 
+def handle_send_outbox(payload: dict) -> None:
+    from app.outbox import send_due
+
+    n = send_due()
+    if n:
+        log.info("sent %d mail(s) from the outbox", n)
+
+
+def handle_follow_ups(payload: dict) -> None:
+    from app.outbox import remind_due
+
+    with get_sessionmaker()() as db:
+        n = remind_due(db)
+    if n:
+        log.info("sent %d follow-up reminder(s)", n)
+
+
 HANDLERS = {
+    "send_outbox": handle_send_outbox,
+    "follow_ups": handle_follow_ups,
     "wake_snoozes": handle_wake_snoozes,
     "semantic_backfill": handle_semantic_backfill,
     "grouping_backfill": handle_grouping_backfill,

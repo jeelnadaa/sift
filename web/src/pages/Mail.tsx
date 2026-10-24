@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, post, type Draft, type Folder, type FolderTree, type Mail, type Preview } from "../api";
 import { Top, foldersChanged } from "../App";
@@ -26,6 +26,17 @@ export function MailDetail() {
   }
 
   const m = mail.data;
+  const reply = (mode: string) => navigate(`/compose?mode=${mode}&message=${id}`);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "r") { e.preventDefault(); reply("reply"); }
+      if (e.key === "a") { e.preventDefault(); reply("reply_all"); }
+      if (e.key === "f") { e.preventDefault(); reply("forward"); }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  });
   async function file(f: Folder) {
     try {
       await post(`/folders/${f.id}/threads`, { message_ids: [id] });
@@ -85,6 +96,9 @@ export function MailDetail() {
             {m.opportunity_id && <Banner tone="ok" action="Open timeline" onAction={() => navigate(`/opportunities/${m.opportunity_id}`)}>On the <b>{m.company ?? "company"}</b> timeline</Banner>}
 
             <div className="inline mail-toolbar" role="toolbar" aria-label="Change this conversation in Gmail">
+              <button className="btn btn-primary btn-sm" onClick={() => reply("reply")} data-tip="Reply to the sender  (R)">↩ Reply</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => reply("reply_all")} data-tip="Reply to everyone  (A)">Reply all</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => reply("forward")} data-tip="Forward with attachments  (F)">Forward</button>
               {m.in_inbox === false
                 ? <button className="btn btn-ghost btn-sm" onClick={() => gmail("unarchive")} data-tip="Put it back in Gmail's inbox">Move to inbox</button>
                 : <button className="btn btn-ghost btn-sm" onClick={() => gmail("archive", true)} data-tip="Archive in Gmail: out of the inbox, still searchable  (Z to undo)">Archive</button>}

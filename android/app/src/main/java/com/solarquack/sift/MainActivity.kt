@@ -33,6 +33,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.solarquack.sift.data.Session
 import com.solarquack.sift.ui.screens.AccountsScreen
+import com.solarquack.sift.ui.screens.ComposeArgs
+import com.solarquack.sift.ui.screens.ComposeScreen
+import com.solarquack.sift.ui.screens.OutboxScreen
 import com.solarquack.sift.ui.screens.CategoriesScreen
 import com.solarquack.sift.ui.screens.DealsScreen
 import com.solarquack.sift.ui.screens.RuleEditorScreen
@@ -87,7 +90,23 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.weight(1f)) {
                 NavHost(nav, startDestination = start) {
                     composable("login") { LoginScreen { nav.navigate("feed") { popUpTo("login") { inclusive = true } } } }
-                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }) }
+                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }, onWrite = { nav.navigate(compose()) }) }
+                    composable(
+                        "compose?mode={mode}&message={message}&account={account}&gmail={gmail}&draft={draft}",
+                        arguments = listOf("mode", "message", "account", "gmail", "draft").map { name ->
+                            androidx.navigation.navArgument(name) { type = androidx.navigation.NavType.StringType; nullable = true; defaultValue = null }
+                        },
+                    ) { entry ->
+                        val a = entry.arguments
+                        ComposeScreen(ComposeArgs(a?.getString("mode") ?: "new", a?.getString("message"), a?.getString("account"), a?.getString("gmail"), a?.getString("draft"))) { message ->
+                            message?.let { android.widget.Toast.makeText(this@MainActivity, it, android.widget.Toast.LENGTH_SHORT).show() }
+                            nav.popBackStack()
+                        }
+                    }
+                    composable("outbox") {
+                        OutboxScreen(onBack = { nav.popBackStack() }, onCompose = { nav.navigate(compose()) },
+                            onOpenDraft = { acc, did -> nav.navigate(compose(draft = "$acc:$did")) }, onOpenThread = { a, t -> nav.navigate("read/$a/$t") })
+                    }
                     composable("group/{id}") { entry ->
                         GroupScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") }, onEditRule = { nav.navigate("rule-edit") })
                     }
@@ -95,7 +114,8 @@ class MainActivity : ComponentActivity() {
                         SearchScreen(onOpenMail = { nav.navigate("mail/$it") }, onOpenThread = { a, t -> nav.navigate("read/$a/$t") }, onBack = { nav.popBackStack() })
                     }
                     composable("read/{account}/{thread}") { entry ->
-                        ReadThreadScreen(entry.arguments?.getString("account") ?: "", entry.arguments?.getString("thread") ?: "", onBack = { nav.popBackStack() })
+                        ReadThreadScreen(entry.arguments?.getString("account") ?: "", entry.arguments?.getString("thread") ?: "", onBack = { nav.popBackStack() },
+                            onWrite = { mode, acc, gmail -> nav.navigate(compose(mode = mode, account = acc, gmail = gmail)) })
                     }
                     composable("folders") { FoldersScreen(onOpen = { nav.navigate("folder/$it") }, onBack = { nav.popBackStack() }) }
                     composable("folder/{id}") { entry ->
@@ -103,7 +123,8 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("silenced") { FeedScreen(silenced = true, onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
                     composable("mail/{id}") { entry ->
-                        MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") }, onEditRule = { nav.navigate("rule-edit") })
+                        MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") }, onEditRule = { nav.navigate("rule-edit") },
+                            onWrite = { mode, id -> nav.navigate(compose(mode = mode, message = id)) })
                     }
                     composable("deals") { DealsScreen(onOpen = { nav.navigate("deal/$it") }) }
                     composable("deal/{id}") { entry ->
@@ -136,7 +157,7 @@ class MainActivity : ComponentActivity() {
                 val selected = when (dest) {
                     "feed" -> route == "feed" || route.startsWith("mail") || route.startsWith("group/") || route == "search" || route.startsWith("read/")
                     "deals" -> route == "deals" || route.startsWith("deal/")
-                    "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage", "folders") || route.startsWith("scan/") || route.startsWith("folder/")
+                    "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage", "folders", "outbox") || route.startsWith("scan/") || route.startsWith("folder/")
                     else -> route == dest
                 }
                 NavigationBarItem(
@@ -162,6 +183,11 @@ class MainActivity : ComponentActivity() {
             restoreState = keep
         }
     }
+
+    /** Route to the composer; every part is optional (see ComposeArgs). */
+    private fun compose(mode: String? = null, message: String? = null, account: String? = null, gmail: String? = null, draft: String? = null): String =
+        "compose?" + listOf("mode" to mode, "message" to message, "account" to account, "gmail" to gmail, "draft" to draft)
+            .filter { it.second != null }.joinToString("&") { (k, v) -> "$k=${android.net.Uri.encode(v)}" }
 
     companion object {
         const val EXTRA_MESSAGE_ID = "message_id"

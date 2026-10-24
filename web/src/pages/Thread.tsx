@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { get } from "../api";
 import { Avatar, Banner, useLoad } from "../components";
 import { fullTime, relativeTime } from "../util";
@@ -9,7 +10,7 @@ interface ThreadMessage {
   gmail_id: string; id: string | null; from: Addr | null; to: Addr[]; cc: Addr[]; subject: string; date: string | null;
   unread: boolean; snippet: string; text: string; html_url: string | null; images_blocked: number; attachments: ThreadAttachment[];
 }
-interface ThreadData { thread_id: string; account: string; subject: string; images: boolean; messages: ThreadMessage[] }
+interface ThreadData { thread_id: string; account: string; account_id: string; subject: string; images: boolean; messages: ThreadMessage[] }
 
 const who = (a: Addr | null) => (a ? a.name || a.email : "Unknown");
 const list = (xs: Addr[]) => xs.map((x) => x.name ? `${x.name} <${x.email}>` : x.email).join(", ");
@@ -27,7 +28,9 @@ export function Thread({ messageId, accountId, threadId }: { messageId?: string;
   const path = messageId ? `/messages/${messageId}/thread` : `/accounts/${accountId}/threads/${threadId}`;
   const t = useLoad(() => get<ThreadData>(path, { images: images || undefined }), [path, images]);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
   const d = t.data;
+  const write = (mode: string, m: ThreadMessage) => navigate(`/compose?mode=${mode}&account=${d?.account_id}&gmail=${m.gmail_id}`);
 
   useEffect(() => {
     if (!d) return;
@@ -65,6 +68,13 @@ export function Thread({ messageId, accountId, threadId }: { messageId?: string;
             {isOpen && (
               <div className="msg-body">
                 {m.html_url ? <MailFrame src={m.html_url} title={`Message from ${who(m.from)}`} /> : <div className="mail-body">{m.text || m.snippet}</div>}
+                {d.account_id && (
+                  <div className="reply-bar">
+                    <button className="btn btn-ghost btn-sm" onClick={() => write("reply", m)} data-tip="Reply to the sender">↩ Reply</button>
+                    {m.to.length + m.cc.length > 1 && <button className="btn btn-ghost btn-sm" onClick={() => write("reply_all", m)} data-tip="Reply to everyone on this message">↩ Reply all</button>}
+                    <button className="btn btn-ghost btn-sm" onClick={() => write("forward", m)} data-tip="Forward it, with its attachments">↪ Forward</button>
+                  </div>
+                )}
                 {m.attachments.length > 0 && (
                   <div className="atts">
                     {m.attachments.map((a) => (

@@ -22,6 +22,8 @@ import com.solarquack.sift.ui.theme.Ink
 fun MoreScreen(onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(Ink.bg).padding(18.dp)) {
         Text("More", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
+        SectionLabel("Write")
+        Item("Outbox", "Drafts, scheduled mail, follow-up reminders") { onNavigate("outbox") }
         SectionLabel("Organize")
         Item("Folders", "Your own folders, nested; rules can file into them") { onNavigate("folders") }
         SectionLabel("Control")
