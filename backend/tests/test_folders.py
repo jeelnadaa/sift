@@ -217,3 +217,43 @@ def test_label_changes_from_gmail_update_unread_counts(client, db, mail):
     accounts.apply_label_changes(db, account, [(m["bank"].gmail_id, ["UNREAD", "STARRED"], [])])
     db.commit()
     assert db.get(Message, m["bank"].id).labels.count("UNREAD") == 1
+
+
+# ---- backup ---------------------------------------------------------------------------------------
+
+def test_backup_round_trip_into_another_user(client, db, setup, keys):
+    from app.models import Category, Tag, User
+    user, account, provider, msgs = setup
+    work = folders.create(db, user.id, "Work", color="#c6f432")
+    place = folders.create(db, user.id, "Placements", work.id)
+    folders.edit(place, notify_mode="always", pinned=True)
+    db.add_all([Tag(user_id=user.id, name="Later"), Category(user_id=user.id, name="Bills", definition="Utility bills")])
+    db.add(Rule(user_id=user.id, position=5, name="file placements", origin="editor",
+                conditions={"field": "account", "op": "in", "value": [str(account.id)]}, action={"type": "llm", "folder_id": str(place.id)},
+                account_scope=[str(account.id)]))
+    db.commit()
+    client.patch("/api/v1/settings", headers=H(user), json={"resend_limit": 2})
+    data = client.get("/api/v1/backup", headers=H(user)).json()
+    assert data["format"] == "sift-backup" and "encrypted" not in str(data) and str(account.id) not in str(data)
+
+    other = User(email="other@gmail.com")
+    db.add(other)
+    db.commit()
+    r = client.post("/api/v1/backup", headers=H(other), json=data)
+    assert r.status_code == 200, r.text
+    assert r.json()["folders"] == 2 and r.json()["rules"] == 2 and r.json()["rules_disabled"] == 1  # demo account isn't theirs
+    tree = client.get("/api/v1/folders", headers=H(other)).json()["folders"]
+    assert [(f["name"], f["color"], [(k["name"], k["notify_mode"], k["pinned"]) for k in f["children"]]) for f in tree] == \
+        [("Work", "#c6f432", [("Placements", "always", True)])]
+    imported = db.scalar(select(Rule).where(Rule.user_id == other.id, Rule.name == "file placements"))
+    assert imported.action["folder_id"] == tree[0]["children"][0]["id"] and imported.enabled is False and imported.account_scope
+    assert client.get("/api/v1/settings", headers=H(other)).json()["resend_limit"] == 2
+
+
+def test_bad_backup_changes_nothing(client, db, setup):
+    user = setup[0]
+    assert client.post("/api/v1/backup", headers=H(user), json={"format": "other"}).status_code == 422
+    bad = {"format": "sift-backup", "version": 1, "folders": [{"ref": "a", "parent": None, "name": "Kept?"}],
+           "rules": [{"name": "broken", "conditions": {"field": "nope"}, "action": {"type": "silent"}}]}
+    assert client.post("/api/v1/backup", headers=H(user), json=bad).status_code == 422
+    assert client.get("/api/v1/folders", headers=H(user)).json()["folders"] == []

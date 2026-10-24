@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import user_settings
+from app import backup, user_settings
 from app.config import get_settings
 from app.db import get_db
 from app.llm import service as llm
@@ -29,6 +29,25 @@ def patch_settings(changes: dict, user: User = Depends(current_user), db: Sessio
         raise HTTPException(422, str(exc)) from exc
     db.commit()
     return result
+
+
+@router.get("/backup")
+def export_backup(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Folders, rules, tags, categories, grouping preferences and settings as one JSON file.
+    No mail, tokens or keys."""
+    return backup.export(db, user.id)
+
+
+@router.post("/backup")
+def import_backup(data: dict, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Adds what the file holds (never deletes). All or nothing."""
+    try:
+        report = backup.import_(db, user.id, data)
+    except backup.BackupError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    return report
 
 
 # ---- AI (bring your own key) ---------------------------------------------------------
