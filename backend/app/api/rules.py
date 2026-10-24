@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import rule_tools
+from app import folders, rule_tools
 from app import rules as engine
 from app.llm import service as llm
 from app.llm.base import LlmError
@@ -35,14 +35,23 @@ def rule_json(r: Rule) -> dict:
     }
 
 
-def _validate(body: RuleIn) -> None:
+def _validate(body: RuleIn, db: Session, user: User) -> None:
     try:
         engine.validate_condition(body.conditions)
         engine.validate_action(body.action)
         if body.exceptions:
             engine.validate_condition(body.exceptions)
-    except engine.RuleError as exc:
+        check_folder(db, user, body.action)
+    except (engine.RuleError, folders.FolderError) as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+def check_folder(db: Session, user: User, action: dict) -> None:
+    """A "file in folder" action must point at one of the user's own, normal folders."""
+    if action.get("folder_id"):
+        f = folders.own(db, user.id, action["folder_id"])
+        if f.saved_search_id is not None:
+            raise folders.FolderError("rules can't file mail into a smart folder")
 
 
 def _own(db: Session, user: User, rule_id: uuid.UUID) -> Rule:
@@ -59,7 +68,7 @@ def list_rules(user: User = Depends(current_user), db: Session = Depends(get_db)
 
 @router.post("", status_code=201)
 def create_rule(body: RuleIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    _validate(body)
+    _validate(body, db, user)
     last = db.scalar(select(func.max(Rule.position)).where(Rule.user_id == user.id))
     r = Rule(user_id=user.id, position=(last or 0) + 1, **body.model_dump())
     db.add(r)
@@ -69,7 +78,7 @@ def create_rule(body: RuleIn, user: User = Depends(current_user), db: Session = 
 
 @router.put("/{rule_id}")
 def update_rule(rule_id: uuid.UUID, body: RuleIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    _validate(body)
+    _validate(body, db, user)
     r = _own(db, user, rule_id)
     for k, v in body.model_dump(exclude={"origin"}).items():
         setattr(r, k, v)

@@ -19,7 +19,7 @@ from app.db import get_sessionmaker
 from app.mail import google_oauth
 from app.mail.base import AuthRevoked, CursorExpired, MailProvider
 from app.mail.gmail import GmailProvider
-from app.models import GmailAccount, User
+from app.models import GmailAccount, Message, User
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +161,8 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
                 if source == "safety" and get_settings().change_detection == "push" and _push_missed(db, account, changes.message_ids):
                     log.warning("account %s: push missed new mail; polling it until the watch is renewed", account.id)
                     account.watch_expires_at = None
+            if changes.label_changes:
+                apply_label_changes(db, account, changes.label_changes)
             account.history_id = changes.cursor  # only after successful processing
             db.commit()
             return len(changes.message_ids)
@@ -168,6 +170,18 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
             mark_auth_failure(account, exc)
             db.commit()
             return 0
+
+
+def apply_label_changes(db: Session, account: GmailAccount, changes: list[tuple[str, list[str], list[str]]]) -> None:
+    """Keep stored labels (read/unread, starred) in step with Gmail, for unread counts.
+    Mail Sift never stored is skipped."""
+    ids = {c[0] for c in changes}
+    rows = {m.gmail_id: m for m in db.scalars(select(Message).where(Message.account_id == account.id, Message.gmail_id.in_(ids)))}
+    for gmail_id, added, removed in changes:
+        m = rows.get(gmail_id)
+        if m is not None:
+            labels = [label for label in (m.labels or []) if label not in removed]
+            m.labels = labels + [label for label in added if label not in labels]
 
 
 def active_account_ids(db: Session) -> list[uuid.UUID]:

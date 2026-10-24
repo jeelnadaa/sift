@@ -301,6 +301,7 @@ class LlmCredential(Base):
 
 class Folder(Base):
     __tablename__ = "folders"
+    __table_args__ = (CheckConstraint("notify_mode IN ('default', 'always', 'mute')", name="notify_mode_valid"),)
     id: Mapped[uuid.UUID] = pk()
     user_id: Mapped[uuid.UUID] = user_fk()
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("folders.id", ondelete="CASCADE"), index=True)
@@ -309,7 +310,8 @@ class Folder(Base):
     icon: Mapped[str | None] = mapped_column(String(40))
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    # default: mail filed here notifies as usual; always: notify even digest mail; mute: never notify
+    notify_mode: Mapped[str] = mapped_column(String(10), default="default", server_default="default", nullable=False)
     saved_search_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("saved_searches.id", ondelete="CASCADE"))  # set = smart folder
     created_at: Mapped[datetime] = created()
 
@@ -370,6 +372,8 @@ class MailGroup(Base):
     kind: Mapped[str] = mapped_column(String(20), nullable=False)  # thread, opportunity, list, template, similar, ai
     key: Mapped[str] = mapped_column(String(320), nullable=False)
     last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     created_at: Mapped[datetime] = created()
 
 
@@ -378,6 +382,7 @@ class GroupMember(Base):
     group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("mail_groups.id", ondelete="CASCADE"), primary_key=True)
     message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gmail_accounts.id", ondelete="CASCADE"), nullable=False)
+    # system | user; "removed" keeps a mail the user took out from being re-added automatically
     added_by: Mapped[str] = mapped_column(String(10), default="system", server_default="system", nullable=False)
     added_at: Mapped[datetime] = created()
 

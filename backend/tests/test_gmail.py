@@ -38,7 +38,17 @@ def test_list_changes_pages_dedupes_and_skips_own_mail():
     assert changes.message_ids == ["a", "b", "self"]  # mail to myself lands in INBOX and counts
     assert changes.cursor == 160
     assert calls[0].url.params["startHistoryId"] == "100"
-    assert calls[0].url.params["historyTypes"] == "messageAdded"
+    assert calls[0].url.params.get_list("historyTypes") == ["messageAdded", "labelAdded", "labelRemoved"]
+
+
+def test_list_changes_reports_label_edits_in_order():
+    p, _ = provider({("GET", "/history", None): (200, {"historyId": "120", "history": [
+        {"labelsRemoved": [{"message": {"id": "a"}, "labelIds": ["UNREAD"]}]},
+        {"labelsAdded": [{"message": {"id": "a"}, "labelIds": ["UNREAD", "STARRED"]}]},
+    ]})})
+    changes = p.list_changes(100)
+    assert changes.message_ids == []
+    assert changes.label_changes == [("a", [], ["UNREAD"]), ("a", ["UNREAD", "STARRED"], [])]
 
 
 def test_list_changes_with_no_history_keeps_reported_cursor():

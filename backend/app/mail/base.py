@@ -20,6 +20,8 @@ class CursorExpired(Exception):
 class Changes:
     message_ids: list[str] = field(default_factory=list)  # new incoming messages, oldest first, no duplicates
     cursor: int = 0  # store this after the changes are processed
+    # label edits on existing mail (read/unread in Gmail), in order: (message id, added, removed)
+    label_changes: list[tuple[str, list[str], list[str]]] = field(default_factory=list)
 
 
 @dataclass

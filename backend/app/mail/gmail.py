@@ -42,7 +42,8 @@ class GmailProvider:
     def list_changes(self, since: int) -> Changes:
         ids: list[str] = []
         seen: set[str] = set()
-        params = {"startHistoryId": str(since), "historyTypes": "messageAdded", "maxResults": "500"}
+        labels: list[tuple[str, list[str], list[str]]] = []
+        params = {"startHistoryId": str(since), "historyTypes": ["messageAdded", "labelAdded", "labelRemoved"], "maxResults": "500"}
         cursor = since
         while True:
             try:
@@ -60,9 +61,13 @@ class GmailProvider:
                         continue
                     seen.add(m["id"])
                     ids.append(m["id"])
+                for change in h.get("labelsAdded", []):
+                    labels.append((change["message"]["id"], change.get("labelIds", []), []))
+                for change in h.get("labelsRemoved", []):
+                    labels.append((change["message"]["id"], [], change.get("labelIds", [])))
             token = page.get("nextPageToken")
             if not token:
-                return Changes(message_ids=ids, cursor=cursor)
+                return Changes(message_ids=ids, cursor=cursor, label_changes=labels)
             params["pageToken"] = token
 
     def list_message_ids(self, query: str, limit: int) -> list[str]:
