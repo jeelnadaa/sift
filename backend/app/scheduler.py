@@ -1,8 +1,12 @@
 """Scheduler: `python -m app.scheduler`. One instance per deployment.
 
 - Poll mode: every POLL_INTERVAL_SECONDS, queue a check of each active account.
-- Push mode: Pub/Sub triggers checks; we still queue a safety check every 5 minutes
-  (covers a push that arrived mid-check, and downtime) and renew Gmail watches daily.
+- Push mode: Pub/Sub triggers checks. Each account with a working Gmail watch still gets a
+  safety check every 5 minutes (covers a push lost in transit, and downtime). An account
+  WITHOUT a working watch (never started, expired, or marked broken because a safety check
+  found mail that push never announced) is polled every POLL_INTERVAL_SECONDS, so losing
+  Pub/Sub (e.g. the Google Cloud free trial ending) degrades to poll speed, never worse.
+  Watches are (re)started hourly when missing or due within a day.
 - Both: catch up all accounts at startup; re-send unacknowledged urgent notifications (checked
   every minute); prune finished jobs hourly (Postgres queue).
 Checks are deduped per account, so a slow check never piles up duplicates.
@@ -10,29 +14,57 @@ Checks are deduped per account, so a slow check never piles up duplicates.
 import asyncio
 import logging
 import time
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import select
 
 from app import jobs
-from app.accounts import active_account_ids
 from app.config import get_settings, setup_logging
 from app.db import get_sessionmaker
+from app.models import GmailAccount
 
 log = logging.getLogger("app.scheduler")
 PUSH_SAFETY_INTERVAL = 300
 HOUR = 3600
 MINUTE = 60
 
+_last_safety: dict[uuid.UUID, float] = {}  # account id -> monotonic time of the last safety check
 
-def check_interval() -> int:
-    s = get_settings()
-    return max(s.poll_interval_seconds, 2) if s.change_detection == "poll" else PUSH_SAFETY_INTERVAL
+
+def tick_interval() -> int:
+    return max(get_settings().poll_interval_seconds, 2)
+
+
+def _accounts() -> list[tuple[uuid.UUID, datetime | None]]:
+    with get_sessionmaker()() as db:
+        rows = db.execute(
+            select(GmailAccount.id, GmailAccount.watch_expires_at)
+            .where(GmailAccount.status == "active", GmailAccount.encrypted_refresh_token.is_not(None))
+        )
+        return [(r.id, r.watch_expires_at) for r in rows]
+
+
+def plan_checks(accounts: list[tuple[uuid.UUID, datetime | None]], push: bool, now_mono: float, now: datetime) -> list[tuple[uuid.UUID, str]]:
+    """Which accounts to check this tick, and why ("poll" or "safety"). Pure, for tests."""
+    due = []
+    for account_id, watch_expires_at in accounts:
+        if not push or watch_expires_at is None or watch_expires_at <= now:
+            due.append((account_id, "poll"))
+        elif now_mono - _last_safety.get(account_id, float("-inf")) >= PUSH_SAFETY_INTERVAL:
+            due.append((account_id, "safety"))
+    return due
 
 
 async def queue_checks() -> int:
-    with get_sessionmaker()() as db:
-        ids = active_account_ids(db)
-    for account_id in ids:
-        await jobs.enqueue("check_account", {"account_id": str(account_id)}, dedupe_key=f"check:{account_id}")
-    return len(ids)
+    push = get_settings().change_detection == "push"
+    now_mono = time.monotonic()
+    due = plan_checks(_accounts(), push, now_mono, datetime.now(UTC))
+    for account_id, source in due:
+        await jobs.enqueue("check_account", {"account_id": str(account_id), "source": source}, dedupe_key=f"check:{account_id}")
+        if source == "safety":
+            _last_safety[account_id] = now_mono
+    return len(due)
 
 
 async def hourly() -> None:
@@ -46,7 +78,7 @@ async def hourly() -> None:
 
 async def run() -> None:
     s = get_settings()
-    log.info("scheduler started: mode=%s interval=%ss queue=%s", s.change_detection, check_interval(), s.queue_backend)
+    log.info("scheduler started: mode=%s tick=%ss queue=%s", s.change_detection, tick_interval(), s.queue_backend)
     last_hourly = last_minute = 0.0
     while True:
         started = time.monotonic()
@@ -60,7 +92,7 @@ async def run() -> None:
                 last_hourly = started
         except Exception:
             log.exception("scheduler tick failed")  # keep ticking; the next tick retries
-        await asyncio.sleep(max(0.0, min(check_interval(), MINUTE) - (time.monotonic() - started)))
+        await asyncio.sleep(max(0.0, tick_interval() - (time.monotonic() - started)))
 
 
 def main() -> None:

@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from cryptography.fernet import InvalidToken
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import crypto
@@ -106,9 +106,23 @@ def on_new_messages(db: Session, account: GmailAccount, provider: MailProvider, 
                 log.info("message %s: %s by %s%s", outcome.message_id, outcome.priority, outcome.decided_by, ", notified" if outcome.notified else "")
 
 
-def check_account(account_id: uuid.UUID | str) -> int:
+PUSH_MISS_AGE = timedelta(seconds=90)  # Gmail's push normally lands ~20 s after a mail arrives
+
+
+def _push_missed(db: Session, account: GmailAccount, message_ids: list[str]) -> bool:
+    """A safety check found mail old enough that its push should already have arrived."""
+    from app.models import Message
+
+    oldest = db.scalar(select(func.min(Message.received_at)).where(Message.account_id == account.id, Message.gmail_id.in_(message_ids)))
+    return oldest is not None and oldest < datetime.now(UTC) - PUSH_MISS_AGE
+
+
+def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
     """List changes since the stored cursor, hand new mail on, then save the cursor.
     The row lock serializes concurrent checks of one account (a poll and a push at once).
+    `source` is poll, push or safety. When a safety check in push mode finds mail that push
+    never announced, the account's watch is cleared: the scheduler then polls it at poll
+    speed until the hourly renewal re-establishes push.
     Returns the number of new messages."""
     with get_sessionmaker()() as db:
         # FOR NO KEY UPDATE, not FOR UPDATE: the pipeline inserts messages that reference this row
@@ -134,6 +148,9 @@ def check_account(account_id: uuid.UUID | str) -> int:
                 return 0
             if changes.message_ids:
                 on_new_messages(db, account, provider, changes.message_ids)
+                if source == "safety" and get_settings().change_detection == "push" and _push_missed(db, account, changes.message_ids):
+                    log.warning("account %s: push missed new mail; polling it until the watch is renewed", account.id)
+                    account.watch_expires_at = None
             account.history_id = changes.cursor  # only after successful processing
             db.commit()
             return len(changes.message_ids)

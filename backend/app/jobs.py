@@ -32,13 +32,13 @@ def handle_gmail_push(payload: dict) -> None:
         log.info("pubsub push for unknown account (history %s)", payload["history_id"])
         return
     log.info("pubsub push routed to account %s (history %s)", account_id, payload["history_id"])
-    check_account(account_id)
+    check_account(account_id, "push")
 
 
 def handle_check_account(payload: dict) -> None:
     from app.accounts import check_account
 
-    check_account(payload["account_id"])
+    check_account(payload["account_id"], payload.get("source", "poll"))
 
 
 def handle_renew_watches(payload: dict) -> None:

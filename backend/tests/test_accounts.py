@@ -171,15 +171,16 @@ def test_renew_watches_only_when_expiring(db, connected, fake, override_settings
 
 def test_push_routes_to_check(db, connected, fake, monkeypatch):
     checked = []
-    monkeypatch.setattr(accounts, "check_account", lambda aid: checked.append(aid))
+    monkeypatch.setattr(accounts, "check_account", lambda aid, source="poll": checked.append((aid, source)))
     jobs.handle_gmail_push({"email": "me@gmail.com", "history_id": 1})
     jobs.handle_gmail_push({"email": "nobody@x.com", "history_id": 1})
-    assert checked == [connected.id]
+    assert checked == [(connected.id, "push")]
 
 
 # ---- scheduler and queue ---------------------------------------------------------------
 
-def test_scheduler_queues_one_check_per_active_account_without_piling_up(db, connected):
+def test_scheduler_queues_one_check_per_active_account_without_piling_up(db, connected, override_settings):
+    override_settings(change_detection="poll")
     asyncio.run(scheduler.queue_checks())
     asyncio.run(scheduler.queue_checks())  # previous check still queued: deduped
     rows = list(db.scalars(select(Job)))
@@ -201,11 +202,57 @@ def test_cleanup_removes_old_finished_jobs(db):
     assert jobs.cleanup_finished(db) == 1
 
 
-def test_check_interval_by_mode(override_settings):
-    override_settings(change_detection="poll", poll_interval_seconds=10)
-    assert scheduler.check_interval() == 10
+def test_tick_interval_is_the_poll_interval(override_settings):
+    override_settings(poll_interval_seconds=5)
+    assert scheduler.tick_interval() == 5
+
+
+def test_plan_checks_poll_mode_checks_every_account_every_tick():
+    import uuid
+    a, b = uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    assert scheduler.plan_checks([(a, None), (b, now + timedelta(days=3))], False, 0.0, now) == [(a, "poll"), (b, "poll")]
+
+
+def test_plan_checks_push_mode_falls_back_to_polling_without_a_working_watch():
+    import uuid
+    scheduler._last_safety.clear()
+    good, none, expired = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    accounts = [(good, now + timedelta(days=3)), (none, None), (expired, now - timedelta(minutes=1))]
+    first = scheduler.plan_checks(accounts, True, 1000.0, now)
+    assert first == [(good, "safety"), (none, "poll"), (expired, "poll")]
+    scheduler._last_safety[good] = 1000.0
+    assert scheduler.plan_checks(accounts, True, 1100.0, now) == [(none, "poll"), (expired, "poll")]  # safety not due yet
+    assert (good, "safety") in scheduler.plan_checks(accounts, True, 1000.0 + scheduler.PUSH_SAFETY_INTERVAL, now)
+
+
+def test_safety_check_that_finds_old_unannounced_mail_marks_push_broken(db, connected, fake, monkeypatch, override_settings):
     override_settings(change_detection="push")
-    assert scheduler.check_interval() == scheduler.PUSH_SAFETY_INTERVAL
+    a = account(db)
+    a.watch_expires_at = datetime.now(UTC) + timedelta(days=5)
+    db.commit()
+    monkeypatch.setattr(accounts, "on_new_messages", lambda *args: None)
+    monkeypatch.setattr(accounts, "_push_missed", lambda db, acc, ids: True)
+    fake.changes = Changes(["m1"], 510)
+    accounts.check_account(connected.id, "push")
+    assert account(db).watch_expires_at is not None  # a push-triggered check never marks push broken
+    fake.changes = Changes(["m2"], 520)
+    accounts.check_account(connected.id, "safety")
+    assert account(db).watch_expires_at is None  # now polled until the hourly renewal
+
+
+def test_push_missed_only_for_mail_older_than_push_latency(db, connected):
+    from app.models import Message
+    now = datetime.now(UTC)
+    db.add_all([
+        Message(user_id=connected.user_id, account_id=connected.id, gmail_id="fresh", thread_id="t", received_at=now - timedelta(seconds=20), status="processed"),
+        Message(user_id=connected.user_id, account_id=connected.id, gmail_id="old", thread_id="t", received_at=now - timedelta(minutes=4), status="processed"),
+    ])
+    db.commit()
+    a = account(db)
+    assert accounts._push_missed(db, a, ["fresh"]) is False  # its push may still be on the way
+    assert accounts._push_missed(db, a, ["old"]) is True
 
 
 # ---- OAuth callback page ----------------------------------------------------------------
