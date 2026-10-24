@@ -6,10 +6,21 @@ export function UsagePage() {
   const usage = useLoad(() => get<Usage>("/usage", { days: 30 }));
   const ai = useLoad(() => get<AiStatus>("/ai"));
   const u = usage.data;
-  const totals = (u?.days ?? []).map((d) => d.input_tokens + d.output_tokens);
+  // Always 30 slots ending today, so one busy day is one bar, not a full-width block.
+  const byDay = new Map((u?.days ?? []).map((d) => [d.day, d]));
+  const end = u?.days.length ? new Date(u.days[u.days.length - 1].day + "T00:00:00") : new Date();
+  const slots = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(end);
+    d.setDate(end.getDate() - (29 - i));
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const row = byDay.get(key);
+    return { key, date: d, tokens: row ? row.input_tokens + row.output_tokens : 0, calls: row?.calls ?? 0 };
+  });
+  const totals = slots.map((s) => s.tokens);
   const max = Math.max(1, ...totals);
   const calls = u?.days.reduce((s, d) => s + d.calls, 0) ?? 0;
-  const today = u?.days.find((d) => d.day === new Date().toISOString().slice(0, 10));
+  const today = slots[slots.length - 1];
+  const label = (d: Date) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   const pct = u && u.daily_token_cap ? Math.min(100, Math.round((u.tokens_today / u.daily_token_cap) * 100)) : 0;
   const fmt = (n: number) => n.toLocaleString();
 
@@ -32,9 +43,16 @@ export function UsagePage() {
         </div>
         <div className="card"><b>Last 30 days</b>
           {u && u.days.length === 0 ? <p className="dim" style={{ marginTop: 10 }}>No AI calls yet.</p> : (
-            <div className="spark" style={{ height: 120, marginTop: 16 }}>
-              {u?.days.map((d, i) => <span key={d.day} className={i === u.days.length - 1 ? "hi" : ""} style={{ height: `${Math.max(3, (totals[i] / max) * 100)}%` }} title={`${d.day}: ${fmt(totals[i])} tokens, ${d.calls} calls`} />)}
-            </div>
+            <>
+              <div className="usage-chart" role="img" aria-label={`Tokens per day for the last 30 days; most: ${fmt(max)}`}>
+                {slots.map((s, i) => (
+                  <span key={s.key} className={`${s.tokens ? "on" : ""} ${i === slots.length - 1 ? "hi" : ""}`}
+                    style={{ height: s.tokens ? `${Math.max(4, (s.tokens / max) * 100)}%` : undefined }}
+                    title={`${label(s.date)}: ${fmt(s.tokens)} tokens, ${s.calls} calls`} />
+                ))}
+              </div>
+              <div className="usage-axis"><span>{label(slots[0].date)}</span><span>{label(slots[14].date)}</span><span>Today</span></div>
+            </>
           )}
         </div>
       </section>
