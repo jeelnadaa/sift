@@ -82,7 +82,7 @@ export interface Group {
   items?: Mail[];
 }
 
-export interface Page<T> { items: T[]; next_before: string | null; grouped?: boolean }
+export interface Page<T> { items: T[]; next_before: string | null; grouped?: boolean; total: number; pages: number }
 
 export interface Account { id: string; email: string; status: "active" | "needs_reconnect" | "blocked"; status_detail: string | null; label: string | null; color: string | null; watch_expires_at: string | null }
 
@@ -92,7 +92,7 @@ export interface Folder {
   children: Folder[];
 }
 export interface FolderTree { folders: Folder[]; max_depth: number; last_used_id: string | null }
-export interface FolderView { folder: Folder; path: { id: string; name: string }[]; items: Mail[]; next_before: string | null }
+export interface FolderView { folder: Folder; path: { id: string; name: string }[]; items: Mail[]; next_before: string | null; total: number; pages: number }
 
 export interface Rule {
   id: string; name: string; position: number; enabled: boolean; conditions: Cond; action: Action; exceptions: Cond | null;

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -63,6 +65,25 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     var account by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
+    // infinite scroll: the cursor of the next (older) page, null when there is none
+    var next by remember { mutableStateOf<String?>(null) }
+    var grouped by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    suspend fun page(before: String?): Pair<List<FeedItem>, String?> {
+        val api = Api.get(context)
+        return if (grouped) {
+            val p = api.groupedFeed(priority = priority, accountId = account, before = before)
+            p.items.map { o ->
+                if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
+                else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
+            } to p.nextBefore
+        } else {
+            val p = api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed", before = before)
+            p.items.map { MailItem(it) } to p.nextBefore
+        }
+    }
 
     fun load() {
         scope.launch {
@@ -72,12 +93,11 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 accounts = api.accounts()
                 val grouping = if (silenced) null else runCatching { api.grouping() }.getOrNull()
                 if (grouping?.shouldAsk == true && !GroupingPrompt.askedThisOpen) { GroupingPrompt.askedThisOpen = true; askGrouping = true }
-                items = if (grouping?.groupingEnabled == "yes") {
-                    api.groupedFeed(priority = priority, accountId = account).items.map { o ->
-                        if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
-                        else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
-                    }
-                } else api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed").items.map { MailItem(it) }
+                grouped = grouping?.groupingEnabled == "yes"
+                val (first, cursor) = page(null)
+                items = first
+                next = cursor
+                listState.scrollToItem(0)
                 error = null
             } catch (t: Throwable) {
                 error = t.userMessage()
@@ -86,6 +106,28 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             }
         }
     }
+
+    fun loadMore() {
+        val cursor = next ?: return
+        if (loadingMore || loading) return
+        loadingMore = true
+        scope.launch {
+            try {
+                val (more, nextCursor) = page(cursor)
+                val seen = items.map { it.key }.toSet()
+                items = items + more.filter { it.key !in seen }
+                next = nextCursor
+            } catch (t: Throwable) {
+                error = t.userMessage()
+            } finally {
+                loadingMore = false
+            }
+        }
+    }
+
+    // fetch the next page when the list gets within 8 rows of its end
+    val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 8 } ?: false } }
+    LaunchedEffect(nearEnd, next) { if (nearEnd && next != null) loadMore() }
     LaunchedEffect(priority, account, silenced) { load() }
     if (askGrouping) GroupingPromptDialog { answer -> askGrouping = false; if (answer == "yes") load() }
 
@@ -114,7 +156,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             Text("Saved and searchable, never notified. Check here if a rule looks too greedy.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
         }
         PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.fillMaxSize()) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
                 error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
                 if (!loading && error == null && items.isEmpty()) {
                     item {
@@ -129,6 +171,9 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                         is MailItem -> MailRow(item.m) { onOpen(item.m.id) }
                         is GroupItem -> GroupRow(item.g) { onOpenGroup(item.g.id) }
                     }
+                }
+                if (loadingMore) item {
+                    Text("Loading older mail…", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
                 }
             }
         }

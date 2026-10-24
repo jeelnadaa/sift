@@ -16,7 +16,7 @@ export function Groups() {
   return (
     <>
       <Top title="Groups">
-        {on && <button className="btn btn-ghost btn-sm" onClick={async () => { await post("/groups/collapse-all", { collapsed: true }).catch(() => {}); groups.reload(); }}>Collapse all</button>}
+        {on && <button className="btn btn-ghost btn-sm" onClick={async () => { await post("/groups/collapse-all", { collapsed: true }).catch(() => {}); groups.reload(); }} data-tip="Fold every group into a single row">Collapse all</button>}
       </Top>
       <section className="page">
         {status.data && (on
@@ -57,8 +57,8 @@ export function GroupDetail() {
   return (
     <>
       <Top title={d?.title ?? "Group"}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>Back</button>
-        {d && <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(d.title)}>Rename</button>}
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} data-tip="Go back to the previous page">Back</button>
+        {d && <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(d.title)} data-tip="Give it a new name">Rename</button>}
       </Top>
       <section className="page">
         {g.error && <Banner tone="err">{g.error}</Banner>}
@@ -70,15 +70,15 @@ export function GroupDetail() {
               <Toggle on={d.muted} label="Mute group" onChange={(v) => run(null, () => patch(`/groups/${id}`, { muted: v }))} />
             </div>
             <div className="tabs">
-              <button className="chip" onClick={() => setFiling("file")}>File all in folder</button>
-              <button className="chip" onClick={() => setFiling("rule")}>File mail like this…</button>
-              <button className="chip" onClick={() => ruleDraft("silent")}>Silence mail like this</button>
-              <button className={`chip ${selecting ? "on" : ""}`} onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>Split</button>
-              <button className="chip" onClick={() => setMerging(true)}>Merge into…</button>
+              <button className="chip" onClick={() => setFiling("file")} data-tip="File every conversation in this group into a folder">File all in folder</button>
+              <button className="chip" onClick={() => setFiling("rule")} data-tip="Make a rule that files future mail like this group's into a folder">File mail like this…</button>
+              <button className="chip" onClick={() => ruleDraft("silent")} data-tip="Draft a rule that silences mail like this group's (you check it first)">Silence mail like this</button>
+              <button className={`chip ${selecting ? "on" : ""}`} onClick={() => { setSelecting(!selecting); setSelected(new Set()); }} data-tip="Pick mails to move into a new group">Split</button>
+              <button className="chip" onClick={() => setMerging(true)} data-tip="Move everything here into another one, then remove this">Merge into…</button>
               <button className="chip" onClick={async () => {
                 const name = prompt("Tag every mail in this group as:");
                 if (name?.trim()) run(`Tagged ${d.count} mails`, () => post(`/groups/${id}/tag`, { name: name.trim() }));
-              }}>Tag</button>
+              }} data-tip="Tag every mail in this group">Tag</button>
               {sender && <button className="chip" onClick={() => run(`Mail from ${sender} won't be grouped`, () => put("/grouping/preferences", { sender_or_domain: sender, mode: "never" }))}>Never group {sender}</button>}
             </div>
             {selecting && (
@@ -93,15 +93,15 @@ export function GroupDetail() {
                   onOpen={() => selecting ? setSelected((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; }) : navigate(`/mail/${m.id}`)}
                   extra={selecting
                     ? <span className="ok-text">{selected.has(m.id) ? "☑" : "☐"}</span>
-                    : <button className="chip" onClick={(e) => { e.stopPropagation(); run("Taken out of the group", () => post(`/groups/${id}/remove`, { message_id: m.id })); }}>Take out</button>} />
+                    : <button className="chip" onClick={(e) => { e.stopPropagation(); run("Taken out of the group", () => post(`/groups/${id}/remove`, { message_id: m.id })); }} data-tip="Remove this mail from the group; it won't be added back">Take out</button>} />
               ))}
             </div>
           </>
         )}
       </section>
       {renaming !== null && (
-        <Modal title="Rename group" onClose={() => setRenaming(null)} foot={<><button className="btn btn-ghost btn-sm" onClick={() => setRenaming(null)}>Cancel</button>
-          <button className="btn btn-primary btn-sm" disabled={!renaming.trim()} onClick={() => { const t = renaming.trim(); setRenaming(null); run(null, () => patch(`/groups/${id}`, { title: t })); }}>Save</button></>}>
+        <Modal title="Rename group" onClose={() => setRenaming(null)} foot={<><button className="btn btn-ghost btn-sm" onClick={() => setRenaming(null)} data-tip="Close without saving">Cancel</button>
+          <button className="btn btn-primary btn-sm" disabled={!renaming.trim()} onClick={() => { const t = renaming.trim(); setRenaming(null); run(null, () => patch(`/groups/${id}`, { title: t })); }} data-tip="Save changes">Save</button></>}>
           <input className="input" style={{ width: "100%" }} value={renaming} onChange={(e) => setRenaming(e.target.value)} autoFocus aria-label="Group name" />
         </Modal>
       )}

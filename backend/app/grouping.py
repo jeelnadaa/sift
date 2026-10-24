@@ -382,10 +382,13 @@ def set_preference(db: Session, user_id: uuid.UUID, sender_or_domain: str, mode:
 def feed_page(db: Session, user_id: uuid.UUID, base_query, before: datetime | None, limit: int):
     """Grouped feed: mail in shown groups is folded into one row per group, except urgent mail,
     which keeps its own row as well. Pages tile in time, so each group row appears on exactly
-    one page (the one covering its latest mail). Returns (messages, groups-with-members, next_before)."""
+    one page (the one covering its latest mail).
+    Returns (messages, groups-with-members, next_before, mail rows in all pages, group rows in all pages)."""
     shown = shown_group_ids(db, user_id).subquery()
     in_shown = select(GroupMember.message_id).where(GroupMember.group_id.in_(select(shown.c.id)), GroupMember.added_by != "removed")
     q = base_query.where(~Message.id.in_(in_shown) | (Message.priority == "urgent"))
+    mail_total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    group_total = db.scalar(select(func.count()).select_from(shown)) or 0
     if before:
         q = q.where(Message.received_at < before)
     rows = list(db.scalars(q.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
@@ -398,4 +401,4 @@ def feed_page(db: Session, user_id: uuid.UUID, base_query, before: datetime | No
         if t is None or (before and t >= before) or (lower and t < lower):
             continue
         groups.append((g, ms))
-    return rows, groups, (lower.isoformat() if lower else None)
+    return rows, groups, (lower.isoformat() if lower else None), mail_total, group_total

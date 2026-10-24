@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import folders, rule_tools
-from app.api.messages import message_json
+from app.api.messages import message_json, page_count
 from app.db import get_db
 from app.models import GmailAccount, Message, User
 from app.security import current_user
@@ -127,7 +127,7 @@ def threads(folder_id: uuid.UUID, include_subfolders: bool = False, q: str | Non
             before: datetime | None = None, limit: int = Query(default=50, ge=1, le=200),
             user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     f = _folder(db, user, folder_id)
-    rows, path = folders.thread_rows(db, user.id, f, include_subfolders, q, before, limit)
+    rows, path, total = folders.thread_rows(db, user.id, f, include_subfolders, q, before, limit)
     counts = folders.mark_thread_counts(db, user.id, rows)
     accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id))}
     items = []
@@ -139,6 +139,7 @@ def threads(folder_id: uuid.UUID, include_subfolders: bool = False, q: str | Non
         "path": [{"id": str(p.id), "name": p.name} for p in path],
         "items": items,
         "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None,
+        "total": total, "pages": page_count(total, limit),
     }
 
 

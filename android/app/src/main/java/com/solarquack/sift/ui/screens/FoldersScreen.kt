@@ -308,12 +308,29 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
     var includeSub by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var loadingMore by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     fun load() = scope.launch {
         try { view = Api.get(context).folderThreads(id, includeSub, query.trim().ifBlank { null }); error = null } catch (t: Throwable) { error = t.userMessage() }
     }
+    fun loadMore() {
+        val v = view ?: return
+        val cursor = v.nextBefore ?: return
+        if (loadingMore) return
+        loadingMore = true
+        scope.launch {
+            try {
+                val more = Api.get(context).folderThreads(id, includeSub, query.trim().ifBlank { null }, before = cursor)
+                val seen = v.items.map { it.id }.toSet()
+                view = v.copy(items = v.items + more.items.filter { it.id !in seen }, nextBefore = more.nextBefore)
+            } catch (t: Throwable) { error = t.userMessage() } finally { loadingMore = false }
+        }
+    }
     LaunchedEffect(id, includeSub) { load() }
     LaunchedEffect(query) { kotlinx.coroutines.delay(350); load() }
+    val nearEnd by remember { androidx.compose.runtime.derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 8 } ?: false } }
+    LaunchedEffect(nearEnd, view?.nextBefore) { if (nearEnd) loadMore() }
 
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
         Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(start = 18.dp, top = 12.dp, bottom = 4.dp))
@@ -335,7 +352,7 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
             }
         }
         error?.let { Box(Modifier.padding(horizontal = 14.dp)) { Banner(it, Ink.urgent, "Retry") { load() } } }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
             if (v != null && v.items.isEmpty()) item {
                 Text(if (query.isBlank()) "Nothing filed here yet. Open a mail and tap File in folder." else "No mail here matches.",
                     color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
-import { Icon, Toaster, errorText, toast } from "./components";
+import { Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
 import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
 import { MailDetail } from "./pages/Mail";
@@ -34,15 +34,26 @@ export function App() {
         <Route path="/*" element={signedIn ? <Shell onSignOut={() => { session.clear(); setSignedIn(false); }} /> : <Navigate to="/login" replace />} />
       </Routes>
       <Toaster />
+      <TooltipLayer />
     </>
   );
 }
 
-const NAV: { h: string; items: [string, string, string][] }[] = [
-  { h: "Inbox", items: [["/", "Feed", "feed"], ["/todo", "To-do", "todo"], ["/opportunities", "Opportunities", "opps"], ["/groups", "Groups", "groups"]] },
-  { h: "Organize", items: [["/folders", "Folders", "folder"]] },
-  { h: "Control", items: [["/rules", "Rules", "rules"], ["/silenced", "Silenced", "mute"], ["/scan", "Onboarding scan", "scan"]] },
-  { h: "Account", items: [["/accounts", "Accounts", "mail"], ["/usage", "Token usage", "chart"], ["/settings", "Settings", "gear"]] },
+const NAV: { h: string; items: [string, string, string, string][] }[] = [
+  { h: "Inbox", items: [
+    ["/", "Feed", "feed", "All new mail from every account, newest first"],
+    ["/todo", "To-do", "todo", "Mail that needs action, with deadlines and reminders"],
+    ["/opportunities", "Opportunities", "opps", "One timeline per company: announcements, tests, interviews, results"],
+    ["/groups", "Groups", "groups", "Similar mail stacked together (display only)"]] },
+  { h: "Organize", items: [["/folders", "Folders", "folder", "Your own nested folders. Drop mail on one to file it"]] },
+  { h: "Control", items: [
+    ["/rules", "Rules", "rules", "What gets silenced, digested, notified or filed"],
+    ["/silenced", "Silenced", "mute", "Mail kept quiet by a rule: check here if a rule is too greedy"],
+    ["/scan", "Onboarding scan", "scan", "Top senders of the last 30 days, set in bulk"]] },
+  { h: "Account", items: [
+    ["/accounts", "Accounts", "mail", "Connected Gmail accounts and their status"],
+    ["/usage", "Token usage", "chart", "What your own AI key has spent"],
+    ["/settings", "Settings", "gear", "AI key, notifications, grouping, backup"]] },
 ];
 
 function Shell({ onSignOut }: { onSignOut: () => void }) {
@@ -74,14 +85,14 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
       <aside>
         <div className="brand">
           <div className="logo"><b /><span>Sift</span></div>
-          <button className="collapse" onClick={toggle} title={collapsed ? "Expand sidebar ( [ )" : "Collapse sidebar ( [ )"} aria-label="Toggle sidebar"><Icon name="chev" /></button>
+          <button className="collapse" onClick={toggle} data-tip={collapsed ? "Expand sidebar  ( [ )" : "Collapse sidebar  ( [ )"} aria-label="Toggle sidebar"><Icon name="chev" /></button>
         </div>
         <nav className="nav">
           {NAV.map((g) => (
             <div className="nav-group" key={g.h}>
               <div className="nav-h">{g.h}</div>
-              {g.items.map(([to, label, icon]) => (
-                <NavLink key={to} to={to} end={to === "/"} title={label} className={({ isActive }) => (isActive ? "on" : "")}>
+              {g.items.map(([to, label, icon, tip]) => (
+                <NavLink key={to} to={to} end={to === "/"} data-tip={collapsed ? `${label}\n${tip}` : tip} aria-label={label} className={({ isActive }) => (isActive ? "on" : "")}>
                   <Icon name={icon} /><span className="lbl">{label}</span>
                   {to === "/accounts" && trouble && <><span className="ct u">!</span><i className="ct-dot" /></>}
                 </NavLink>
@@ -92,7 +103,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
         </nav>
         <div className="side-foot">
           <div className="avatar">{email.charAt(0).toUpperCase() || "S"}</div>
-          <div className="who-t"><b>{email.split("@")[0]}</b><div className="dim" style={{ fontSize: 12 }}>{accounts.length} account{accounts.length === 1 ? "" : "s"} · <a className="link dim" onClick={onSignOut}>Sign out</a></div></div>
+          <div className="who-t"><b>{email.split("@")[0]}</b><div className="dim" style={{ fontSize: 12 }}>{accounts.length} account{accounts.length === 1 ? "" : "s"} · <a className="link dim" onClick={onSignOut} data-tip="Sign out of this browser">Sign out</a></div></div>
         </div>
       </aside>
       <main>
@@ -126,7 +137,7 @@ function SideFolder({ f }: { f: Folder }) {
   const [over, setOver] = useState(false);
   const navigate = useNavigate();
   return (
-    <a title={f.name} className={over ? "drop" : ""} style={{ paddingLeft: 42, fontSize: 13.5 }}
+    <a data-tip={`${f.name}${f.unread_total ? ` · ${f.unread_total} unread` : ""}\nDrop mail here to file it`} className={over ? "drop" : ""} style={{ paddingLeft: 42, fontSize: 13.5 }}
       onClick={() => navigate(`/folders/${f.id}`)}
       onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-sift-mail")) { e.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}

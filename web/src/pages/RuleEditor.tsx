@@ -73,11 +73,11 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
   return (
     <>
       <Top title={existing ? "Edit rule" : "New rule"}>
-        <button className="btn btn-ghost btn-sm" onClick={onDone}>Cancel</button>
+        <button className="btn btn-ghost btn-sm" onClick={onDone} data-tip="Close without saving">Cancel</button>
         {existing && <button className="btn btn-danger btn-sm" onClick={async () => {
           if (!confirm(`Delete "${existing.name}"?`)) return;
           try { await del(`/rules/${existing.id}`); onDone(); } catch (e) { toast(errorText(e)); }
-        }}>Delete</button>}
+        }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>}
         <button className="btn btn-primary btn-sm" disabled={saving || !name.trim() || !conditions} onClick={save}>{saving ? "Saving…" : "Save rule"}</button>
       </Top>
       <section className="page">
@@ -106,26 +106,26 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
               <>
                 <div className="field"><label>When</label></div>
                 <div className="tabs" style={{ margin: "6px 0 10px" }}>
-                  <button className={`chip ${all ? "on" : ""}`} onClick={() => setAll(true)}>All of these</button>
-                  <button className={`chip ${!all ? "on" : ""}`} onClick={() => setAll(false)}>Any of these</button>
+                  <button className={`chip ${all ? "on" : ""}`} onClick={() => setAll(true)} data-tip="Every condition must match">All of these</button>
+                  <button className={`chip ${!all ? "on" : ""}`} onClick={() => setAll(false)} data-tip="One matching condition is enough">Any of these</button>
                 </div>
                 {rows.map((r, i) => <CondRow key={i} row={r} onChange={(n) => setRows(rows.map((x, j) => (j === i ? n : x)))} onRemove={rows.length > 1 ? () => setRows(rows.filter((_, j) => j !== i)) : undefined} />)}
-                <button className="chip" style={{ margin: "4px 0 18px" }} onClick={() => setRows([...rows, { kind: "subject_any", text: "" }])}>+ condition</button>
+                <button className="chip" style={{ margin: "4px 0 18px" }} onClick={() => setRows([...rows, { kind: "subject_any", text: "" }])} data-tip="Add another condition">+ condition</button>
 
                 <div className="field"><label>Unless (any of these groups)</label></div>
                 {groups.map((g, gi) => (
                   <div key={gi} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-lg)", padding: 10, margin: "8px 0" }}>
                     <div className="inline" style={{ marginBottom: 6 }}>
                       <span className="dim" style={{ fontSize: 12.5, fontWeight: 700 }}>{g.length > 1 ? `Exception ${gi + 1}: all of` : `Exception ${gi + 1}`}</span>
-                      <span className="spacer" /><a className="link dim" onClick={() => setGroups(groups.filter((_, j) => j !== gi))}>Remove</a>
+                      <span className="spacer" /><a className="link dim" onClick={() => setGroups(groups.filter((_, j) => j !== gi))} data-tip="Delete this exception">Remove</a>
                     </div>
                     {g.map((r, i) => <CondRow key={i} exc row={r}
                       onChange={(n) => setGroups(groups.map((x, j) => (j === gi ? x.map((y, k) => (k === i ? n : y)) : x)))}
                       onRemove={g.length > 1 ? () => setGroups(groups.map((x, j) => (j === gi ? x.filter((_, k) => k !== i) : x))) : undefined} />)}
-                    <a className="link" style={{ fontSize: 13 }} onClick={() => setGroups(groups.map((x, j) => (j === gi ? [...x, { kind: "amount_above", text: "" }] : x)))}>+ and…</a>
+                    <a className="link" style={{ fontSize: 13 }} onClick={() => setGroups(groups.map((x, j) => (j === gi ? [...x, { kind: "amount_above", text: "" }] : x)))} data-tip="Add another condition that must also be true in this exception">+ and…</a>
                   </div>
                 ))}
-                <button className="chip" style={{ margin: "4px 0 10px" }} onClick={() => setGroups([...groups, [{ kind: "subject_any", text: "" }]])}>+ exception</button>
+                <button className="chip" style={{ margin: "4px 0 10px" }} onClick={() => setGroups([...groups, [{ kind: "subject_any", text: "" }]])} data-tip="Mail matching an exception is never handled by this rule">+ exception</button>
                 <p className="dim" style={{ fontSize: 13 }}>Sender conditions only match mail Gmail verified (DKIM/SPF), so spoofed senders never match. Amounts are read from the subject or preview text.</p>
               </>
             ) : (
@@ -143,7 +143,7 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
             <div className="inline">
               <span className="muted">{folderName ? <>Also file in <b style={{ color: "var(--text)" }}>{folderName}</b></> : "Also file in a folder"}</span>
               <a className="link" onClick={() => setPicking(true)}>{folderId ? "Change" : "Pick"}</a>
-              {folderId && <a className="link dim" onClick={() => setFolderId(null)}>Remove</a>}
+              {folderId && <a className="link dim" onClick={() => setFolderId(null)} data-tip="Stop filing matching mail in a folder">Remove</a>}
             </div>
           </div>
 
@@ -186,7 +186,7 @@ function CondRow({ row, onChange, onRemove, exc }: { row: Row; onChange: (r: Row
       </select>
       {k.key !== "attachment" && <input className={`input ${k.key === "subject_regex" ? "code" : ""}`} value={row.text} placeholder={k.hint} aria-label={k.inputLabel}
         inputMode={k.field === "amount" ? "decimal" : undefined} onChange={(e) => onChange({ kind: row.kind, text: e.target.value })} />}
-      {onRemove && <button className="chip" onClick={onRemove} aria-label="Remove condition">✕</button>}
+      {onRemove && <button className="chip" onClick={onRemove} aria-label="Remove condition" data-tip="Remove this condition">✕</button>}
     </div>
   );
 }

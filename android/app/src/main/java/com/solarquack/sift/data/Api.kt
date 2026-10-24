@@ -96,6 +96,7 @@ interface SiftApi {
         @Path("id") id: String,
         @Query("include_subfolders") includeSubfolders: Boolean = false,
         @Query("q") q: String? = null,
+        @Query("before") before: String? = null,
     ): FolderView
     @POST("api/v1/folders/{id}/threads") suspend fun fileMail(@Path("id") id: String, @Body body: FileIn): FiledResult
     @POST("api/v1/folders/last-used/threads") suspend fun fileLastUsed(@Body body: FileIn): FiledResult

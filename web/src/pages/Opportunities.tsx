@@ -17,11 +17,11 @@ export function Opportunities() {
 
   return (
     <>
-      <Top title="Opportunities"><button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>+ New opportunity</button></Top>
+      <Top title="Opportunities"><button className="btn btn-primary btn-sm" onClick={() => setCreating(true)} data-tip="Start a company timeline by hand">+ New opportunity</button></Top>
       <section className="page">
         <div className="tabs">
-          <button className={`chip ${status === "active" ? "on" : ""}`} onClick={() => setStatus("active")}>Active</button>
-          <button className={`chip ${status === "closed" ? "on" : ""}`} onClick={() => setStatus("closed")}>Closed</button>
+          <button className={`chip ${status === "active" ? "on" : ""}`} onClick={() => setStatus("active")} data-tip="Companies you're still hearing from">Active</button>
+          <button className={`chip ${status === "closed" ? "on" : ""}`} onClick={() => setStatus("closed")} data-tip="Timelines you closed">Closed</button>
         </div>
         {list.error && <Banner tone="err">{list.error}</Banner>}
         <div className="split">
@@ -77,22 +77,22 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
               {e.sender_name && <>From {e.sender_name}{e.account ? ` · ${e.account}` : ""}</>}
               {e.deadline && <> · Deadline {fullTime(e.deadline)}</>}
               {e.links.map((l) => { const u = safeUrl(l.url); return u && <span key={u}> · <a className="link" href={u} target="_blank" rel="noopener noreferrer">{l.label} ↗</a></span>; })}
-              {e.message_id && <> · <a className="link dim" onClick={() => navigate(`/mail/${e.message_id}`)}>Open mail</a></>}
+              {e.message_id && <> · <a className="link dim" onClick={() => navigate(`/mail/${e.message_id}`)} data-tip="Open the mail this came from">Open mail</a></>}
             </div>
           </div>
         ))}
       </div>
       <div className="inline" style={{ marginTop: 28 }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => { setAliases(d.aliases.join(", ")); setEditing(true); }}>Edit aliases</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => { setAliases(d.aliases.join(", ")); setEditing(true); }} data-tip="Other names this company goes by, so its mail lands here">Edit aliases</button>
         <button className="btn btn-ghost btn-sm" onClick={() => save({ status: d.status === "active" ? "closed" : "active" })}>{d.status === "active" ? "Close" : "Reopen"}</button>
         <button className="btn btn-danger btn-sm" style={{ marginLeft: "auto" }} onClick={async () => {
           if (!confirm(`Delete the ${d.company} timeline? The mail stays.`)) return;
           try { await del(`/opportunities/${id}`); onChanged(); navigate("/opportunities"); } catch (e) { toast(errorText(e)); }
-        }}>Delete</button>
+        }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>
       </div>
       {editing && (
         <Modal title={`Aliases for ${d.company}`} onClose={() => setEditing(false)}
-          foot={<><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button><button className="btn btn-primary btn-sm" onClick={() => { setEditing(false); save({ aliases: aliases.split(",").map((s) => s.trim()).filter(Boolean) }); }}>Save</button></>}>
+          foot={<><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} data-tip="Close without saving">Cancel</button><button className="btn btn-primary btn-sm" onClick={() => { setEditing(false); save({ aliases: aliases.split(",").map((s) => s.trim()).filter(Boolean) }); }} data-tip="Save changes">Save</button></>}>
           <div className="field"><label htmlFor="al">Other names, comma separated</label><input id="al" className="input" value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Acme, ACME Ltd" /></div>
           <p className="dim" style={{ fontSize: 13, marginTop: 8 }}>Mail naming any of these lands on this timeline.</p>
         </Modal>
@@ -105,7 +105,7 @@ function NewOpportunity({ onClose, onCreated }: { onClose: () => void; onCreated
   const [company, setCompany] = useState("");
   return (
     <Modal title="New opportunity" onClose={onClose}
-      foot={<><button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button><button className="btn btn-primary btn-sm" disabled={!company.trim()} onClick={async () => {
+      foot={<><button className="btn btn-ghost btn-sm" onClick={onClose} data-tip="Close without saving">Cancel</button><button className="btn btn-primary btn-sm" disabled={!company.trim()} onClick={async () => {
         try { onCreated(await post<Opportunity>("/opportunities", { company: company.trim(), aliases: [] })); } catch (e) { toast(errorText(e)); }
       }}>Create</button></>}>
       <div className="field"><label htmlFor="co">Company</label><input id="co" className="input" value={company} onChange={(e) => setCompany(e.target.value)} autoFocus /></div>

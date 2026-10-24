@@ -234,3 +234,27 @@ def test_file_tag_and_rule_from_group(client, db, plain):
     assert len(list(db.scalars(select(MailTag)))) == 3
     r = client.post(f"/api/v1/groups/{g.id}/rule", headers=h, json={"action": "file", "folder_id": str(f.id), "save": True}).json()
     assert r["draft"]["action"] == {"type": "llm", "folder_id": str(f.id)} and r["rule_id"] and r["preview"]["matches"] == 3
+
+
+def test_pages_report_totals_and_tile_without_gaps(client, db, plain):
+    user, account, msgs = plain
+    deliver(db, account, [variant(msgs["recruiter"], i, subject=f"Note {i}") for i in range(7)])
+    h = H(user)
+    seen, before, pages = [], None, 0
+    while True:
+        r = client.get("/api/v1/messages", headers=h, params={"limit": 3, **({"before": before} if before else {})}).json()
+        assert (r["total"], r["pages"]) == (7, 3)
+        seen += [i["id"] for i in r["items"]]
+        pages += 1
+        before = r["next_before"]
+        if not before:
+            break
+    assert pages == 3 and len(seen) == len(set(seen)) == 7
+    # a filter changes the totals (the client renumbers from 1)
+    other = client.get("/api/v1/messages", headers=h, params={"limit": 3, "priority": "urgent"}).json()
+    assert (other["total"], other["pages"], other["items"]) == (0, 1, [])
+
+    turn_on(client, user)
+    deliver(db, account, [variant(msgs["bank"], 20 + i) for i in range(4)])
+    g = client.get("/api/v1/messages", headers=h, params={"limit": 3, "grouped": True}).json()
+    assert g["total"] == 8 and g["pages"] == 3  # 7 notes + 1 group row; pages count mail rows

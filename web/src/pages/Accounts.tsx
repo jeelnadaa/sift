@@ -24,7 +24,7 @@ export function Accounts() {
 
   return (
     <>
-      <Top title="Accounts"><button className="btn btn-primary btn-sm" onClick={() => connect()}>+ Add Gmail account</button></Top>
+      <Top title="Accounts"><button className="btn btn-primary btn-sm" onClick={() => connect()} data-tip="Connect another Gmail account (read-only access)">+ Add Gmail account</button></Top>
       <section className="page">
         {accounts.error && <Banner tone="err">{accounts.error}</Banner>}
         <div className="grid2">
@@ -32,16 +32,16 @@ export function Accounts() {
             const [label, tone] = STATUS[a.status];
             return (
               <div key={a.id} className="card" style={a.status !== "active" ? { borderColor: tone === "urgent" ? "rgba(255,90,60,.4)" : "rgba(255,185,56,.4)" } : undefined}>
-                <div className="inline"><span className="acct"><i style={{ background: accountColor(a.color, a.id) }} /></span><b>{a.email}</b><span className="spacer" /><Tag tone={tone}>{label}</Tag></div>
+                <div className="inline"><span className="acct" data-tip="This account's color in lists"><i style={{ background: accountColor(a.color, a.id) }} /></span><b>{a.email}</b><span className="spacer" /><Tag tone={tone} tip={a.status === "active" ? "Sift is receiving this account's mail" : a.status === "blocked" ? "Google says the account's administrator may block Sift" : "Sift lost access; reconnect to resume"}>{label}</Tag></div>
                 <div className="muted" style={{ marginTop: 10, fontSize: 13.5 }}>
                   {a.status === "blocked" ? "This account may be blocked by its administrator (common for college and work accounts). Other accounts keep working."
                     : a.status === "needs_reconnect" ? "Sift lost access to this account. Reconnect it; other accounts are fine."
                     : a.watch_expires_at ? `Instant push · watch renews by ${fullTime(a.watch_expires_at)}` : "Checked every few seconds"}
                 </div>
                 <div className="inline" style={{ marginTop: 16 }}>
-                  {a.status !== "active" && <button className="btn btn-primary btn-sm" onClick={() => connect(a.email)}>Reconnect</button>}
-                  {a.status === "active" && <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/scan?account=${a.id}`)}>First scan</button>}
-                  <button className="btn btn-danger btn-sm" onClick={() => remove(a)}>Remove</button>
+                  {a.status !== "active" && <button className="btn btn-primary btn-sm" onClick={() => connect(a.email)} data-tip="Sign in to Google again to restore access">Reconnect</button>}
+                  {a.status === "active" && <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/scan?account=${a.id}`)} data-tip="List this account's top senders from the last 30 days and set them in bulk">First scan</button>}
+                  <button className="btn btn-danger btn-sm" onClick={() => remove(a)} data-tip="Remove from Sift: stops its watch, deletes its tokens and its stored mail. Gmail is untouched">Remove</button>
                 </div>
               </div>
             );

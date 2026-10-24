@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
@@ -53,7 +53,9 @@ def list_messages(
     db: Session = Depends(get_db),
 ) -> dict:
     """`grouped=true` folds mail in groups into group rows when the user turned grouping on
-    (brief section 21); urgent mail keeps its own row too. Items then carry "type"."""
+    (brief section 21); urgent mail keeps its own row too. Items then carry "type".
+    Pages are cursor based (`before` = the previous page's `next_before`); `total` counts the
+    rows in all pages and `pages` how many pages of `limit` mails that makes, for "Page 2 of 7"."""
     q = select(Message).where(Message.user_id == user.id)
     if view == "feed":
         q = q.where(Message.status.in_(FEED_STATUSES))
@@ -65,16 +67,23 @@ def list_messages(
         q = q.where(Message.account_id == account_id)
     accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id))}
     if grouped and view == "feed" and grouping.enabled(db, user.id):
-        rows, groups, next_before = grouping.feed_page(db, user.id, q, before, limit)
+        rows, groups, next_before, mail_total, group_total = grouping.feed_page(db, user.id, q, before, limit)
         items = [{"type": "mail", **message_json(m, accounts.get(m.account_id))} for m in rows]
         items += [grouping.group_json(g, ms) for g, ms in groups]
         items.sort(key=lambda i: i["received_at"] or "", reverse=True)
-        return {"items": items, "next_before": next_before, "grouped": True}
+        return {"items": items, "next_before": next_before, "grouped": True,
+                "total": mail_total + group_total, "pages": page_count(mail_total, limit)}
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     if before:
         q = q.where(Message.received_at < before)
     rows = list(db.scalars(q.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
     items = [message_json(m, accounts.get(m.account_id)) for m in rows]
-    return {"items": items, "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None}
+    return {"items": items, "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None,
+            "total": total, "pages": page_count(total, limit)}
+
+
+def page_count(total: int, limit: int) -> int:
+    return max(1, -(-total // limit))
 
 
 def _own(db: Session, user: User, message_id: uuid.UUID) -> Message:

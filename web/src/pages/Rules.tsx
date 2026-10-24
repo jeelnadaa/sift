@@ -38,7 +38,7 @@ export function Rules() {
 
   return (
     <>
-      <Top title="Rules & categories"><button className="btn btn-primary btn-sm" onClick={() => navigate("/rules/new", { state: null })}>+ New rule</button></Top>
+      <Top title="Rules & categories"><button className="btn btn-primary btn-sm" onClick={() => navigate("/rules/new", { state: null })} data-tip="Build a rule with conditions, exceptions and an action">+ New rule</button></Top>
       <section className="page">
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="field"><label htmlFor="pe">Plain-English rule</label>
@@ -58,7 +58,7 @@ export function Rules() {
               onDragStart={() => setDragId(r.id)} onDragEnd={() => setDragId(null)}
               onDragOver={(e) => e.preventDefault()} onDrop={() => dropOn(r)}
               onClick={() => navigate(`/rules/${r.id}`, { state: { rule: r } })}>
-              <span className="dim mono" title="Drag to reorder">⋮⋮ {i + 1}</span>
+              <span className="dim mono" data-tip="Order: the first matching rule wins. Drag the row to reorder">⋮⋮ {i + 1}</span>
               <div className="main">
                 <div className="who">{r.name}</div>
                 <div className="subj">{describe(r.conditions)} · hits {r.hit_count}{r.exceptions ? " · with exceptions" : ""}</div>
@@ -77,9 +77,9 @@ export function Rules() {
           {suggestions.data?.map((s) => (
             <div key={s.id} className="row">
               <div className="main"><div className="who">"{s.template}" · {s.domain}</div><div className="subj">Seen {s.count} times in 30 days · latest: {s.sample_subject}</div></div>
-              <button className="btn btn-ghost btn-sm" onClick={() => post(`/rules/suggestions/${s.id}/dismiss`).then(suggestions.reload)}>Keep notifying</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => post(`/rules/suggestions/${s.id}/accept`, { action: "digest" }).then(() => { suggestions.reload(); rules.reload(); })}>Make digest</button>
-              <button className="btn btn-primary btn-sm" onClick={() => post(`/rules/suggestions/${s.id}/accept`, { action: "silent" }).then(() => { suggestions.reload(); rules.reload(); })}>Silence it</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => post(`/rules/suggestions/${s.id}/dismiss`).then(suggestions.reload)} data-tip="Hide this suggestion and keep notifying as now">Keep notifying</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => post(`/rules/suggestions/${s.id}/accept`, { action: "digest" }).then(() => { suggestions.reload(); rules.reload(); })} data-tip="Future mail like this arrives as a quiet digest notification">Make digest</button>
+              <button className="btn btn-primary btn-sm" onClick={() => post(`/rules/suggestions/${s.id}/accept`, { action: "silent" }).then(() => { suggestions.reload(); rules.reload(); })} data-tip="Future mail like this is stored silently, never notified">Silence it</button>
             </div>
           ))}
         </div>
@@ -106,17 +106,17 @@ function Categories() {
     <>
       <div className="tabs">
         {cats.data?.map((c) => (
-          <button key={c.name} className={`chip ${c.builtin ? "on" : ""}`} title={c.definition ?? "Built in"}
+          <button key={c.name} className={`chip ${c.builtin ? "on" : ""}`} data-tip={c.builtin ? "Built-in category" : `${c.definition ?? ""}\nClick to edit`}
             onClick={() => !c.builtin && setEditing({ id: c.id, name: c.name, definition: c.definition ?? "" })}>{c.name.replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase())}</button>
         ))}
-        <button className="chip" onClick={() => setEditing({ id: null, name: "", definition: "" })}>+ custom category</button>
+        <button className="chip" onClick={() => setEditing({ id: null, name: "", definition: "" })} data-tip="Describe a category in plain English for the AI to use">+ custom category</button>
       </div>
       <p className="dim" style={{ fontSize: 13 }}>Your own categories tell the AI what to look for, in plain English.</p>
       {editing && (
         <Modal title={editing.id ? "Edit category" : "New category"} onClose={() => setEditing(null)} foot={<>
-          {editing.id && <button className="btn btn-danger btn-sm" onClick={async () => { try { await del(`/categories/${editing.id}`); setEditing(null); cats.reload(); } catch (e) { toast(errorText(e)); } }}>Delete</button>}
-          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
-          <button className="btn btn-primary btn-sm" disabled={!editing.name.trim() || !editing.definition.trim()} onClick={save}>Save</button></>}>
+          {editing.id && <button className="btn btn-danger btn-sm" onClick={async () => { try { await del(`/categories/${editing.id}`); setEditing(null); cats.reload(); } catch (e) { toast(errorText(e)); } }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>}
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} data-tip="Close without saving">Cancel</button>
+          <button className="btn btn-primary btn-sm" disabled={!editing.name.trim() || !editing.definition.trim()} onClick={save} data-tip="Save changes">Save</button></>}>
           <div className="stack">
             <div className="field"><label htmlFor="cn">Name</label><input id="cn" className="input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Hostel notices" /></div>
             <div className="field"><label htmlFor="cd">What belongs here</label><textarea id="cd" className="input" rows={3} value={editing.definition} onChange={(e) => setEditing({ ...editing, definition: e.target.value })} placeholder="Mail from the hostel office about timings, fees or rooms" /></div>

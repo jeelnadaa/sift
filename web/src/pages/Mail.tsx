@@ -45,7 +45,7 @@ export function MailDetail() {
   return (
     <>
       <Top title={m?.subject ?? "Mail"}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>Back</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} data-tip="Go back to the previous page">Back</button>
       </Top>
       <section className="page">
         {mail.error && <Banner tone="err">{mail.error}</Banner>}
@@ -78,19 +78,19 @@ export function MailDetail() {
             {m.opportunity_id && <Banner tone="ok" action="Open timeline" onAction={() => navigate(`/opportunities/${m.opportunity_id}`)}>On the <b>{m.company ?? "company"}</b> timeline</Banner>}
 
             <div className="inline">
-              <button className="btn btn-ghost btn-sm" onClick={() => setPicking(true)}>File in folder</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPicking(true)} data-tip="File this conversation into one of your folders">File in folder</button>
               {last && !(inFolders.data ?? []).some((f) => f.id === last.id) && <button className="btn btn-ghost btn-sm" onClick={() => file(last)}>Move to {last.name}</button>}
               {m.status === "silenced" || m.status === "ignored"
-                ? <button className="btn btn-ghost btn-sm" onClick={unsilence}>Not like this</button>
+                ? <button className="btn btn-ghost btn-sm" onClick={unsilence} data-tip="Bring it back to the feed and stop silencing mail like it">Not like this</button>
                 : <button className="btn btn-ghost btn-sm" onClick={async () => {
                     try { setLikeThis(await post(`/messages/${id}/like-this`, { action: "silent", save: false })); } catch (e) { toast(errorText(e)); }
-                  }}>Ignore mails like this</button>}
+                  }} data-tip="Silence future mail from this sender with this kind of subject">Ignore mails like this</button>}
             </div>
             {(inFolders.data ?? []).length > 0 && (
               <div className="inline">
                 <span className="dim">In</span>
                 {inFolders.data!.map((f) => (
-                  <button key={f.id} className="chip" onClick={() => unfile(f)} title="Take it out of this folder">
+                  <button key={f.id} className="chip" onClick={() => unfile(f)} data-tip={`Take this conversation out of ${f.name}`}>
                     <i style={{ width: 8, height: 8, borderRadius: 3, background: f.color ?? "var(--text-3)" }} />{f.name} <span className="x">✕</span>
                   </button>
                 ))}
@@ -113,11 +113,11 @@ export function MailDetail() {
         onClose={() => setPicking(false)} onPick={(f) => { setPicking(false); if (f) file(f); }} />}
       {likeThis && (
         <Modal title="Silence mails like this?" onClose={() => setLikeThis(null)} foot={<>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setLikeThis(null); navigate("/rules/new", { state: { draft: likeThis.draft, origin: "one_tap" } }); }}>Adjust…</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setLikeThis(null); navigate("/rules/new", { state: { draft: likeThis.draft, origin: "one_tap" } }); }} data-tip="Open the draft in the rule editor to change it first">Adjust…</button>
           <button className="btn btn-primary btn-sm" onClick={async () => {
             setLikeThis(null);
             try { await post(`/messages/${id}/like-this`, { action: "silent", save: true }); mail.reload(); toast("Mails like this will be stored silently"); } catch (e) { toast(errorText(e)); }
-          }}>Silence</button></>}>
+          }} data-tip="Store mail like this silently from now on">Silence</button></>}>
           <p className="muted">New mail from the same verified sender with the same kind of subject will be stored silently: searchable, never notified.</p>
           <p className="ok-text" style={{ marginTop: 10 }}>{likeThis.preview.matches} of your last {likeThis.preview.checked} mails match.</p>
           {likeThis.preview.samples.slice(0, 3).map((s) => <p key={s.id} className="dim" style={{ fontSize: 13 }}>· {s.subject}</p>)}

@@ -2,7 +2,7 @@ import { useEffect, useState, type DragEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Folder, type FolderTree, type FolderView } from "../api";
 import { Top, fileDropped, foldersChanged } from "../App";
-import { Banner, FolderPicker, MailRow, Modal, Toggle, errorText, toast, useLoad } from "../components";
+import { Banner, FolderPicker, MailRow, Modal, Pager, Toggle, errorText, toast, useLoad, usePages } from "../components";
 import { FOLDER_COLORS, findFolder, flatten, subtreeIds } from "../util";
 
 const MAIL = "application/x-sift-mail";
@@ -41,7 +41,7 @@ export function Folders() {
 
   return (
     <>
-      <Top title="Folders"><button className="btn btn-primary btn-sm" onClick={() => setCreating({ parent: null })}>+ New folder</button></Top>
+      <Top title="Folders"><button className="btn btn-primary btn-sm" onClick={() => setCreating({ parent: null })} data-tip="Make a folder. Folders live in Sift; Gmail is never changed">+ New folder</button></Top>
       <section className="page">
         {tree.error && <Banner tone="err">{tree.error}</Banner>}
         <div className="split">
@@ -98,9 +98,9 @@ function TreeItem({ f, depth, on, open, onToggle, onOpen, onDropMail, onDropFold
       <span className="tw" onClick={(e) => { e.stopPropagation(); if (f.children.length) onToggle(); }}>{f.children.length ? (open ? "▾" : "▸") : ""}</span>
       <span className="sw" style={{ background: f.color ?? "var(--text-3)" }} />
       <span className="nm">{f.name}</span>
-      {f.pinned && <span className="dim" title="Pinned">📌</span>}
-      {f.notify_mode === "mute" && <span className="dim" title="Muted">🔕</span>}
-      {f.notify_mode === "always" && <span title="Always notify">🔔</span>}
+      {f.pinned && <span className="dim" data-tip="Pinned to the top">📌</span>}
+      {f.notify_mode === "mute" && <span className="dim" data-tip="Muted: mail filed here doesn't notify (urgent still does)">🔕</span>}
+      {f.notify_mode === "always" && <span data-tip="Always notify, even digest mail">🔔</span>}
       <span className={`ct ${(open ? f.unread : f.unread_total) ? "u" : ""}`}>{(open ? f.unread : f.unread_total) || f.threads || ""}</span>
     </div>
   );
@@ -113,7 +113,7 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<"edit" | "move" | "merge" | "delete" | null>(null);
   useEffect(() => { const t = setTimeout(() => setQuery(q.trim()), 300); return () => clearTimeout(t); }, [q]);
-  const view = useLoad(() => get<FolderView>(`/folders/${f.id}/threads`, { include_subfolders: includeSub, q: query || undefined }), [f.id, includeSub, query]);
+  const view = usePages((before) => get<FolderView>(`/folders/${f.id}/threads`, { include_subfolders: includeSub, q: query || undefined, before, limit: 30 }), [f.id, includeSub, query]);
 
   async function edit(changes: object) {
     try { await patch(`/folders/${f.id}`, changes); onChanged(); } catch (e) { toast(errorText(e)); }
@@ -124,18 +124,18 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
   return (
     <>
       <div className="crumbs">
-        <a onClick={() => navigate("/folders")}>Folders</a>
+        <a onClick={() => navigate("/folders")} data-tip="All folders">Folders</a>
         {view.data?.path.map((p, i) => <span key={p.id}>/ {i === view.data!.path.length - 1 ? <b style={{ color: "var(--text)" }}>{p.name}</b> : <a onClick={() => navigate(`/folders/${p.id}`)}>{p.name}</a>}</span>)}
       </div>
       <div className="tabs">
         {NOTIFY.map(([mode, label]) => <button key={mode} className={`chip ${f.notify_mode === mode ? "on" : ""}`} onClick={() => edit({ notify_mode: mode })}>{label}</button>)}
         <span className="spacer" />
         <button className="chip" onClick={() => edit({ pinned: !f.pinned })}>{f.pinned ? "Unpin" : "Pin to top"}</button>
-        <button className="chip" onClick={() => setDialog("edit")}>Rename or recolor</button>
-        <button className="chip" onClick={onAddChild}>+ Subfolder</button>
-        <button className="chip" onClick={() => setDialog("move")}>Move</button>
-        <button className="chip" onClick={() => setDialog("merge")}>Merge</button>
-        <button className="chip" style={{ color: "var(--urgent)" }} onClick={() => setDialog("delete")}>Delete</button>
+        <button className="chip" onClick={() => setDialog("edit")} data-tip="Change this folder's name or color">Rename or recolor</button>
+        <button className="chip" onClick={onAddChild} data-tip="Make a folder inside this one">+ Subfolder</button>
+        <button className="chip" onClick={() => setDialog("move")} data-tip="Move this folder (with everything in it) under another folder">Move</button>
+        <button className="chip" onClick={() => setDialog("merge")} data-tip="Move this folder's mail and subfolders into another folder">Merge</button>
+        <button className="chip" style={{ color: "var(--urgent)" }} onClick={() => setDialog("delete")} data-tip="Delete for good (mail itself is never deleted)">Delete</button>
       </div>
       <p className="dim" style={{ fontSize: 13, margin: "-8px 0 14px" }}>{NOTIFY.find(([m]) => m === f.notify_mode)?.[2]}</p>
       <div className="inline" style={{ marginBottom: 14 }}>
@@ -143,14 +143,16 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
         <span className="inline dim" style={{ fontSize: 13 }}><Toggle on={includeSub} onChange={setIncludeSub} label="Include subfolders" /> Include subfolders</span>
       </div>
       {view.error && <Banner tone="err">{view.error}</Banner>}
+      {view.data && <Pager page={view.page} pages={view.pages} total={view.total} noun="conversations" onPrev={view.onPrev} onNext={view.onNext} />}
       <div className="list">
         {view.data?.items.length === 0 && <div className="empty">{query ? "No mail here matches." : "Nothing filed here yet. Drag mail onto this folder, or open a mail and choose File in folder."}</div>}
-        {view.data?.items.map((m) => (
-          <MailRow key={m.id} m={m} onOpen={() => navigate(`/mail/${m.id}`)}
-            extra={!includeSub && <button className="chip" title="Take this conversation out of the folder" onClick={(e) => { e.stopPropagation(); unfile(m.id); }}>Unfile</button>} />
+        {view.data?.items.map((m, n) => (
+          <MailRow key={m.id} m={m} n={n + 1} onOpen={() => navigate(`/mail/${m.id}`)}
+            extra={!includeSub && <button className="chip" onClick={(e) => { e.stopPropagation(); unfile(m.id); }} data-tip="Take this conversation out of the folder (mail stays)">Unfile</button>} />
         ))}
       </div>
-      <p className="dim" style={{ marginTop: 12, fontSize: 13 }}>Filing never changes mail in Gmail. <a className="link dim" onClick={() => navigate("/settings")}>Import or export folders and rules as JSON</a></p>
+      {view.data && <Pager bottom page={view.page} pages={view.pages} total={view.total} noun="conversations" onPrev={view.onPrev} onNext={view.onNext} />}
+      <p className="dim" style={{ marginTop: 12, fontSize: 13 }}>Filing never changes mail in Gmail. <a className="link dim" onClick={() => navigate("/settings")} data-tip="Backup lives in Settings">Import or export folders and rules as JSON</a></p>
 
       {dialog === "edit" && <FolderForm title="Edit folder" initialName={f.name} initialColor={f.color} onClose={() => setDialog(null)}
         onSave={(name, color) => { setDialog(null); edit({ name, color, clear_color: color === null }); }} />}
@@ -165,8 +167,8 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
         }} />}
       {dialog === "delete" && (
         <Modal title={`Delete ${f.name}?`} onClose={() => setDialog(null)} foot={<>
-          <button className="btn btn-ghost btn-sm" onClick={() => setDialog(null)}>Cancel</button>
-          {f.children.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => remove("move_up")}>Delete, move subfolders up</button>}
+          <button className="btn btn-ghost btn-sm" onClick={() => setDialog(null)} data-tip="Close without saving">Cancel</button>
+          {f.children.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => remove("move_up")} data-tip="Delete this folder; its subfolders move up one level. Mail stays">Delete, move subfolders up</button>}
           <button className="btn btn-danger btn-sm" onClick={() => remove("delete")}>{f.children.length ? "Delete with subfolders" : "Delete"}</button>
         </>}>
           <p className="muted">Only the folder and its filing go. Mail stays in Gmail and in Sift.{f.children.length > 0 && ` It has ${f.children.length} subfolder(s).`}</p>
@@ -192,8 +194,8 @@ function FolderForm({ title, initialName = "", initialColor = null, onSave, onCl
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState<string | null>(initialColor);
   return (
-    <Modal title={title} onClose={onClose} foot={<><button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-      <button className="btn btn-primary btn-sm" disabled={!name.trim()} onClick={() => onSave(name.trim(), color)}>Save</button></>}>
+    <Modal title={title} onClose={onClose} foot={<><button className="btn btn-ghost btn-sm" onClick={onClose} data-tip="Close without saving">Cancel</button>
+      <button className="btn btn-primary btn-sm" disabled={!name.trim()} onClick={() => onSave(name.trim(), color)} data-tip="Save changes">Save</button></>}>
       <div className="stack">
         <div className="field"><label htmlFor="fn">Name</label><input id="fn" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Placements" autoFocus
           onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onSave(name.trim(), color); }} /></div>

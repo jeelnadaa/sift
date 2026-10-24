@@ -68,7 +68,7 @@ export function SettingsPage() {
                 <input id="ky" className="input code" style={{ flex: 1 }} type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste a key from aistudio.google.com" />
                 <button className="btn btn-primary btn-sm" style={{ height: 42 }} disabled={busy || key.trim().length < 10} onClick={saveKey}>{busy ? "Checking…" : "Save and test"}</button>
                 {a?.key_last4 && <button className="btn btn-ghost btn-sm" style={{ height: 42 }} onClick={async () => { try { ai.setData(await post<AiStatus>("/ai/test")); } catch (e) { toast(errorText(e)); } }}>Test</button>}
-                {a?.key_last4 && <button className="btn btn-danger btn-sm" style={{ height: 42 }} onClick={async () => { try { await del("/ai/key"); ai.reload(); } catch (e) { toast(errorText(e)); } }}>Remove</button>}
+                {a?.key_last4 && <button className="btn btn-danger btn-sm" style={{ height: 42 }} data-tip="Delete the stored key. Sift keeps working without AI" onClick={async () => { try { await del("/ai/key"); ai.reload(); } catch (e) { toast(errorText(e)); } }}>Remove</button>}
               </div>
             </div>
             <p className="dim" style={{ fontSize: 13, marginTop: 8 }}>Stored encrypted on your server and never shown again after saving.</p>
@@ -101,9 +101,9 @@ export function SettingsPage() {
 
         <div className="settings-sec"><h2>Data</h2>
           <div className="set-row"><div>Export folders, rules, tags, categories &amp; settings<small>One JSON file. No mail, tokens or keys.</small></div>
-            <button className="btn btn-ghost btn-sm" onClick={exportBackup}>Export</button></div>
+            <button className="btn btn-ghost btn-sm" onClick={exportBackup} data-tip="Download folders, rules, tags, categories and settings as JSON. No mail or keys">Export</button></div>
           <div className="set-row"><div>Import a backup<small>Adds to what you have; never deletes. Rules for accounts that aren't connected come in switched off.</small></div>
-            <button className="btn btn-ghost btn-sm" onClick={() => fileInput.current?.click()}>Import…</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => fileInput.current?.click()} data-tip="Add folders, rules and settings from a Sift backup file">Import…</button>
             <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} /></div>
         </div>
       </section>

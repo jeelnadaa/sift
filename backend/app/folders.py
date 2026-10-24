@@ -303,7 +303,7 @@ def tree_json(db: Session, user_id: uuid.UUID) -> dict:
 
 
 def thread_rows(db: Session, user_id: uuid.UUID, folder: Folder, include_subfolders: bool = False,
-                q: str | None = None, before=None, limit: int = 50) -> tuple[list[Message], list[Folder]]:
+                q: str | None = None, before=None, limit: int = 50) -> tuple[list[Message], list[Folder], int]:
     """Latest message of each thread in the folder (and its subfolders), newest first.
     `q` is a plain words-in-sender/subject/snippet search; full search arrives in Phase 3."""
     tree = load_tree(db, user_id)
@@ -322,10 +322,11 @@ def thread_rows(db: Session, user_id: uuid.UUID, folder: Folder, include_subfold
                                       Message.sender_name.ilike(like), Message.snippet.ilike(like)))
     latest = latest.subquery()
     stmt = select(Message).join(latest, and_(Message.id == latest.c.id, latest.c.rn == 1))
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     if before is not None:
         stmt = stmt.where(Message.received_at < before)
     rows = list(db.scalars(stmt.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
-    return rows, tree.path(folder.id)
+    return rows, tree.path(folder.id), total
 
 
 def mark_thread_counts(db: Session, user_id: uuid.UUID, rows: list[Message]) -> dict[tuple, tuple[int, int]]:
