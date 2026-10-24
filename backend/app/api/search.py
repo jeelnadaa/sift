@@ -176,3 +176,38 @@ def semantic_index(user: User = Depends(current_user), db: Session = Depends(get
         raise HTTPException(409, "Add a working AI key in Settings first")
     jobs.enqueue_sync("semantic_backfill", {"user_id": str(user.id)}, dedupe_key=f"semantic:{user.id}")
     return semantic.status(db, user.id)
+
+
+class TextIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+
+
+@router.post("/search/from-text")
+def from_text(body: TextIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Plain English -> the same query the chips use ("mails from Walmart last week" ->
+    from:walmart newer_than:7d). Needs the user's AI key; the result is checked by the parser."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app import user_settings
+    from app.llm import service as llm
+    from app.llm.base import LlmError
+    from app.models import Opportunity
+
+    known = {
+        "folders": list(db.scalars(select(Folder.name).where(Folder.user_id == user.id, Folder.saved_search_id.is_(None)))),
+        "tags": list(db.scalars(select(Tag.name).where(Tag.user_id == user.id))),
+        "companies": list(db.scalars(select(Opportunity.company).where(Opportunity.user_id == user.id))),
+    }
+    today = datetime.now(ZoneInfo(user_settings.get(db, user.id)["timezone"])).strftime("%Y-%m-%d (%A)")
+    try:
+        out = llm.search_from_text(db, user.id, body.text, today, known)
+    except LlmError as exc:
+        db.commit()
+        raise HTTPException(409 if "API key" in str(exc) or "cap" in str(exc) else 422, str(exc)) from exc
+    db.commit()
+    try:
+        p = parse(out["query"])
+    except QueryError as exc:
+        raise HTTPException(422, "Couldn't turn that into a valid search; try different words") from exc
+    return {**out, "chips": [c.__dict__ for c in p.chips], "gmail_query": p.gmail}

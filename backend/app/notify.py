@@ -94,6 +94,25 @@ def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notifica
     return n
 
 
+def notify_match(db: Session, msg: Message, account: GmailAccount, search_name: str) -> Notification | None:
+    """A new mail matched a saved search set to notify (even mail a rule quieted: the user asked
+    for these). Normal priority; one notification per message, like every other."""
+    stmt = insert(Notification).values(
+        user_id=msg.user_id, message_id=msg.id, priority="normal", mail_received_at=msg.received_at,
+    ).on_conflict_do_nothing(index_elements=["message_id"]).returning(Notification.id)
+    notification_id = db.execute(stmt).scalar()
+    if notification_id is None:
+        return None
+    n = db.get(Notification, notification_id)
+    data = payload(n, msg, account)
+    data["title"] = f"{search_name} · {data['title']}"[:120]
+    data["saved_search"] = search_name
+    if _send_all(db, msg.user_id, data):
+        n.sent_at = datetime.now(UTC)
+    db.flush()
+    return n
+
+
 def send_reminder(db: Session, user_id: uuid.UUID, data: dict) -> int:
     return _send_all(db, user_id, data)
 

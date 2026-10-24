@@ -49,6 +49,9 @@ class FakeLlm:
         self.calls.append({"system": system, "prompt": prompt})
         if self.fail_with:
             raise self.fail_with
+        if system.startswith("You turn a person's description"):
+            q = getattr(self, "search_query", "from:walmart newer_than:7d")
+            return LlmResult(text=json.dumps({"query": q, "explanation": "Mail from Walmart in the last 7 days"}), input_tokens=90, output_tokens=20)
         if system.startswith("Convert the user's sentence"):
             rule = getattr(self, "rule", None) or {"name": "invalid", "match": "all", "conditions": [], "exceptions": [], "action": "silent"}
             return LlmResult(text=json.dumps(rule), input_tokens=120, output_tokens=40)

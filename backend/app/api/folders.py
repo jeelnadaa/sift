@@ -124,10 +124,16 @@ def remove(folder_id: uuid.UUID, subfolders: str = Query(default="move_up", patt
 
 @router.get("/{folder_id}/threads")
 def threads(folder_id: uuid.UUID, include_subfolders: bool = False, q: str | None = Query(default=None, max_length=200),
-            before: datetime | None = None, limit: int = Query(default=50, ge=1, le=200),
+            before: str | None = Query(default=None, max_length=20000), limit: int = Query(default=50, ge=1, le=200),
             user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     f = _folder(db, user, folder_id)
-    rows, path, total = folders.thread_rows(db, user.id, f, include_subfolders, q, before, limit)
+    if f.saved_search_id is not None:
+        return _smart_folder(db, user, f, q, before, limit)
+    try:
+        when = datetime.fromisoformat(before) if before else None
+    except ValueError as exc:
+        raise HTTPException(422, "bad page cursor") from exc
+    rows, path, total = folders.thread_rows(db, user.id, f, include_subfolders, q, when, limit)
     counts = folders.mark_thread_counts(db, user.id, rows)
     accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id))}
     items = []
@@ -140,6 +146,25 @@ def threads(folder_id: uuid.UUID, include_subfolders: bool = False, q: str | Non
         "items": items,
         "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None,
         "total": total, "pages": page_count(total, limit),
+    }
+
+
+def _smart_folder(db: Session, user: User, f, q: str | None, cursor: str | None, limit: int) -> dict:
+    """A smart folder shows its saved search's results (it updates itself). The folder's own search
+    box narrows them further."""
+    from app.models import SavedSearch
+    from app.search import engine
+
+    s = db.get(SavedSearch, f.saved_search_id)
+    query = s.query + (f" {q}" if q else "")
+    try:
+        hits, nxt, total, _failed, parsed = engine.run(db, user.id, query, cursor, limit)
+    except engine.SearchError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        "folder": {**folders.folder_json(f), "query": s.query}, "path": [{"id": str(f.id), "name": f.name}],
+        "items": [engine.hit_json(h, message_json) for h in hits], "next_before": nxt,
+        "total": total, "pages": page_count(total, limit), "estimated": parsed.has_gmail,
     }
 
 

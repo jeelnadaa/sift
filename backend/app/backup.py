@@ -14,7 +14,9 @@ from app import folders as folder_service
 from app import rules as engine
 from app import user_settings
 from app.rule_tools import next_position
-from app.models import Category, Folder, GmailAccount, GroupPreference, Rule, Tag
+from app.search.query import QueryError
+from app.search.query import parse as parse_query
+from app.models import Category, Folder, GmailAccount, GroupPreference, Rule, SavedSearch, Tag
 
 FORMAT = "sift-backup"
 VERSION = 1
@@ -65,6 +67,9 @@ def export(db: Session, user_id: uuid.UUID) -> dict:
         "categories": [{"name": c.name, "definition": c.definition} for c in db.scalars(select(Category).where(Category.user_id == user_id).order_by(Category.name))],
         "group_preferences": [{"sender_or_domain": p.sender_or_domain, "mode": p.mode}
                               for p in db.scalars(select(GroupPreference).where(GroupPreference.user_id == user_id))],
+        "saved_searches": [{"name": x.name, "query": x.query, "pinned": x.pinned, "notify": x.notify,
+                            "smart_folder": db.scalar(select(Folder.id).where(Folder.saved_search_id == x.id)) is not None}
+                           for x in db.scalars(select(SavedSearch).where(SavedSearch.user_id == user_id).order_by(SavedSearch.name))],
         "settings": {k: stored[k] for k in user_settings.EDITABLE if k in stored},
     }
 
@@ -152,6 +157,22 @@ def import_(db: Session, user_id: uuid.UUID, data: dict) -> dict:
             else:
                 pref.mode = mode
             report["group_preferences"] += 1
+
+    report["saved_searches"] = 0
+    for item in _list(data, "saved_searches"):
+        name, query = " ".join(str(item.get("name", "")).split())[:120], " ".join(str(item.get("query", "")).split())[:1000]
+        if not name or not query or db.scalar(select(SavedSearch.id).where(SavedSearch.user_id == user_id, SavedSearch.name == name)):
+            continue
+        try:
+            parse_query(query)
+        except QueryError as exc:
+            raise BackupError(f"saved search {name!r}: {exc}") from exc
+        s = SavedSearch(user_id=user_id, name=name, query=query, pinned=bool(item.get("pinned")), notify=bool(item.get("notify")))
+        db.add(s)
+        db.flush()
+        if item.get("smart_folder"):
+            db.add(Folder(user_id=user_id, name=name, saved_search_id=s.id, icon="search"))
+        report["saved_searches"] += 1
 
     settings = data.get("settings") or {}
     if not isinstance(settings, dict):
