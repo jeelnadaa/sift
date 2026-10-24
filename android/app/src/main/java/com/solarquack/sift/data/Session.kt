@@ -25,6 +25,9 @@ object Session {
 
     /** Bottom tabs: off (default) = a tab always opens at its top, e.g. Feed shows the list, not
      * the mail you had open before switching tabs. On = each tab keeps where you were. */
+    fun uiScale(context: Context): Float = prefs(context).getFloat("ui_scale", com.solarquack.sift.ui.theme.UiScale.DEFAULT)
+    fun setUiScale(context: Context, scale: Float) = prefs(context).edit().putFloat("ui_scale", scale).apply()
+
     fun rememberTabs(context: Context): Boolean = prefs(context).getBoolean("remember_tabs", false)
     fun setRememberTabs(context: Context, on: Boolean) = prefs(context).edit().putBoolean("remember_tabs", on).apply()
 

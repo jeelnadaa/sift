@@ -92,9 +92,7 @@ fun DealsScreen(onOpen: (String) -> Unit) {
                 }
             }
         }
-        Box(
-            Modifier.align(Alignment.BottomEnd).padding(18.dp).background(Ink.signal, Radius.lg).clickable { adding = true }.padding(horizontal = 18.dp, vertical = 14.dp),
-        ) { Text("+ New", color = Ink.signalInk, style = MaterialTheme.typography.labelLarge) }
+        com.solarquack.sift.ui.AddButton("New", Modifier.align(Alignment.BottomEnd)) { adding = true }
     }
 
     if (adding) NewOpportunityDialog(onDismiss = { adding = false }) { company ->

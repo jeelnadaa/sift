@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Logo } from "./Logo";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
 import { DialogHost, Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
@@ -96,7 +97,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
       <Icons />
       <aside>
         <div className="brand">
-          <div className="logo"><b /><span>Sift</span></div>
+          <Logo />
           <button className="collapse" onClick={toggle} data-tip={collapsed ? "Expand sidebar  ( [ )" : "Collapse sidebar  ( [ )"} aria-label="Toggle sidebar"><Icon name="chev" /></button>
         </div>
         <nav className="nav">

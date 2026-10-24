@@ -1,5 +1,7 @@
 package com.solarquack.sift.ui.theme
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -77,15 +79,22 @@ private val typography = Typography(
     labelSmall = TextStyle(fontFamily = Satoshi, fontWeight = FontWeight.Bold, fontSize = 10.5.sp, letterSpacing = 1.4.sp),
 )
 
-/** Everything in the app (text, spacing, touch targets) is drawn 8% larger than the system's
- * base size, on top of the user's own font-size setting (owner, 2026-10-24: "scale a bit bigger"). */
-const val UI_SCALE = 1.08f
+/** App size (Settings → This phone → App size). Everything (text, spacing, touch targets) is drawn
+ * at this factor of the system's base size, on top of the user's own font-size setting. Default
+ * 1.08 (owner, 2026-10-24: "scale a bit bigger"); a change applies at once. */
+object UiScale {
+    const val DEFAULT = 1.08f
+    val CHOICES = listOf("Small" to 0.96f, "Default" to DEFAULT, "Large" to 1.18f, "Larger" to 1.3f)
+    var value by androidx.compose.runtime.mutableFloatStateOf(0f)
+}
 
 @Composable
 fun SiftTheme(content: @Composable () -> Unit) {
     val base = androidx.compose.ui.platform.LocalDensity.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (UiScale.value == 0f) UiScale.value = com.solarquack.sift.data.Session.uiScale(context)
     androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density * UI_SCALE, base.fontScale),
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density * UiScale.value, base.fontScale),
     ) { SiftMaterial(content) }
 }
 

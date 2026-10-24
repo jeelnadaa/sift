@@ -165,20 +165,56 @@ def render_url(base: str, user_id: str, account_id: str, gmail_id: str, images: 
     return f"{base}/api/v1/render/{token}"
 
 
-# The mail's own document, shown in a sandboxed frame. Its policy allows the mail's inline styles
-# and images from our own server only (proxy and cid links); nothing can run.
-RENDER_CSP = ("default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src data:; "
+# The mail's own document, shown in a sandboxed frame. Its policy allows the mail's inline styles,
+# images from our own server only (proxy and cid links) and the app's own font; nothing can run.
+RENDER_CSP = ("default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; "
               "base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+READER_FONTS = {"satoshi-400.woff2", "satoshi-700.woff2"}
+
+# Colours match the app's message card (DESIGN.md: --surface, --text, --signal).
+SURFACE, TEXT, LINK = "#151518", "#f4f3ee", "#c8ff3d"
+# Mail that sets its own colours (newsletters, receipts) can't simply get a dark background: its
+# dark text would vanish. Such mail is inverted as a whole (white becomes the card colour, black
+# becomes the app's text colour) and its pictures are inverted back so they look as sent.
+_OWN_COLORS = re.compile(r"\b(?:bg)?color\s*=|(?<![\w-])(?:background(?:-color)?|color)\s*:", re.I)
+# The inverse of SURFACE and TEXT, so that after inversion they land exactly on the app's colours.
+_INV_SURFACE, _INV_TEXT = "#eaeae7", "#0b0c11"
+
+_FONT_FACE = ("@font-face{font-family:Satoshi;src:url(/api/v1/reader-fonts/satoshi-400.woff2) format('woff2');font-weight:400 500;font-display:swap}"
+              "@font-face{font-family:Satoshi;src:url(/api/v1/reader-fonts/satoshi-700.woff2) format('woff2');font-weight:600 900;font-display:swap}")
+_BASE = ("html,body{margin:0}body{padding:4px 2px;font:15px/1.6 Satoshi,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;"
+         "overflow-wrap:anywhere;-webkit-text-size-adjust:100%}"
+         # the app's font everywhere, except where the mail shows code
+         "body *:not(pre):not(code):not(tt):not(kbd):not(samp){font-family:Satoshi,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif!important}"
+         "pre,code,tt,kbd,samp{font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap}"
+         "img{max-width:100%;height:auto}table{max-width:100%}"
+         "img[data-blocked]{display:inline-block;min-width:16px;min-height:16px;background:#2a2a30}")
 
 
-def document(html: str) -> str:
+def has_own_colors(html: str) -> bool:
+    return bool(_OWN_COLORS.search(html))
+
+
+def document(html: str, colors: str = "dark") -> str:
+    """The mail as its own page. colors: "dark" (default, matches the app) or "original"."""
+    if colors == "original":
+        theme = "html{background:#fff;color:#1a1a1a}a{color:#1a56db}"
+        body = html
+    elif has_own_colors(html):
+        theme = (f"html{{background:{SURFACE};color-scheme:dark}}"
+                 f"#sift-mail{{background:{_INV_SURFACE};color:{_INV_TEXT};filter:invert(1) hue-rotate(180deg);padding:12px;border-radius:8px}}"
+                 "#sift-mail img,#sift-mail video,#sift-mail [background],#sift-mail [style*='background-image']"
+                 "{filter:invert(1) hue-rotate(180deg)}")
+        body = f'<div id="sift-mail">{html}</div>'
+    else:
+        theme = (f"html{{background:{SURFACE};color:{TEXT};color-scheme:dark}}a{{color:{LINK}}}"
+                 "blockquote{border-left:2px solid #3a3a42;margin:8px 0;padding-left:12px;color:#a9a9b1}hr{border:0;border-top:1px solid #2a2a30}")
+        body = html
     return ("<!doctype html><html><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             "<base target=\"_blank\">"
-            "<style>html,body{margin:0;background:#fff;color:#1a1a1a;font:15px/1.5 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;"
-            "overflow-wrap:anywhere}body{padding:16px}img{max-width:100%;height:auto}table{max-width:100%}"
-            "img[data-blocked]{display:inline-block;min-width:16px;min-height:16px;background:#eee}</style></head>"
-            f"<body>{html}</body></html>")
+            f"<style>{_FONT_FACE}{_BASE}{theme}</style></head>"
+            f"<body>{body}</body></html>")
 
 
 def render_message(msg: dict, *, user_id: str, account_id: str, base: str, images: bool) -> dict:

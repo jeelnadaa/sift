@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -112,7 +117,7 @@ fun PrimaryButton(label: String, modifier: Modifier = Modifier, enabled: Boolean
     Button(
         onClick = onClick, enabled = enabled, modifier = modifier.height(44.dp), shape = Radius.md,
         colors = ButtonDefaults.buttonColors(containerColor = Ink.signal, contentColor = Ink.signalInk, disabledContainerColor = Ink.surface2),
-    ) { Text(label, style = MaterialTheme.typography.labelLarge) }
+    ) { Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false) }
 }
 
 @Composable
@@ -121,7 +126,45 @@ fun GhostButton(label: String, modifier: Modifier = Modifier, color: Color = Ink
         onClick = onClick, modifier = modifier.height(44.dp), shape = Radius.md,
         border = androidx.compose.foundation.BorderStroke(1.dp, Ink.line2),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = color),
-    ) { Text(label, style = MaterialTheme.typography.labelLarge) }
+    ) { Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false) }
+}
+
+/** On/off switch in the app's shape (DESIGN.md: small corners, no pill controls). Off is a dark
+ * track with a light square knob at the left; on is a lime track with a dark knob at the right, so
+ * the two states differ in position as well as colour. */
+@Composable
+fun SiftSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val offset by androidx.compose.animation.core.animateDpAsState(if (checked) 20.dp else 0.dp, label = "knob")
+    Box(
+        modifier
+            .padding(start = 8.dp)
+            .size(width = 48.dp, height = 28.dp)
+            .background(if (checked) Ink.signal else Ink.surface2, Radius.sm)
+            .border(1.dp, if (checked) Ink.signal else Ink.line2, Radius.sm)
+            .then(
+                if (onCheckedChange != null) Modifier.toggleable(
+                    value = checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch,
+                    onValueChange = onCheckedChange,
+                ) else Modifier
+            )
+            .padding(4.dp),
+    ) {
+        Box(Modifier.offset(x = offset).size(18.dp).background(if (checked) Ink.signalInk else Ink.text2, Radius.xs))
+    }
+}
+
+/** The floating "+ New" / "+ Add" button at the bottom right of a list screen. */
+@Composable
+fun AddButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier.padding(18.dp).heightIn(min = 56.dp).background(Ink.signal, Radius.lg).clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("+", color = Ink.signalInk, fontSize = 26.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            modifier = Modifier.padding(end = 8.dp))
+        Text(label, color = Ink.signalInk, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp))
+    }
 }
 
 @Composable

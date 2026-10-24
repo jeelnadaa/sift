@@ -26,7 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -134,40 +135,58 @@ private fun MessageCard(m: ThreadMessageDto, expanded: Boolean, current: Boolean
 
 /** Sanitized mail HTML from the server, in a WebView that can't run anything: JavaScript, file and
  * content access, and storage are off; the document's own policy only allows images from the Sift
- * server. Tapping a link opens it in the browser instead of inside the app. */
+ * server. Tapping a link opens it in the browser instead of inside the app.
+ * The view is drawn in the card colour and stays invisible until the page has loaded, so nothing
+ * flashes white while it arrives. Mail is shown in the app's dark colours by default; "Original
+ * colours" shows it as the sender styled it. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun MailWebView(url: String) {
-    AndroidView(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).background(Color.White, Radius.md),
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.domStorageEnabled = false
-                settings.databaseEnabled = false
-                settings.setSupportMultipleWindows(false)
-                settings.javaScriptCanOpenWindowsAutomatically = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                settings.textZoom = 100
-                isVerticalScrollBarEnabled = false
-                setBackgroundColor(android.graphics.Color.WHITE)
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        val target = request.url
-                        if (target.scheme in setOf("http", "https", "mailto", "tel")) {
-                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    var loaded by remember(url) { mutableStateOf(false) }
+    var original by remember(url) { mutableStateOf(false) }
+    val target = if (original) "$url?colors=original" else url
+    val zoom = (com.solarquack.sift.ui.theme.UiScale.value.takeIf { it > 0f } ?: 1f) * 100
+    Column {
+        AndroidView(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).alpha(if (loaded) 1f else 0f),
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = false
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    settings.domStorageEnabled = false
+                    settings.databaseEnabled = false
+                    settings.setSupportMultipleWindows(false)
+                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    settings.textZoom = zoom.toInt()
+                    isVerticalScrollBarEnabled = false
+                    setBackgroundColor(Ink.surface.toArgb())
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                            val link = request.url
+                            if (link.scheme in setOf("http", "https", "mailto", "tel")) {
+                                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, link).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                            }
+                            return true  // never navigate inside the mail view
                         }
-                        return true  // never navigate inside the mail view
-                    }
 
-                    override fun onPageFinished(view: WebView, url: String?) { view.requestLayout() }
+                        override fun onPageFinished(view: WebView, url: String?) { view.requestLayout(); loaded = true }
+                    }
+                    tag = target
+                    loadUrl(target)
                 }
-                loadUrl(url)
-            }
-        },
-    )
+            },
+            update = { view ->
+                if (view.tag != target) { view.tag = target; loaded = false; view.loadUrl(target) }
+            },
+        )
+        Text(
+            if (original) "Dark colours" else "Original colours",
+            color = Ink.text3, style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.align(Alignment.End).clickable { original = !original }.padding(horizontal = 6.dp, vertical = 10.dp),
+        )
+    }
 }

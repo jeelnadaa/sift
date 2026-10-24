@@ -45,6 +45,7 @@ import kotlinx.coroutines.launch
 
 private const val BLOCKED_COPY = "This account may be blocked by its administrator (common for college or work accounts)."
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AccountsScreen(onScan: (String) -> Unit = {}) {
     val context = LocalContext.current
@@ -90,7 +91,6 @@ fun AccountsScreen(onScan: (String) -> Unit = {}) {
                         PrimaryButton("Reconnect") { connect() }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
                 if (a.status == "active") {
                     Text(
                         if (a.stalled) "Mail checks are failing${a.checkFailingSince?.let { " since " + com.solarquack.sift.ui.fullTime(it) } ?: ""}${a.lastCheckError?.let { " ($it)" } ?: ""}. Sift keeps retrying."
@@ -99,10 +99,11 @@ fun AccountsScreen(onScan: (String) -> Unit = {}) {
                     )
                     Text(
                         if (a.canModify) "Can change mail: archive, labels, read state, star, snooze." else "Read-only. Sift asks for permission the first time you archive or mark mail read here.",
-                        color = if (a.canModify) Ink.signal else Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
+                        color = if (a.canModify) Ink.signal else Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp),
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.height(16.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (a.status == "active" && !a.canModify) GhostButton("Allow changes") {
                         scope.launch {
                             try { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(Api.get(context).writeAccessUrl(a.id).authUrl))) }

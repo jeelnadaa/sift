@@ -44,11 +44,14 @@ import com.solarquack.sift.ui.theme.Radius
 import kotlinx.coroutines.launch
 
 @Composable
-fun Wordmark(size: Int = 22) {
+fun Wordmark(size: Int = 30) {
+    // The owner's logo (2026-10-24): the layered mark and the "sift" letters with the lime dot.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size((size * 0.6).dp).rotate(45f).background(Ink.signal, Radius.xs))
-        Spacer(Modifier.size(12.dp))
-        Text("Sift", style = MaterialTheme.typography.headlineSmall.copy(fontSize = size.sp, letterSpacing = (size * 0.06).sp), color = Ink.text)
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.solarquack.sift.R.drawable.sift_mark), contentDescription = null,
+            modifier = Modifier.size(width = (size * 0.93).dp, height = size.dp))
+        Spacer(Modifier.size((size * 0.4).dp))
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.solarquack.sift.R.drawable.sift_wordmark), contentDescription = "Sift",
+            modifier = Modifier.size(width = (size * 0.82 * 2.2193).dp, height = (size * 0.82).dp))
     }
 }
 

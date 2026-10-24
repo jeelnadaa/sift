@@ -25,8 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -238,8 +236,7 @@ private fun FolderActions(
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Pin to the top", color = Ink.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Switch(f.pinned, { on -> onRun { Api.get(context).editFolder(f.id, FolderPatch(pinned = on)) } },
-                            colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk))
+                        com.solarquack.sift.ui.SiftSwitch(f.pinned, { on -> onRun { Api.get(context).editFolder(f.id, FolderPatch(pinned = on)) } })
                     }
                     HorizontalDivider(color = Ink.line, modifier = Modifier.padding(vertical = 8.dp))
                     MenuLine("Rename or recolor") { step = "rename" }
@@ -348,7 +345,7 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
             Field(query, { query = it }, "Search this folder", placeholder = "Sender or subject words")
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Include subfolders", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Switch(includeSub, { includeSub = it }, colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk))
+                com.solarquack.sift.ui.SiftSwitch(includeSub, { includeSub = it })
             }
         }
         error?.let { Box(Modifier.padding(horizontal = 14.dp)) { Banner(it, Ink.urgent, "Retry") { load() } } }

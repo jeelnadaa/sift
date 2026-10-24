@@ -19,8 +19,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -222,11 +220,11 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
                     Text(query, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Notify me of new matches", color = Ink.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Switch(notify, { notify = it }, colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk))
+                        com.solarquack.sift.ui.SiftSwitch(notify, { notify = it })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Show as a smart folder", color = Ink.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Switch(smart, { smart = it }, colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk))
+                        com.solarquack.sift.ui.SiftSwitch(smart, { smart = it })
                     }
                 }
             },

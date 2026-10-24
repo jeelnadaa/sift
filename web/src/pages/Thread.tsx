@@ -87,10 +87,15 @@ export function Thread({ messageId, accountId, threadId }: { messageId?: string;
 }
 
 /** Sanitized mail HTML in a locked frame: no scripts (no allow-scripts, and the document's own
- * policy forbids them). Same-origin is allowed only so the page can size the frame to its content. */
+ * policy forbids them). Same-origin is allowed only so the page can size the frame to its content.
+ * The frame stays invisible until its document has loaded, so nothing flashes while it arrives.
+ * Mail is shown in the app's dark colours; "Original colours" shows it as the sender made it. */
 function MailFrame({ src, title }: { src: string; title: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(160);
+  const [loaded, setLoaded] = useState(false);
+  const [original, setOriginal] = useState(false);
+  const url = original ? `${src}?colors=original` : src;
 
   function measure() {
     const doc = ref.current?.contentDocument;
@@ -99,18 +104,28 @@ function MailFrame({ src, title }: { src: string; title: string }) {
   useEffect(() => {
     const frame = ref.current;
     if (!frame) return;
+    setLoaded(false);
     let ro: ResizeObserver | null = null;
     const onLoad = () => {
       measure();
+      setLoaded(true);
       const body = frame.contentDocument?.body;
       if (body) { ro = new ResizeObserver(measure); ro.observe(body); }
     };
     frame.addEventListener("load", onLoad);
     return () => { frame.removeEventListener("load", onLoad); ro?.disconnect(); };
-  }, [src]);
+  }, [url]);
 
   return (
-    <iframe ref={ref} src={src} title={title} className="mail-frame" style={{ height }}
-      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer" loading="lazy" />
+    <>
+      <iframe ref={ref} src={url} title={title} className={`mail-frame${loaded ? " loaded" : ""}`} style={{ height }}
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer" />
+      <div className="frame-tools">
+        <button type="button" className="chip" onClick={() => setOriginal((o) => !o)}
+          data-tip={original ? "Show it in Sift's dark colours" : "Show the mail exactly as the sender styled it"}>
+          {original ? "Dark colours" : "Original colours"}
+        </button>
+      </div>
+    </>
   );
 }

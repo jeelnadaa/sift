@@ -13,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,8 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +64,7 @@ import kotlinx.serialization.json.buildJsonObject
 private val AI_FEATURES = "AI classification, deadlines and links, plain-English rules, company matching, summaries, reply drafts"
 
 @SuppressLint("BatteryLife") // a personal mail notifier; the user confirms in a system dialog
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
     val context = LocalContext.current
@@ -113,6 +114,18 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
         error?.let { Spacer(Modifier.height(8.dp)); Banner(it, Ink.urgent, "Retry") { load() } }
 
         SectionLabel("This phone")
+        SiftCard {
+            Text("App size", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+            Text("Text, buttons and spacing, on top of your phone's own font size.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.solarquack.sift.ui.theme.UiScale.CHOICES.forEach { (name, scale) ->
+                    com.solarquack.sift.ui.Chip(name, kotlin.math.abs(com.solarquack.sift.ui.theme.UiScale.value - scale) < 0.001f) {
+                        com.solarquack.sift.ui.theme.UiScale.value = scale; Session.setUiScale(context, scale)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
         var rememberTabs by remember { mutableStateOf(Session.rememberTabs(context)) }
         SiftCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -121,8 +134,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                     Text(if (rememberTabs) "Coming back to a tab shows what you had open there." else "A tab always opens at its top, e.g. Feed shows the list.",
                         color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(checked = rememberTabs, onCheckedChange = { rememberTabs = it; Session.setRememberTabs(context, it) },
-                    colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+                com.solarquack.sift.ui.SiftSwitch(checked = rememberTabs, onCheckedChange = { rememberTabs = it; Session.setRememberTabs(context, it) })
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -155,6 +167,19 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
             }
             a?.keyLast4?.let { Text("Gemini · ${a.model} · key ••••$it", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
             a?.takeIf { it.aiEnabled }?.let { Text("${it.tokensToday} of ${it.dailyTokenCap} tokens used today", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
+            settings?.let { s ->
+                var cap by remember(s.dailyTokenCap) { mutableStateOf(s.dailyTokenCap.toString()) }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { Field(cap, { cap = it.filter(Char::isDigit).take(8) }, "Daily token limit", keyboard = androidx.compose.ui.text.input.KeyboardType.Number) }
+                    val n = cap.toIntOrNull()
+                    if (n != null && n != s.dailyTokenCap) {
+                        Spacer(Modifier.width(8.dp))
+                        PrimaryButton("Save") { patch("daily_token_cap", n) }
+                    }
+                }
+                Text("AI stops for the day at this many tokens; mail still arrives as normal priority.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            }
             Spacer(Modifier.height(12.dp))
             Field(model, { model = it }, "Model ID", mono = true)
             Spacer(Modifier.height(8.dp))
@@ -162,7 +187,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
             Text("Stored encrypted on your server and never shown again. Get a key at aistudio.google.com.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
             info?.let { Text(it, color = Ink.signal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) }
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PrimaryButton(if (busy) "Checking…" else "Save and test", enabled = !busy && key.length >= 10 && model.isNotBlank()) {
                     busy = true; info = null
                     scope.launch {
@@ -188,8 +213,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                         Text("Re-send urgent until delivered", color = Ink.text, style = MaterialTheme.typography.titleSmall)
                         Text("Every ${s.resendAfterMinutes} min, up to ${s.resendLimit} times", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = s.resendUrgent, onCheckedChange = { patch("resend_urgent", it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+                    com.solarquack.sift.ui.SiftSwitch(checked = s.resendUrgent, onCheckedChange = { patch("resend_urgent", it) })
                 }
                 Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(2, 5, 10).forEach { m -> com.solarquack.sift.ui.Chip("$m min", s.resendAfterMinutes == m) { patch("resend_after_minutes", m) } }
@@ -205,8 +229,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                         Text("Load images in mail automatically", color = Ink.text, style = MaterialTheme.typography.titleSmall)
                         Text("Through your Sift server, so senders never see your address.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = s.loadRemoteImages, onCheckedChange = { patch("load_remote_images", it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+                    com.solarquack.sift.ui.SiftSwitch(checked = s.loadRemoteImages, onCheckedChange = { patch("load_remote_images", it) })
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -218,11 +241,11 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                         Text("Group similar emails", color = Ink.text, style = MaterialTheme.typography.titleSmall)
                         Text("Only changes how mail is shown. Urgent mail stays on its own row; notifications don't change.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = g.groupingEnabled == "yes", onCheckedChange = { on ->
+                    com.solarquack.sift.ui.SiftSwitch(checked = g.groupingEnabled == "yes", onCheckedChange = { on ->
                         scope.launch {
                             try { grouping = Api.get(context).answerGrouping(com.solarquack.sift.data.AnswerIn(if (on) "yes" else "no")) } catch (t: Throwable) { error = t.userMessage() }
                         }
-                    }, colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+                    })
                 }
             }
             Spacer(Modifier.height(8.dp))

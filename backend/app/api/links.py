@@ -5,6 +5,7 @@ from html import escape as html_escape
 import logging
 import socket
 import uuid
+from pathlib import Path
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
@@ -136,8 +137,9 @@ def attachment(token: str, db: Session = Depends(get_db)) -> Response:
 
 
 @router.get("/render/{token}")
-def render(token: str, db: Session = Depends(get_db)) -> Response:
-    """One mail's sanitized HTML as its own locked-down document, for a sandboxed frame."""
+def render(token: str, colors: str = Query("dark", pattern="^(dark|original)$"), db: Session = Depends(get_db)) -> Response:
+    """One mail's sanitized HTML as its own locked-down document, for a sandboxed frame.
+    `colors=original` shows the mail as sent (light); the default matches the app's dark theme."""
     try:
         d = signing.read("render", token)
     except signing.BadToken as exc:
@@ -156,7 +158,19 @@ def render(token: str, db: Session = Depends(get_db)) -> Response:
     except GmailError as exc:
         raise HTTPException(404 if exc.status == 404 else 502, "mail not available") from exc
     out = reader.render_message(msg, user_id=d["u"], account_id=d["a"], base="", images=bool(d.get("i")))
-    body = reader.document(out["html"] or f"<pre>{html_escape(out['text'])}</pre>")
+    body = reader.document(out["html"] or f'<div style="white-space:pre-wrap">{html_escape(out["text"])}</div>', colors)
     headers = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
                "Content-Security-Policy": reader.RENDER_CSP, "Cache-Control": "private, max-age=600"}
     return Response(body, media_type="text/html; charset=utf-8", headers=headers)
+
+
+FONT_DIR = Path(__file__).resolve().parent.parent / "static" / "fonts"
+
+
+@router.get("/reader-fonts/{name}", include_in_schema=False)
+def reader_font(name: str) -> Response:
+    """The app's text font for the mail reader document (its policy allows fonts from 'self' only)."""
+    if name not in reader.READER_FONTS:
+        raise HTTPException(404, "not found")
+    return Response((FONT_DIR / name).read_bytes(), media_type="font/woff2",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})

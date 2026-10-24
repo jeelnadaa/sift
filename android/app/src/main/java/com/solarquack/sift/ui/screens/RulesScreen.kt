@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -177,21 +175,18 @@ fun RulesScreen(onEdit: () -> Unit) {
                                 originLabel(r.origin)?.let { Tag(it) }
                             }
                         }
-                        Switch(
+                        com.solarquack.sift.ui.SiftSwitch(
                             checked = r.enabled,
                             onCheckedChange = { on ->
                                 scope.launch {
                                     try { Api.get(context).updateRule(r.id, RuleIn(r.name, on, r.conditions, r.action, r.exceptions, r.accountScope)); load() } catch (t: Throwable) { error = t.userMessage() }
                                 }
-                            },
-                            colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2),
+                            }
                         )
                     }
                 }
             }
         }
-        Box(Modifier.align(Alignment.BottomEnd).padding(18.dp).background(Ink.signal, Radius.lg).clickable { RuleEditorSeed.clear(); onEdit() }.padding(horizontal = 18.dp, vertical = 14.dp)) {
-            Text("+ New rule", color = Ink.signalInk, style = MaterialTheme.typography.labelLarge)
-        }
+        com.solarquack.sift.ui.AddButton("New rule", Modifier.align(Alignment.BottomEnd)) { RuleEditorSeed.clear(); onEdit() }
     }
 }

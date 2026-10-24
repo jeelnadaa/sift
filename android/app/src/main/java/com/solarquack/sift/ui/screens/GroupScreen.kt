@@ -20,8 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -155,8 +153,7 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                         Text("Mute this group", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
                         Text("New mail in it won't notify. Urgent mail still does.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(group.muted, { on -> run { Api.get(context).editGroup(id, GroupPatch(muted = on)) } },
-                        colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk))
+                    com.solarquack.sift.ui.SiftSwitch(group.muted, { on -> run { Api.get(context).editGroup(id, GroupPatch(muted = on)) } })
                 }
                 FlowRow(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GhostButton("File all in folder") { filing = "file" }

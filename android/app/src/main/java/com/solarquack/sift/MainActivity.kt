@@ -142,8 +142,8 @@ class MainActivity : ComponentActivity() {
                 NavigationBarItem(
                     selected = selected,
                     onClick = { nav.go(dest) },
-                    icon = { Text(ICONS.getValue(dest), fontSize = 17.sp) },
-                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                    icon = { Text(ICONS.getValue(dest), fontSize = 25.sp) },
+                    label = { Text(label, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp)) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = Ink.signal, selectedTextColor = Ink.text, indicatorColor = Ink.signal.copy(alpha = 0.16f),
                         unselectedIconColor = Ink.text3, unselectedTextColor = Ink.text3,

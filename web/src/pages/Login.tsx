@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Logo } from "../Logo";
 import { post, session } from "../api";
 import { errorText } from "../components";
 
@@ -27,7 +28,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="login">
       <form className="card stack" onSubmit={submit}>
-        <div className="logo"><b /><span>Sift</span></div>
+        <Logo size={34} />
         <div className="field"><label htmlFor="email">Email</label>
           <input id="email" className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
         <div className="field"><label htmlFor="pw">Password</label>

@@ -25,6 +25,13 @@ EDITABLE = {
     "load_remote_images": bool,
 }
 
+# Allowed ranges for numbers (a phone or browser can send anything).
+RANGES = {
+    "daily_token_cap": (0, 10_000_000),
+    "resend_after_minutes": (1, 60),
+    "resend_limit": (0, 10),
+}
+
 
 def _row(db: Session, user_id: uuid.UUID, account_id: uuid.UUID | None = None) -> Setting | None:
     q = select(Setting).where(Setting.user_id == user_id)
@@ -50,7 +57,12 @@ def update(db: Session, user_id: uuid.UUID, changes: dict, account_id: uuid.UUID
     for k, v in changes.items():
         if k not in EDITABLE:
             raise ValueError(f"unknown setting {k}")
+        if EDITABLE[k] is bool and not isinstance(v, bool):
+            raise ValueError(f"{k} must be true or false")
         clean[k] = EDITABLE[k](v)
+        if k in RANGES and not RANGES[k][0] <= clean[k] <= RANGES[k][1]:
+            lo, hi = RANGES[k]
+            raise ValueError(f"{k} must be between {lo:,} and {hi:,}")
     row = _row(db, user_id, account_id)
     if row is None:
         row = Setting(user_id=user_id, account_id=account_id, data={})

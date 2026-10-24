@@ -118,9 +118,7 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
                 }
             }
         }
-        Box(Modifier.align(Alignment.BottomEnd).padding(18.dp).background(Ink.signal, Radius.lg).clickable { adding = true }.padding(horizontal = 18.dp, vertical = 14.dp)) {
-            Text("+ Add", color = Ink.signalInk, style = MaterialTheme.typography.labelLarge)
-        }
+        com.solarquack.sift.ui.AddButton("Add", Modifier.align(Alignment.BottomEnd)) { adding = true }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp))
     }
 

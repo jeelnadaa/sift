@@ -5,8 +5,8 @@
 
 aside { border-right: 1px solid var(--line); background: var(--bg-2); display: flex; flex-direction: column; padding: 18px 12px; overflow: hidden auto; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
-.logo { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: .06em; display: flex; align-items: center; gap: 12px; flex: 1; white-space: nowrap; overflow: hidden; }
-.logo b { width: 14px; height: 14px; border-radius: 4px; background: var(--signal); transform: rotate(45deg); flex: none; margin: 0 2px; }
+.logo { display: flex; align-items: center; gap: 12px; flex: 1; white-space: nowrap; overflow: hidden; padding-left: 2px; }
+.logo svg { flex: none; display: block; }
 .collapse { width: 30px; height: 30px; border-radius: var(--r-sm); display: grid; place-items: center; color: var(--text-3); border: 1px solid var(--line); flex: none; transition: color .2s, background .2s, transform .35s var(--ease-out); }
 .collapse:hover { color: var(--text); background: var(--surface-2); }
 .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -25,7 +25,7 @@ aside { border-right: 1px solid var(--line); background: var(--bg-2); display: f
 .side-foot { margin-top: auto; padding: 14px 8px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; font-size: 13px; white-space: nowrap; }
 .side-foot .who-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .collapsed .brand { flex-direction: column; padding-bottom: 16px; }
-.collapsed .logo span, .collapsed .nav-h, .collapsed .nav a .lbl, .collapsed .nav .ct, .collapsed .side-foot .who-t { display: none; }
+.collapsed .logo .logo-word, .collapsed .nav-h, .collapsed .nav a .lbl, .collapsed .nav .ct, .collapsed .side-foot .who-t { display: none; }
 .collapsed .logo { justify-content: center; flex: none; }
 .collapsed .collapse { transform: rotate(180deg); }
 .collapsed .nav a { justify-content: center; padding: 11px 0; }
@@ -196,7 +196,10 @@ textarea.input.grow { resize: none; height: 42px; min-height: 42px; padding: 10p
 .msg > header .time { color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .msg-body { padding: 0 14px 14px; }
 /* mail HTML is designed for white paper: keep it on a light card so it reads as the sender made it */
-.mail-frame { display: block; width: 100%; border: 0; border-radius: var(--r); background: #fff; }
+.mail-frame { display: block; width: 100%; border: 0; border-radius: var(--r); background: transparent; color-scheme: dark; opacity: 0; transition: opacity .12s; }
+.mail-frame.loaded { opacity: 1; }
+.frame-tools { display: flex; justify-content: flex-end; margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .mail-frame { transition: none; } }
 .atts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-top: 12px; }
 .att { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg-2); }
 .att .main { min-width: 0; flex: 1; }
