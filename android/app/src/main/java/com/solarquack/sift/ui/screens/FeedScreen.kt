@@ -201,16 +201,17 @@ fun MailRow(m: MessageDto, onClick: () -> Unit) {
         Box(Modifier.padding(top = 14.dp, end = 10.dp)) { PriorityDot(m.priority) }
         Avatar(m.senderName ?: m.sender ?: "?", if (urgent) Ink.urgent else null)
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    m.senderName?.takeIf { it.isNotBlank() } ?: m.sender ?: "Unknown", color = Ink.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (m.unread) FontWeight.Bold else FontWeight.Medium), modifier = Modifier.weight(1f, fill = false),
-                )
+            Text(
+                m.senderName?.takeIf { it.isNotBlank() } ?: m.sender ?: "Unknown", color = Ink.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (m.unread) FontWeight.Bold else FontWeight.Medium),
+            )
+            Text(m.summary ?: m.subject ?: "(no subject)", color = if (m.unread) Ink.text else Ink.text2, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // tags sit with the account on the last line, so a long category never squeezes the sender
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 m.category?.takeIf { it != "other" }?.let { Tag(it, Ink.tier(m.priority)) }
                 m.company?.let { Tag(it) }
+                m.account?.let { Text(it, color = accountColor(m.accountColor, m.accountId), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            Text(m.summary ?: m.subject ?: "(no subject)", color = if (m.unread) Ink.text else Ink.text2, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            m.account?.let { Text(it, color = accountColor(m.accountColor, m.accountId), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp)) }
         }
         Text(relativeTime(m.receivedAt), color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
     }

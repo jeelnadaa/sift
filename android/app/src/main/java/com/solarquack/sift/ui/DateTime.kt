@@ -36,12 +36,13 @@ fun parseZoned(iso: String?): ZonedDateTime? =
 fun ZonedDateTime.iso(): String = format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
 /** A date button and a time button (any day, any minute), plus Clear when `allowNone`. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun DateTimeRow(value: ZonedDateTime?, onChange: (ZonedDateTime?) -> Unit, allowNone: Boolean = true, pastAllowed: Boolean = true) {
     var pickingDate by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // wraps onto a second line in narrow dialogs instead of cutting a button off
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GhostButton(value?.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy")) ?: "Pick a day…") { pickingDate = true }
         if (value != null) GhostButton(value.format(DateTimeFormatter.ofPattern("HH:mm"))) { pickingTime = true }
         if (value != null && allowNone) GhostButton("Clear", color = Ink.text3) { onChange(null) }

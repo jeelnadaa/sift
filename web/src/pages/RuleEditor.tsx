@@ -4,7 +4,7 @@ import { del, get, post, put, type Account, type Action, type Cond, type Draft, 
 import { Top } from "../App";
 import { Banner, confirmDialog, errorText, FolderPicker, Select, TextField, toast, useLoad } from "../components";
 import { KINDS, describe, exceptionGroups, groupsToTree, kind, rowsToTree, treeToRows, type Row } from "../ruleForm";
-import { ACTION_LABELS, findFolder } from "../util";
+import { ACTION_LABELS, findFolder, accountName } from "../util";
 
 const QUIETING = new Set(["silent", "ignore", "digest"]);
 const VERB: Record<string, string> = { silent: "stored silently", ignore: "ignored", digest: "sent to the digest", notify_normal: "notified as normal", notify_urgent: "notified as urgent", llm: "classified as usual" };
@@ -103,7 +103,7 @@ function Editor({ existing, draft, origin, onDone }: { existing: Rule | null; dr
                   return <button key={a.id} className={`chip ${on ? "on" : ""}`} onClick={() => {
                     const next = on ? (scope ?? []).filter((x) => x !== a.id) : [...(scope ?? []), a.id];
                     setScope(next.length ? next : null);
-                  }}>{a.label || a.email}</button>;
+                  }}>{accountName(a.label, a.email)}</button>;
                 })}
               </div>
             </div>

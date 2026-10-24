@@ -98,7 +98,7 @@ fun Chip(text: String, on: Boolean, dot: Color? = null, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (dot != null) Box(Modifier.size(8.dp).background(dot, Radius.xs))
-        Text(humanize(text), color = if (on) Ink.bg else Ink.text2, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        Text(if ('@' in text) text else humanize(text), color = if (on) Ink.bg else Ink.text2, style = MaterialTheme.typography.labelMedium, maxLines = 1)
     }
 }
 

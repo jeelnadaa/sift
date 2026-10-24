@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { get, post, type Account, type Scan } from "../api";
 import { Top } from "../App";
 import { Banner, Modal, errorText, toast, useLoad } from "../components";
-import { humanize } from "../util";
+import { humanize, accountName } from "../util";
 
 const CHOICES: [string, string, string][] = [
   ["keep", "Keep", "No rule: Sift decides as usual"],
@@ -55,7 +55,7 @@ export function ScanPage() {
         <p className="lede">Last 30 days, headers only. No bodies, no AI. Pick an action per sender; Sift makes the rules, always keeping security mail.</p>
         {(accounts.data?.length ?? 0) > 1 && (
           <div className="tabs">
-            {accounts.data!.map((a) => <button key={a.id} className={`chip ${a.id === accountId ? "on" : ""}`} onClick={() => setParams({ account: a.id })}>{a.label || a.email}</button>)}
+            {accounts.data!.map((a) => <button key={a.id} className={`chip ${a.id === accountId ? "on" : ""}`} onClick={() => setParams({ account: a.id })}>{accountName(a.label, a.email)}</button>)}
           </div>
         )}
         {accounts.data?.length === 0 && <Banner tone="warn">Connect a Gmail account first, under Accounts.</Banner>}

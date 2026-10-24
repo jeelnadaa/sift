@@ -5,7 +5,7 @@ import { Top } from "../App";
 import {
   Banner, FolderPicker, MailRow, Modal, Pager, Select, TextField, Toggle, confirmDialog, errorText, inputDialog, toast, useLoad, usePages,
 } from "../components";
-import { flatten } from "../util";
+import { flatten, accountName } from "../util";
 import { SnoozeDialog, mailAction, type MailAction, type Target } from "../mailActions";
 
 interface Chip { text: string; kind: "gmail" | "sift"; label: string; negated: boolean }
@@ -292,7 +292,7 @@ function FilterBuilder({ accounts, tree, onAdd }: { accounts: Account[]; tree: F
       <Select value="" ariaLabel="Add a priority filter" options={[{ value: "", label: "Priority…" }, ...["urgent", "normal", "digest", "silent"].map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }))]}
         onChange={(v) => v && onAdd(`priority:${v}`)} />
       <Select value="" ariaLabel="Add a folder filter" options={folderOpts} onChange={(v) => v && onAdd(`folder:${quote(v)}`)} />
-      {accounts.length > 1 && <Select value="" ariaLabel="Search one account" options={[{ value: "", label: "Account…" }, ...accounts.map((a) => ({ value: a.email, label: a.label || a.email, hint: a.email }))]}
+      {accounts.length > 1 && <Select value="" ariaLabel="Search one account" options={[{ value: "", label: "Account…" }, ...accounts.map((a) => ({ value: a.email, label: accountName(a.label, a.email), hint: a.email }))]}
         onChange={(v) => v && onAdd(`account:${v}`)} />}
     </div>
   );

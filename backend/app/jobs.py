@@ -188,23 +188,35 @@ def enqueue_pg(db: Session, kind: str, payload: dict, dedupe_key: str | None = N
 # ---- postgres worker ---------------------------------------------------------
 
 MAX_ATTEMPTS = 5
+# Quick jobs: the worker keeps one lane for these only, so a long job (a scan, an AI task) can
+# never hold up new mail, sending or reminders.
+FAST_KINDS = ("check_account", "gmail_push", "send_outbox", "resend_notifications", "send_reminders",
+              "wake_snoozes", "follow_ups", "renew_watches")
+# Long jobs may run for many minutes; only after LONG_STALE are they taken to have crashed.
+LONG_KINDS = ("onboarding_scan", "semantic_backfill", "grouping_backfill", "ai_task")
+STALE = timedelta(minutes=10)
+LONG_STALE = timedelta(hours=2)
 
 
-def claim_next(db: Session) -> Job | None:
-    """Lock one ready job. Stale 'running' jobs (worker crashed) are reclaimed after 10 minutes."""
-    stale = datetime.now(UTC) - timedelta(minutes=10)
+def claim_next(db: Session, kinds: tuple[str, ...] | None = None) -> Job | None:
+    """Lock one ready job (of `kinds`, or any). A 'running' job whose worker crashed is reclaimed
+    after STALE (LONG_STALE for long kinds)."""
+    now = datetime.now(UTC)
     row = db.execute(
         text(
             """
             SELECT id FROM jobs
-            WHERE (status = 'queued' AND run_at <= now())
-               OR (status = 'running' AND locked_at < :stale)
+            WHERE ((status = 'queued' AND run_at <= now())
+                OR (status = 'running' AND locked_at < :stale AND NOT (kind = ANY(:long)))
+                OR (status = 'running' AND locked_at < :stale_long AND kind = ANY(:long)))
+              AND (CAST(:any_kind AS boolean) OR kind = ANY(:kinds))
             ORDER BY run_at
             FOR UPDATE SKIP LOCKED
             LIMIT 1
             """
         ),
-        {"stale": stale},
+        {"stale": now - STALE, "stale_long": now - LONG_STALE, "long": list(LONG_KINDS),
+         "any_kind": kinds is None, "kinds": list(kinds or ())},
     ).first()
     if row is None:
         return None
@@ -213,8 +225,8 @@ def claim_next(db: Session) -> Job | None:
     return db.get(Job, row.id)
 
 
-def run_one(db: Session) -> bool:
-    job = claim_next(db)
+def run_one(db: Session, kinds: tuple[str, ...] | None = None) -> bool:
+    job = claim_next(db, kinds)
     if job is None:
         return False
     try:

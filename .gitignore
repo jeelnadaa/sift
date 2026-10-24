@@ -9,3 +9,6 @@ __pycache__/
 node_modules/
 logs/
 web/dist/
+
+# screenshot renders (./gradlew :app:recordPaparazziDebug): for looking, not committed; dates in them change daily
+android/app/src/test/snapshots/

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { get, post, type Account, type Group, type GroupingStatus, type Mail, type Page } from "../api";
 import { Top } from "../App";
 import { Banner, GroupRow, MailRow, Modal, Pager, useLoad, usePages } from "../components";
-import { accountColor } from "../util";
+import { accountColor, accountName } from "../util";
 
 const PAGE_SIZE = 30;
 const PROMPTED_KEY = "sift.groupingPrompted";  // once per browser session; the server counts to 3
@@ -57,7 +57,7 @@ export function Feed() {
           <button className={`chip ${account === null ? "on" : ""}`} onClick={() => setAccount(null)} data-tip="Mail from every connected account">All accounts</button>
           {(accounts.data ?? []).map((a) => (
             <button key={a.id} className={`chip ${account === a.id ? "on" : ""}`} onClick={() => setAccount(account === a.id ? null : a.id)} data-tip={account === a.id ? "Click again to show every account" : `Only mail to ${a.email}`}>
-              <span className="acct"><i style={{ background: accountColor(a.color, a.id) }} />{a.label || a.email}</span>
+              <span className="acct"><i style={{ background: accountColor(a.color, a.id) }} />{accountName(a.label, a.email)}</span>
             </button>
           ))}
           <button className="chip" onClick={() => navigate("/search?q=is%3Asnoozed")} data-tip="Conversations you snoozed; they come back on their own">Snoozed</button>

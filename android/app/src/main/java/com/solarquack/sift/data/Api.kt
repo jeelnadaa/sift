@@ -171,8 +171,13 @@ object Api {
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
     private var cached: Pair<String, SiftApi>? = null
 
+    /** Screenshot tests put a fake here; the app never sets it. */
+    @androidx.annotation.VisibleForTesting
+    var testOverride: SiftApi? = null
+
     /** Built for the server and token in the session; rebuilt when either changes. */
     fun get(context: Context): SiftApi {
+        testOverride?.let { return it }
         val server = Session.server(context).trimEnd('/') + "/"
         val token = Session.token(context)
         val key = "$server|$token"

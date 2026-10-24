@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -107,7 +109,10 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
                     Modifier.weight(1f).background(if (on) kindColor(s).copy(alpha = 0.16f) else Ink.surface, Radius.sm)
                         .border(1.dp, if (on) kindColor(s).copy(alpha = 0.5f) else Ink.line, Radius.sm).padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center,
-                ) { Text(humanize(s).take(6), color = if (on) kindColor(s) else Ink.text3, style = MaterialTheme.typography.labelSmall) }
+                ) {
+                    Text(STRIP_LABELS[s] ?: humanize(s), color = if (on) kindColor(s) else Ink.text3, maxLines = 1,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp, letterSpacing = 0.sp))
+                }
             }
         }
 
@@ -179,10 +184,11 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
 @Composable
 private fun TimelineItem(e: TimelineEventDto, last: Boolean, onOpenMail: (String) -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
     val context = LocalContext.current
-    Row {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(22.dp)) {
+    // the connector runs exactly to the next item, whatever this item's height
+    Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(22.dp).fillMaxHeight()) {
             Box(Modifier.padding(top = 4.dp).size(12.dp).background(kindColor(e.kind), CircleShape))
-            if (!last) Box(Modifier.width(2.dp).height(86.dp).background(Ink.line2))
+            if (!last) Box(Modifier.padding(top = 4.dp).width(2.dp).weight(1f).background(Ink.line2))
         }
         Column(
             Modifier.weight(1f).padding(start = 10.dp, bottom = 16.dp).clickable(enabled = e.messageId != null) { e.messageId?.let(onOpenMail) },
@@ -241,7 +247,7 @@ private val STAGE_LABELS = linkedMapOf(
  * timeline only its stage can change; it keeps its own subject and time. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun SectionDialog(company: String, event: TimelineEventDto?, onDismiss: () -> Unit,
+internal fun SectionDialog(company: String, event: TimelineEventDto?, onDismiss: () -> Unit,
                           onSave: (com.solarquack.sift.data.SectionIn?, com.solarquack.sift.data.SectionPatch?) -> Unit) {
     val mail = event != null && !event.manual
     var kind by remember { mutableStateOf(event?.kind ?: "interview") }
@@ -288,3 +294,6 @@ private fun SectionDialog(company: String, event: TimelineEventDto?, onDismiss: 
         containerColor = Ink.surface, shape = Radius.xl,
     )
 }
+
+// short names for the stage strip, so all five fit on a phone without being cut
+private val STRIP_LABELS = mapOf("announcement" to "Drive", "registration" to "Register", "assessment" to "Test", "interview" to "Interview", "result" to "Result")

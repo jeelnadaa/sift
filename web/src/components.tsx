@@ -177,7 +177,7 @@ export function Avatar({ text, tone, tip }: { text: string | null | undefined; t
 
 export function Acct({ name, color, id }: { name: string | null; color: string | null; id: string }) {
   if (!name) return null;
-  return <span className="acct" data-tip={`Arrived in your ${name} account`}><i style={{ background: accountColor(color, id) }} />{name}</span>;
+  return <span className="acct" data-tip={`Arrived in your ${name} account`}><i style={{ background: accountColor(color, id) }} />{name.includes("@") ? name : humanize(name)}</span>;
 }
 
 /** A mail row. Draggable so it can be dropped on a folder (web UI only). */

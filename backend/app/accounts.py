@@ -120,11 +120,13 @@ def connect_account(db: Session, user_email: str, code: str) -> GmailAccount:
 def on_new_messages(db: Session, account: GmailAccount, provider: MailProvider, message_ids: list[str]) -> None:
     """Run the pipeline for each new message, oldest first. A transient error stops here and the
     check is retried from the same cursor; already processed messages are skipped then."""
+    from app.locks import user_lock
     from app.pipeline import process_message
 
     log.info("account %s: %d new message(s)", account.id, len(message_ids))
     for gmail_id in message_ids:
-        with get_sessionmaker()() as mdb:
+        # one mail at a time per user, across accounts and AI tasks (see app.locks)
+        with user_lock(account.user_id), get_sessionmaker()() as mdb:
             acc = mdb.get(GmailAccount, account.id)
             outcome = process_message(mdb, acc, provider, gmail_id)
             if outcome.decided_by != "existing":

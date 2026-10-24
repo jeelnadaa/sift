@@ -299,6 +299,8 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 
 ## 9. Operations
 
+**Worker lanes:** the Postgres worker runs one lane for quick jobs only (mail checks, push, sending, reminders) and two general lanes, so a long job (first scan, AI task, search index) never holds up new mail. Mail for one user is processed one message at a time across lanes (a database advisory lock), so nothing is created twice. In Redis mode arq runs up to 4 jobs at once.
+
 - **Backups:** `scripts/backup.sh` (Docker hosts) writes `backups/sift-<time>.sql.gz` and copies it off the machine if `BACKUP_RCLONE_REMOTE` is set ([rclone](https://rclone.org), e.g. Google Drive). Cron: `30 3 * * * cd /opt/sift && ./scripts/backup.sh >> backups/backup.log 2>&1`. Restore: `scripts/restore.sh <file>`. Native Windows: `pg_dump` as in section 6, scheduled with Task Scheduler.
 - **Rebuild from scratch:** new host → section 6 steps → restore the latest backup → start. Accounts resume from their saved positions (Gmail keeps about a week of history).
 - **Oracle reclaim risk:** Oracle may reclaim Always Free instances that stay idle for 7 days. A running Sift is rarely idle, but keep backups off the VM. Upgrading the account to Pay-As-You-Go (still free within limits) removes idle reclamation.

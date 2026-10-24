@@ -7,6 +7,11 @@ export function humanize(v: string | null | undefined): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** An account's display name: a label starts with a capital; an email address stays as it is. */
+export function accountName(label: string | null | undefined, email: string): string {
+  return label ? humanize(label) : email;
+}
+
 export function relativeTime(iso: string | null | undefined, now: Date = new Date()): string {
   if (!iso) return "";
   const t = new Date(iso);

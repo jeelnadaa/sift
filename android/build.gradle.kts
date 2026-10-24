@@ -4,4 +4,6 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" apply false
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // screenshot tests on the computer (no device or emulator): ./gradlew :app:recordPaparazziDebug
+    id("app.cash.paparazzi") version "1.3.5" apply false
 }

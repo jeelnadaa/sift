@@ -49,11 +49,12 @@ private fun who(a: AddrDto?) = a?.name?.takeIf { it.isNotBlank() } ?: a?.email ?
 fun fileSize(n: Long): String = when {
     n < 1024 -> "$n B"
     n < 1024 * 1024 -> "${n / 1024} KB"
-    else -> String.format("%.1f MB", n / 1024.0 / 1024.0)
+    else -> String.format(java.util.Locale.US, "%.1f MB", n / 1024.0 / 1024.0)
 }
 
 /** The whole conversation, fetched live and never stored. The newest message, the one opened and
- * unread ones start open. Remote images stay blocked until "Load images". */
+ * unread ones start open. Images load through the Sift server (Settings can turn that off; then
+ * a banner offers "Load images"). */
 @Composable
 fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? = null, onWrite: ((mode: String, accountId: String, gmailId: String) -> Unit)? = null) {
     val context = LocalContext.current

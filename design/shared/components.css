@@ -27,7 +27,7 @@
 .tag.ok { background:rgba(200,255,61,.12); color:var(--signal); }
 .tag.warn { background:rgba(255,185,56,.14); color:var(--warn); }
 
-.acct { text-transform:capitalize; display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2); }
+.acct { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2); }
 .acct i { width:8px; height:8px; border-radius:3px; display:inline-block; }
 
 .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:20px; }

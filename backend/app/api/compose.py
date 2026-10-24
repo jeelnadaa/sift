@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
@@ -72,7 +73,13 @@ def _gmail(db: Session, account: GmailAccount, fn):
 
 
 def _lock(db: Session, account_id: uuid.UUID, draft_id: str) -> None:
-    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"draft:{account_id}:{draft_id}"})
+    """Saves of one draft take turns. If another save (e.g. a large attachment) holds it past the
+    database's lock timeout, answer "busy" instead of failing: the app retries on its next save."""
+    try:
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"draft:{account_id}:{draft_id}"})
+    except OperationalError as exc:
+        db.rollback()
+        raise HTTPException(409, "This draft is still being saved; try again in a moment") from exc
 
 
 def _from(db: Session, user: User, account: GmailAccount) -> tuple[str, str]:

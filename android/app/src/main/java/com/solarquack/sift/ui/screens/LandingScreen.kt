@@ -45,11 +45,11 @@ private val FEATURES = listOf(
 
 /** First screen before signing in: what Sift is, then Get started (sign up) or I have an account. */
 @Composable
-fun LandingScreen(onGetStarted: () -> Unit, onSignIn: () -> Unit) {
+fun LandingScreen(onGetStarted: () -> Unit, onSignIn: () -> Unit, animate: Boolean = true) {
     // a short fade-in; skipped when the phone's animations are turned off
     val reduced = android.provider.Settings.Global.getFloat(
         androidx.compose.ui.platform.LocalContext.current.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f,
-    ) == 0f
+    ) == 0f || !animate || androidx.compose.ui.platform.LocalInspectionMode.current  // previews and screenshot tests: no animation
     val shown = remember { Animatable(if (reduced) 1f else 0f) }
     LaunchedEffect(Unit) { if (!reduced) shown.animateTo(1f, tween(700)) }
 

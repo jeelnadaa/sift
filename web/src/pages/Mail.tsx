@@ -7,6 +7,11 @@ import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailA
 import { Avatar, Banner, FolderPicker, Modal, Tag, errorText, toast, useLoad } from "../components";
 import { findFolder, fullTime, safeUrl } from "../util";
 
+const DECIDED: Record<string, string> = {
+  rule: "one of your rules", llm: "the AI", heuristic: "Sift's built-in checks", fingerprint: "a template you silenced before",
+  default: "default (no rule matched, AI off)", existing: "an earlier check", gone: "Gmail (it was deleted)",
+};
+
 /** Mail detail: Sift's view of the mail (priority, extracted facts, filing) and the whole
  * conversation below it, fetched live from Gmail and never stored. */
 export function MailDetail() {
@@ -132,7 +137,7 @@ export function MailDetail() {
 
             <div className="field" style={{ marginTop: 10 }}><label>Conversation</label></div>
             <Thread messageId={id} />
-            <p className="dim" style={{ fontSize: 13 }}>Decided by {m.decided_by ?? "default"}{m.delivered_at ? ` · delivered ${fullTime(m.delivered_at)}` : ""}. Mail is shown in a locked frame: scripts never run, and remote images load only when you ask.</p>
+            <p className="dim" style={{ fontSize: 13 }}>Decided by {DECIDED[m.decided_by ?? ""] ?? m.decided_by ?? "default"}{m.delivered_at ? ` · delivered ${fullTime(m.delivered_at)}` : ""}. Mail is shown in a locked frame where scripts never run; its images come through your Sift server, so senders never see your address.</p>
           </div>
         )}
       </section>

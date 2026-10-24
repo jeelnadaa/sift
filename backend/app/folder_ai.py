@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import Session
 
 from app import folders, notify, opportunities
@@ -118,12 +119,13 @@ def rule_matches(rule: dict | None, msg: Message) -> bool:
 def on_processed(db: Session, msg: Message) -> None:
     """Pipeline hook, after classification: AI filing, then auto-sort of every auto-sorting folder
     the conversation is in (rules may have filed it before the AI ran)."""
+    if msg.status != "processed":
+        return
+    user_folders = list(db.scalars(select(Folder).where(Folder.user_id == msg.user_id, Folder.saved_search_id.is_(None))))
+    if not any(f.ai_rule or f.auto_sort for f in user_folders):
+        return
+    savepoint = db.begin_nested()  # a failure here must not undo the mail's own classification
     try:
-        if msg.status != "processed":
-            return
-        user_folders = list(db.scalars(select(Folder).where(Folder.user_id == msg.user_id, Folder.saved_search_id.is_(None))))
-        if not any(f.ai_rule or f.auto_sort for f in user_folders):
-            return
         for f in user_folders:
             if rule_matches(f.ai_rule, msg):
                 db.execute(insert(FolderItem).values(folder_id=f.id, account_id=msg.account_id, thread_id=msg.thread_id).on_conflict_do_nothing())
@@ -133,9 +135,10 @@ def on_processed(db: Session, msg: Message) -> None:
             if f.id in held and f.auto_sort in SORT_MODES:
                 sort_if_needed(db, f, msg)
         db.flush()
+        savepoint.commit()
     except Exception:
         log.exception("folder AI failed for message %s; it stays where it was", msg.id)
-        db.rollback()
+        savepoint.rollback()
 
 
 # ---- explicit tasks ------------------------------------------------------------------------------
@@ -231,26 +234,22 @@ def run_task(task_id: uuid.UUID) -> None:
         token = llm.current_task.set(task.id)
         try:
             unread = 0
+            from app.locks import LockBusy, user_lock
+
             for msg in msgs:
-                if task.kind == "sort":
-                    holder = folder
-                    if task.include_subfolders and not db.scalar(select(FolderItem).where(
-                            FolderItem.folder_id == folder.id, FolderItem.account_id == msg.account_id, FolderItem.thread_id == msg.thread_id)):
-                        holder = None  # already in a subfolder: leave it
-                    mode = "ai" if task.instruction else (folder.auto_sort or "company")
-                    if holder is not None and (mode != "company" or _read(db, msg)):
-                        if sort_thread(db, holder, msg, mode, task.instruction):
-                            task.changed += 1
-                else:
-                    if _read(db, msg):
-                        if (_timeline(db, msg) if task.kind == "timelines" else _todo(db, msg)):
-                            task.changed += 1
-                    else:
-                        unread += 1
-                        if llm.ai_enabled(db, task.user_id) and not llm.under_cap(db, task.user_id):
-                            task.note = "Stopped: daily token cap reached. Run it again tomorrow to continue."
-                            task.status = "stopped"
-                            break
+                try:
+                    with user_lock(task.user_id, wait_seconds=600):  # takes turns with new mail (app.locks)
+                        result = _one(db, task, folder, msg)
+                except LockBusy:
+                    task.note = "Stopped: mail processing stayed busy. Run it again."
+                    task.status = "stopped"
+                    break
+                if result == "unread":
+                    unread += 1
+                    if llm.ai_enabled(db, task.user_id) and not llm.under_cap(db, task.user_id):
+                        task.note = "Stopped: daily token cap reached. Run it again tomorrow to continue."
+                        task.status = "stopped"
+                        break
                 task.done += 1
                 db.commit()
             if task.status == "running":
@@ -270,6 +269,31 @@ def run_task(task_id: uuid.UUID) -> None:
         notify.send_system(db, task.user_id, f"AI task finished: {task.folder_name}",
                            f"{task.changed} {what} from {task.done} mail{'s' if task.done != 1 else ''} · {tokens:,} tokens.")
         db.commit()
+
+
+def _one(db: Session, task: AiTask, folder: Folder, msg: Message) -> str:
+    """One mail of a task. Returns "changed", "same" or "unread" (the AI couldn't read it)."""
+    try:
+        db.refresh(msg)  # another job may have changed it while this task waited for its turn
+    except InvalidRequestError:  # deleted meanwhile
+        return "same"
+    if task.kind == "sort":
+        holder = folder
+        if task.include_subfolders and not db.scalar(select(FolderItem).where(
+                FolderItem.folder_id == folder.id, FolderItem.account_id == msg.account_id, FolderItem.thread_id == msg.thread_id)):
+            holder = None  # already in a subfolder: leave it
+        mode = "ai" if task.instruction else (folder.auto_sort or "company")
+        if holder is not None and (mode != "company" or _read(db, msg)):
+            if sort_thread(db, holder, msg, mode, task.instruction):
+                task.changed += 1
+                return "changed"
+        return "same"
+    if not _read(db, msg):
+        return "unread"
+    if _timeline(db, msg) if task.kind == "timelines" else _todo(db, msg):
+        task.changed += 1
+        return "changed"
+    return "same"
 
 
 def task_tokens(db: Session, task_id: uuid.UUID) -> int:

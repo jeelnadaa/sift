@@ -16,6 +16,7 @@ import com.solarquack.sift.data.CalendarIntent
 import com.solarquack.sift.data.Push
 import com.solarquack.sift.data.Session
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The server sends data-only, high-priority FCM messages; we build the notification here so
@@ -26,7 +27,7 @@ class SiftMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         Session.saveFcmToken(this, token)
-        if (Session.signedIn(this)) runCatching { runBlocking { Push.registerDevice(this@SiftMessagingService) } }
+        if (Session.signedIn(this)) runCatching { runBlocking { withTimeoutOrNull(8_000) { Push.registerDevice(this@SiftMessagingService) } } }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -39,8 +40,9 @@ class SiftMessagingService : FirebaseMessagingService() {
         show(data)
         val notificationId = data["notification_id"]
         if (notificationId != null && Session.signedIn(this)) {
-            // onMessageReceived runs off the main thread with a short time budget; a quick call is fine
-            runCatching { runBlocking { Api.get(this@SiftMessagingService).ack(notificationId) } }
+            // onMessageReceived has a short time budget (seconds): cap the call; a missed ack only
+            // means the server re-sends an urgent notification once
+            runCatching { runBlocking { withTimeoutOrNull(5_000) { Api.get(this@SiftMessagingService).ack(notificationId) } } }
                 .onFailure { Log.w(TAG, "ack failed; the server may re-send") }
         }
     }
