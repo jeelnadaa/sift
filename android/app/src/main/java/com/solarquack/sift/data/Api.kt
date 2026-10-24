@@ -37,6 +37,26 @@ interface SiftApi {
 
     @GET("api/v1/rules") suspend fun rules(): List<RuleDto>
     @PUT("api/v1/rules/{id}") suspend fun updateRule(@Path("id") id: String, @Body body: RuleIn): RuleDto
+    @POST("api/v1/rules") suspend fun createRule(@Body body: RuleIn): RuleDto
+    @DELETE("api/v1/rules/{id}") suspend fun deleteRule(@Path("id") id: String)
+    @POST("api/v1/rules/reorder") suspend fun reorderRules(@Body body: OrderIn): List<RuleDto>
+    @POST("api/v1/rules/preview") suspend fun previewRule(@Body body: PreviewIn): PreviewResult
+    @POST("api/v1/rules/from-text") suspend fun ruleFromText(@Body body: TextIn): DraftResponse
+    @GET("api/v1/rules/suggestions") suspend fun suggestions(): List<SuggestionDto>
+    @POST("api/v1/rules/suggestions/{id}/accept") suspend fun acceptSuggestion(@Path("id") id: String, @Body body: ActionIn): RuleDto
+    @POST("api/v1/rules/suggestions/{id}/dismiss") suspend fun dismissSuggestion(@Path("id") id: String)
+    @POST("api/v1/messages/{id}/like-this") suspend fun likeThis(@Path("id") id: String, @Body body: LikeThisIn): DraftResponse
+    @POST("api/v1/messages/{id}/unsilence") suspend fun unsilence(@Path("id") id: String): UnsilenceResult
+
+    @GET("api/v1/accounts/{id}/scan") suspend fun latestScan(@Path("id") accountId: String): ScanDto?
+    @POST("api/v1/accounts/{id}/scan") suspend fun startScan(@Path("id") accountId: String): ScanDto
+    @POST("api/v1/scans/{id}/apply") suspend fun applyScan(@Path("id") scanId: String, @Body body: ApplyIn): ApplyResult
+
+    @GET("api/v1/categories") suspend fun categories(): List<CategoryDto>
+    @POST("api/v1/categories") suspend fun createCategory(@Body body: CategoryIn): CategoryDto
+    @PUT("api/v1/categories/{id}") suspend fun updateCategory(@Path("id") id: String, @Body body: CategoryIn): CategoryDto
+    @DELETE("api/v1/categories/{id}") suspend fun deleteCategory(@Path("id") id: String)
+    @GET("api/v1/usage") suspend fun usage(@Query("days") days: Int = 30): UsageDto
 
     @GET("api/v1/settings") suspend fun settings(): SettingsDto
     @PATCH("api/v1/settings") suspend fun patchSettings(@Body changes: JsonObject): SettingsDto
@@ -99,7 +119,7 @@ fun Throwable.userMessage(): String = when (this) {
         401 -> "Signed out. Sign in again."
         404 -> "Not found."
         409 -> response()?.errorBody()?.string()?.let { Regex("\"detail\":\"([^\"]+)\"").find(it)?.groupValues?.get(1)?.replaceFirstChar { c -> c.uppercase() } } ?: "Conflict."
-        422 -> "Please check what you entered."
+        422 -> response()?.errorBody()?.string()?.let { Regex("\"detail\":\"([^\"]+)\"").find(it)?.groupValues?.get(1)?.replaceFirstChar { c -> c.uppercase() } } ?: "Please check what you entered."
         503 -> "Server is not configured for this yet."
         else -> "Server error (${code()})."
     }

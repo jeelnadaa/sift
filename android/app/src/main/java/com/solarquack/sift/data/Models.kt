@@ -84,11 +84,12 @@ data class RuleDto(
 @Serializable
 data class RuleIn(
     val name: String,
-    val enabled: Boolean,
+    val enabled: Boolean = true,
     val conditions: JsonElement,
     val action: JsonObject,
     val exceptions: JsonElement? = null,
     @SerialName("account_scope") val accountScope: List<String>? = null,
+    val origin: String = "editor",
 )
 
 @Serializable
@@ -207,3 +208,94 @@ data class TodoPatch(
     @SerialName("due_at") val dueAt: String? = null,
     @SerialName("clear_due") val clearDue: Boolean = false,
 )
+
+@Serializable
+data class PreviewSample(val id: String, val sender: String? = null, val subject: String? = null, @SerialName("received_at") val receivedAt: String? = null, val priority: String? = null)
+
+@Serializable
+data class PreviewResult(
+    val checked: Int = 0,
+    val matches: Int = 0,
+    val samples: List<PreviewSample> = emptyList(),
+    @SerialName("body_not_previewed") val bodyNotPreviewed: Boolean = false,
+)
+
+@Serializable
+data class PreviewIn(val conditions: JsonElement, val exceptions: JsonElement? = null, @SerialName("account_scope") val accountScope: List<String>? = null)
+
+@Serializable
+data class RuleDraft(
+    val name: String,
+    val conditions: JsonElement,
+    val action: JsonObject,
+    val exceptions: JsonElement? = null,
+    @SerialName("account_scope") val accountScope: List<String>? = null,
+)
+
+@Serializable
+data class DraftResponse(val draft: RuleDraft, val preview: PreviewResult, @SerialName("rule_id") val ruleId: String? = null)
+
+@Serializable
+data class TextIn(val text: String)
+
+@Serializable
+data class LikeThisIn(val action: String = "silent", val save: Boolean = true)
+
+@Serializable
+data class UnsilenceResult(@SerialName("rule_id") val ruleId: String? = null)
+
+@Serializable
+data class SuggestionDto(
+    val id: String,
+    val domain: String? = null,
+    val template: String? = null,
+    val count: Int = 0,
+    @SerialName("sample_subject") val sampleSubject: String? = null,
+    val sender: String? = null,
+)
+
+@Serializable
+data class ActionIn(val action: String)
+
+@Serializable
+data class OrderIn(val ids: List<String>)
+
+@Serializable
+data class ScanSender(
+    val key: String,
+    val kind: String,
+    val name: String? = null,
+    val count: Int = 0,
+    @SerialName("sample_subject") val sampleSubject: String? = null,
+    val hints: List<String> = emptyList(),
+    val suggested: String = "keep",
+)
+
+@Serializable
+data class ScanDto(
+    val id: String,
+    @SerialName("account_id") val accountId: String,
+    val status: String,
+    val scanned: Int = 0,
+    val senders: List<ScanSender> = emptyList(),
+    val error: String? = null,
+    @SerialName("applied_at") val appliedAt: String? = null,
+)
+
+@Serializable
+data class ApplyIn(val assignments: Map<String, String>)
+
+@Serializable
+data class ApplyResult(val rules: List<RuleDto> = emptyList())
+
+@Serializable
+data class CategoryDto(val id: String? = null, val name: String, val definition: String? = null, val builtin: Boolean = false)
+
+@Serializable
+data class CategoryIn(val name: String, val definition: String)
+
+@Serializable
+data class UsageDay(val day: String, val calls: Int = 0, @SerialName("input_tokens") val inputTokens: Int = 0, @SerialName("output_tokens") val outputTokens: Int = 0)
+
+@Serializable
+data class UsageDto(val days: List<UsageDay> = emptyList(), @SerialName("tokens_today") val tokensToday: Int = 0, @SerialName("daily_token_cap") val dailyTokenCap: Int = 0)

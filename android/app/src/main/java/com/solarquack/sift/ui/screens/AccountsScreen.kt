@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
 private const val BLOCKED_COPY = "This account may be blocked by its administrator (common for college or work accounts)."
 
 @Composable
-fun AccountsScreen() {
+fun AccountsScreen(onScan: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var accounts by remember { mutableStateOf<List<AccountDto>>(emptyList()) }
@@ -91,7 +91,10 @@ fun AccountsScreen() {
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                GhostButton("Remove", color = Ink.urgent) { removing = a }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (a.status == "active") GhostButton("First scan") { onScan(a.id) }
+                    GhostButton("Remove", color = Ink.urgent) { removing = a }
+                }
             }
         }
         if (accounts.isEmpty() && error == null) Text("No Gmail account connected yet.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)

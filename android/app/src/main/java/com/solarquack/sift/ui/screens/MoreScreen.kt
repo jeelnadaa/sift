@@ -25,8 +25,10 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
         SectionLabel("Control")
         Item("Rules", "What gets silenced, digested or marked urgent") { onNavigate("rules") }
         Item("Silenced mail", "Stored and searchable, never notified") { onNavigate("silenced") }
+        Item("Categories", "Your own categories for the AI to use") { onNavigate("categories") }
         SectionLabel("Account")
         Item("Accounts", "Connected Gmail accounts and their status") { onNavigate("accounts") }
+        Item("Token usage", "What your own AI key has spent") { onNavigate("usage") }
         Item("Settings", "AI key, notifications, this phone") { onNavigate("settings") }
     }
 }

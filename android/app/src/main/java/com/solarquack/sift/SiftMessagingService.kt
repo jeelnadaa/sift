@@ -108,6 +108,13 @@ class SiftMessagingService : FirebaseMessagingService() {
             builder.addAction(0, "Done", broadcast(id + 3, NotificationActionReceiver.ACTION_TODO_DONE, id) {
                 putExtra(NotificationActionReceiver.EXTRA_TODO_ID, todoId)
             })
+            slots--
+        }
+        // one-tap "ignore mails like this" for everyday mail (never offered on urgent mail)
+        if (slots > 0 && data["todo_id"].isNullOrBlank() && data["type"] == "mail" && data["priority"] in setOf("normal", "digest") && messageId != null) {
+            builder.addAction(0, "Ignore like this", broadcast(id + 4, NotificationActionReceiver.ACTION_IGNORE, id) {
+                putExtra(NotificationActionReceiver.EXTRA_MESSAGE_ID, messageId)
+            })
         }
     }
 

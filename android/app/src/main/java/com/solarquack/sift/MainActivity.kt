@@ -33,7 +33,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.solarquack.sift.data.Session
 import com.solarquack.sift.ui.screens.AccountsScreen
+import com.solarquack.sift.ui.screens.CategoriesScreen
 import com.solarquack.sift.ui.screens.DealsScreen
+import com.solarquack.sift.ui.screens.RuleEditorScreen
+import com.solarquack.sift.ui.screens.ScanScreen
+import com.solarquack.sift.ui.screens.UsageScreen
 import com.solarquack.sift.ui.screens.MoreScreen
 import com.solarquack.sift.ui.screens.OpportunityScreen
 import com.solarquack.sift.ui.screens.TodoScreen
@@ -81,7 +85,7 @@ class MainActivity : ComponentActivity() {
                     composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
                     composable("silenced") { FeedScreen(silenced = true, onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
                     composable("mail/{id}") { entry ->
-                        MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") })
+                        MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") }, onEditRule = { nav.navigate("rule-edit") })
                     }
                     composable("deals") { DealsScreen(onOpen = { nav.navigate("deal/$it") }) }
                     composable("deal/{id}") { entry ->
@@ -89,8 +93,12 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("todo") { TodoScreen(onOpenMail = { nav.navigate("mail/$it") }) }
                     composable("more") { MoreScreen(onNavigate = { nav.navigate(it) }) }
-                    composable("accounts") { AccountsScreen() }
-                    composable("rules") { RulesScreen() }
+                    composable("accounts") { AccountsScreen(onScan = { nav.navigate("scan/$it") }) }
+                    composable("scan/{id}") { entry -> ScanScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }) }
+                    composable("rules") { RulesScreen(onEdit = { nav.navigate("rule-edit") }) }
+                    composable("rule-edit") { RuleEditorScreen(onDone = { nav.popBackStack() }) }
+                    composable("categories") { CategoriesScreen(onBack = { nav.popBackStack() }) }
+                    composable("usage") { UsageScreen(onBack = { nav.popBackStack() }) }
                     composable("settings") {
                         SettingsScreen(
                             onSignedOut = { nav.navigate("login") { popUpTo(0) } },
@@ -110,7 +118,7 @@ class MainActivity : ComponentActivity() {
                 val selected = when (dest) {
                     "feed" -> route == "feed" || route.startsWith("mail")
                     "deals" -> route == "deals" || route.startsWith("deal/")
-                    "more" -> route in setOf("more", "rules", "accounts", "settings", "silenced")
+                    "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage") || route.startsWith("scan/")
                     else -> route == dest
                 }
                 NavigationBarItem(

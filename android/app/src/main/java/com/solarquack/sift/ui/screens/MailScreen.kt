@@ -32,6 +32,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import com.solarquack.sift.data.CalendarIntent
 import com.solarquack.sift.data.CompanyAnswer
+import com.solarquack.sift.data.DraftResponse
+import com.solarquack.sift.data.LikeThisIn
 import com.solarquack.sift.data.OpportunityDto
 import com.solarquack.sift.data.TodoIn
 import com.solarquack.sift.ui.Chip
@@ -54,13 +56,15 @@ import com.solarquack.sift.ui.theme.Ink
 
 /** Read-only mail detail (Phase 1). Plain text only; the sandboxed HTML reader is Phase 3. */
 @Composable
-fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}) {
+fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}) {
     val context = LocalContext.current
     var m by remember { mutableStateOf<MessageDto?>(null) }
     var body by remember { mutableStateOf<BodyDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var bodyError by remember { mutableStateOf<String?>(null) }
     var addingTodo by remember { mutableStateOf(false) }
+    var likeThis by remember { mutableStateOf<DraftResponse?>(null) }
+    var silencedByRule by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(id) {
@@ -137,9 +141,66 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             color = Ink.text3, style = MaterialTheme.typography.bodySmall,
         )
         Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (msg.status == "silenced" || msg.status == "ignored") {
+                GhostButton("Not like this") {
+                    scope.launch {
+                        try {
+                            val r = Api.get(context).unsilence(msg.id)
+                            m = Api.get(context).message(id)
+                            silencedByRule = r.ruleId
+                        } catch (t: Throwable) { error = t.userMessage() }
+                    }
+                }
+            } else {
+                GhostButton("Ignore mails like this") {
+                    scope.launch {
+                        try { likeThis = Api.get(context).likeThis(msg.id, LikeThisIn(save = false)) } catch (t: Throwable) { error = t.userMessage() }
+                    }
+                }
+            }
+        }
+        silencedByRule?.let { ruleId ->
+            Spacer(Modifier.height(8.dp))
+            Banner("Back in your feed. A rule silenced it; edit the rule so it doesn't happen again.", Ink.warn, "Edit rule") {
+                scope.launch {
+                    Api.get(context).rules().firstOrNull { it.id == ruleId }?.let { RuleEditorSeed.clear(); RuleEditorSeed.rule = it; onEditRule() }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         GhostButton("Open in Gmail") {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mail.google.com/mail/u/0/#all")))
         }
+    }
+
+    likeThis?.let { r ->
+        AlertDialog(
+            onDismissRequest = { likeThis = null },
+            title = { Text("Silence mails like this?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("New mail from the same verified sender with the same kind of subject will be stored silently: searchable, never notified.", color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
+                    Text("${r.preview.matches} of your last ${r.preview.checked} mails match.", color = Ink.signal, style = MaterialTheme.typography.titleSmall)
+                    r.preview.samples.take(3).forEach { s -> Text("· ${s.subject ?: ""}", color = Ink.text3, style = MaterialTheme.typography.bodySmall, maxLines = 1) }
+                }
+            },
+            confirmButton = {
+                PrimaryButton("Silence") {
+                    likeThis = null
+                    scope.launch {
+                        try { Api.get(context).likeThis(id, LikeThisIn("silent", save = true)); m = Api.get(context).message(id) } catch (t: Throwable) { error = t.userMessage() }
+                    }
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; likeThis = null; onEditRule() }) { Text("Adjust…", color = Ink.text2) }
+                    TextButton(onClick = { likeThis = null }) { Text("Cancel", color = Ink.text2) }
+                }
+            },
+            containerColor = Ink.surface, shape = Radius.xl,
+        )
     }
 
     if (addingTodo) m?.let { msg ->
