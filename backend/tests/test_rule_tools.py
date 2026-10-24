@@ -305,3 +305,15 @@ def test_quieting_drafts_always_get_a_security_exception(db, setup, client, fake
     fake_llm.rule = {**fake_llm.rule, "action": "notify_urgent"}  # not quieting: nothing added
     d = client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "kotak mail is urgent"}).json()["draft"]
     assert d["exceptions"]["any"][0]["value"] == ["urgent", "alert"]
+
+
+
+def test_preview_shows_what_exceptions_keep(db, setup, client):
+    user, account, provider, msgs = setup
+    for m in msgs.values():
+        run(db, account, provider, m)
+    body = {"conditions": {"field": "sender_domain", "op": "is", "value": "kotak.com"},
+            "exceptions": {"any": [{"all": [{"field": "subject", "op": "contains_any", "value": ["debited"]}, {"field": "amount", "op": "gt", "value": 2000}]}]}}
+    r = client.post("/api/v1/rules/preview", headers=H(user), json=body).json()
+    assert [s["subject"][:9] for s in r["samples"]] == ["Rs 240.00"]           # will get the action
+    assert r["kept_by_exceptions"] == 1 and r["kept_samples"][0]["subject"].startswith("Rs 18,500")  # saved by the exception

@@ -218,6 +218,8 @@ data class PreviewResult(
     val matches: Int = 0,
     @SerialName("important_matches") val importantMatches: Int = 0,
     val samples: List<PreviewSample> = emptyList(),
+    @SerialName("kept_by_exceptions") val keptByExceptions: Int = 0,
+    @SerialName("kept_samples") val keptSamples: List<PreviewSample> = emptyList(),
     @SerialName("body_not_previewed") val bodyNotPreviewed: Boolean = false,
 )
 

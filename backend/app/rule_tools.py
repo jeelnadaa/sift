@@ -45,17 +45,29 @@ def preview(db: Session, user_id: uuid.UUID, conditions: dict, exceptions: dict 
         select(Message).where(Message.user_id == user_id, Message.status != "duplicate")
         .order_by(Message.received_at.desc().nulls_last()).limit(PREVIEW_LIMIT)
     ))
-    hits = [m for m in rows if engine.evaluate([view], context_for(m, tz))]
+    hits, kept = [], []
+    for m in rows:
+        ctx = context_for(m, tz)
+        if engine.evaluate([view], ctx):
+            hits.append(m)
+        elif exceptions and engine.matches(conditions, ctx) and (not account_scope or str(m.account_id) in [str(a) for a in account_scope]):
+            kept.append(m)  # the rule's conditions match, but an exception saves it
     important = [m for m in hits if is_important(m)]
     # important matches first, so the user sees what a quieting rule would hide
     ordered = important + [m for m in hits if m not in important]
+
+    def sample(m: Message) -> dict:
+        return {"id": str(m.id), "sender": m.sender_name or m.sender, "subject": m.subject,
+                "received_at": m.received_at.isoformat() if m.received_at else None, "priority": m.priority,
+                "important": m in important}
+
     return {
         "checked": len(rows),
         "matches": len(hits),
         "important_matches": len(important),
-        "samples": [{"id": str(m.id), "sender": m.sender_name or m.sender, "subject": m.subject,
-                     "received_at": m.received_at.isoformat() if m.received_at else None, "priority": m.priority,
-                     "important": m in important} for m in ordered[:10]],
+        "samples": [sample(m) for m in ordered[:10]],
+        "kept_by_exceptions": len(kept),
+        "kept_samples": [sample(m) for m in kept[:10]],
         "body_not_previewed": engine.needs_body(conditions) or engine.needs_body(exceptions),
     }
 

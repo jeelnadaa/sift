@@ -296,15 +296,28 @@ fun RuleEditorScreen(onDone: () -> Unit) {
         SiftCard(border = if (hidesImportant) Ink.urgent.copy(alpha = 0.5f) else Ink.line2) {
             if (p == null) Text("Add a condition to see which of your recent mail it matches.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
             else {
+                val verb = when (action) {
+                    "silent" -> "stored silently"; "ignore" -> "ignored"; "digest" -> "sent to the digest"
+                    "notify_normal" -> "notified as normal"; "notify_urgent" -> "notified as urgent"; else -> "sent to the AI"
+                }
+                Text("Of the ${p.checked} mails Sift has stored:", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text("${p.matches}", style = MaterialTheme.typography.displaySmall, color = if (hidesImportant) Ink.urgent else Ink.signal)
-                    Text("  of the ${p.checked} mails Sift has stored would match", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp))
+                    Text("  would be $verb", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp))
                 }
                 if (hidesImportant) Text("${p.importantMatches} of them look important (urgent, needs action, or on a company timeline). This rule would quiet them.",
                     color = Ink.urgent, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
                 p.samples.take(6).forEach { s ->
                     Text((if (s.important) "⚠ " else "· ") + "${s.sender ?: ""} · ${s.subject ?: ""}", color = if (s.important && action in QUIETING) Ink.urgent else Ink.text2,
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (p.keptByExceptions > 0) {
+                    Text("${p.keptByExceptions} kept by your exceptions (this rule leaves them alone):", color = Ink.signal,
+                        style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+                    p.keptSamples.take(6).forEach { s ->
+                        Text("✓ ${s.sender ?: ""} · ${s.subject ?: ""}", color = Ink.text2, style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                    }
                 }
                 if (p.bodyNotPreviewed) Text("Body conditions can't be previewed (mail bodies are never stored); they apply to new mail.", color = Ink.warn, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                 Text("Sift stores mail from the time you connected an account, so this count grows over time.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
