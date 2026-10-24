@@ -54,6 +54,7 @@ Rule: commit every change to git, never push (the owner pushes).
 - 2026-10-24 — **Public address live: https://sift.solarquack.in** (Cloudflare Tunnel to the laptop). DNS for `solarquack.in` moved from GoDaddy to Cloudflare (nameservers keyla/leonidas.ns.cloudflare.com; records copied and verified on Cloudflare's nameservers before the switch; Vercel records DNS-only). Portfolio verified up on `solarquack.in`; owner added `www` in Vercel (redirect to apex), which fixed a pre-existing `www` TLS failure. Tunnel `sift-laptop` runs as a Windows service → `localhost:8000`.
   - Hardening for internet exposure: `/docs` and `/openapi.json` off unless `API_DOCS=true`; failed sign-ins throttled per email and per visitor (`LOGIN_ATTEMPTS`, 15 min, CF-Connecting-IP behind the tunnel). 146 tests pass.
   - `.env`: `PUBLIC_BASE_URL=https://sift.solarquack.in`. Sift now runs without `-Lan` (nothing listens on Wi-Fi).
+- 2026-10-24 — Owner verified the app over **mobile data** via https://sift.solarquack.in: sign-in, feed, adding a Gmail account from the phone (OAuth redirect on the public address) and removing it all work. Main account still active.
 
 ## Decisions
 - Designs are static HTML/CSS/JS prototypes; the visual reference for the React web UI and Compose app. Keep `DESIGN.md` in sync with any design change, in the same commit.
@@ -78,8 +79,12 @@ Rule: commit every change to git, never push (the owner pushes).
 - `notifications.message_id` is unique so a message can never notify twice.
 
 ## Open questions (for the owner)
-1. Owner: add `https://sift.solarquack.in/api/v1/accounts/oauth/callback` to the Google OAuth client and sign in to the app with `https://sift.solarquack.in` (then confirm it works on mobile data).
-2. Sign off Phase 1 (25 s end to end in poll mode) or switch to push mode first (needs billing on the Google project; the public HTTPS address now exists).
+1. Sign off Phase 1 (all checks passed; ~25 s end to end in poll mode).
+2. Phase 2 decisions (asked 2026-10-24):
+   a. Web UI: serve the React build from the same server (https://sift.solarquack.in/app, same sign-in) — proposed default.
+   b. "Add to calendar": Android calendar intent (no extra Google permission) — proposed default — instead of requesting the Google Calendar scope.
+   c. Build Phase 2 in three reviewable steps: 2a opportunities, timelines, deadlines/reminders, to-do (the acceptance criterion); 2b rule editor with preview, one-tap and plain-English rules, fingerprint suggestions, onboarding scan, custom categories, token usage screen; 2c folders, opt-in grouping, web UI pages.
+3. Optional: start Sift automatically at Windows sign-in (Task Scheduler) so sift.solarquack.in survives reboots.
 
 ## Known limitations (Phase 1)
 - Poll mode end to end ~25 s (Gmail history lag dominates); push mode needs billing + a stable public hostname.
