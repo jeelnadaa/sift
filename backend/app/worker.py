@@ -2,7 +2,7 @@
 import logging
 import time
 
-from app.config import get_settings
+from app.config import get_settings, setup_logging
 from app.jobs import HANDLERS, run_one
 
 log = logging.getLogger("app.worker")
@@ -33,7 +33,7 @@ def run_postgres_worker(poll_seconds: float = 1.0) -> None:
 
 def main() -> None:
     settings = get_settings()
-    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    setup_logging()
     if settings.queue_backend == "redis":
         from arq.connections import RedisSettings
         from arq.worker import run_worker

@@ -4,53 +4,76 @@ import android.Manifest
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.solarquack.sift.data.Api
+import com.solarquack.sift.data.Push
+import com.solarquack.sift.data.Session
+import kotlinx.coroutines.runBlocking
 
 /**
- * The backend sends data-only, high-priority FCM messages; we build the notification here
- * so each priority tier gets its own channel. Phase 1 adds action buttons and acknowledgements.
+ * The server sends data-only, high-priority FCM messages; we build the notification here so
+ * each priority tier has its own channel, then acknowledge receipt so the server stops
+ * re-sending urgent mail.
  */
 class SiftMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
-        Prefs.saveToken(this, token)
+        Session.saveFcmToken(this, token)
+        if (Session.signedIn(this)) runCatching { runBlocking { Push.registerDevice(this@SiftMessagingService) } }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
-        val tier = Tier.from(data["priority"])
-        val sentAt = data["sent_at_ms"]?.toLongOrNull()
-        if (sentAt != null) {
-            val delayMs = System.currentTimeMillis() - sentAt
-            Prefs.saveLastDelay(this, delayMs)
-            Log.i(TAG, "push received, delay ${delayMs}ms")
+        data["sent_at_ms"]?.toLongOrNull()?.let {
+            val delay = System.currentTimeMillis() - it
+            Session.saveLastDelay(this, delay)
+            Log.i(TAG, "push received after ${delay}ms")
         }
-        show(tier, data["title"] ?: "Sift", data["body"].orEmpty())
+        show(data)
+        val notificationId = data["notification_id"]
+        if (notificationId != null && Session.signedIn(this)) {
+            // onMessageReceived runs off the main thread with a short time budget; a quick call is fine
+            runCatching { runBlocking { Api.get(this@SiftMessagingService).ack(notificationId) } }
+                .onFailure { Log.w(TAG, "ack failed; the server may re-send") }
+        }
     }
 
-    private fun show(tier: Tier, title: String, body: String) {
+    private fun show(data: Map<String, String>) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val tier = Tier.from(data["priority"])
+        val messageId = data["message_id"]
+        val id = (data["notification_id"] ?: data["sent_at_ms"] ?: "0").hashCode()
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            this, id,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(MainActivity.EXTRA_MESSAGE_ID, messageId),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = NotificationCompat.Builder(this, tier.channelId)
+        val title = data["title"] ?: "Sift"
+        val body = data["body"].orEmpty()
+        val header = listOfNotNull(tier.channelId.uppercase(), data["account"]?.takeIf { it.isNotBlank() }).joinToString(" · ")
+        val builder = NotificationCompat.Builder(this, tier.channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setSubText(tier.channelId.uppercase())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(data["subject"]?.takeIf { it.isNotBlank() && it != body }, body).joinToString("\n")))
+            .setSubText(header)
             .setColor(0xFFC8FF3D.toInt())
             .setPriority(if (tier == Tier.URGENT) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_EMAIL)
             .setContentIntent(open)
             .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), notification)
+            .setOnlyAlertOnce(data["resend"] == null)
+        data["link"]?.takeIf { it.startsWith("http") }?.let { url ->
+            val link = PendingIntent.getActivity(this, id + 1, Intent(Intent.ACTION_VIEW, Uri.parse(url)), PendingIntent.FLAG_IMMUTABLE)
+            builder.addAction(0, data["link_label"]?.takeIf { it.isNotBlank() } ?: "Open link", link)
+        }
+        NotificationManagerCompat.from(this).notify(id, builder.build())
     }
 
     companion object {

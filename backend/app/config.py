@@ -64,3 +64,11 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def setup_logging() -> None:
+    import logging
+
+    logging.basicConfig(level=get_settings().log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # httpx logs every request URL at INFO; with polling that is a line every few seconds.
+    logging.getLogger("httpx").setLevel(logging.WARNING)

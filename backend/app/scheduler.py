@@ -13,7 +13,7 @@ import time
 
 from app import jobs
 from app.accounts import active_account_ids
-from app.config import get_settings
+from app.config import get_settings, setup_logging
 from app.db import get_sessionmaker
 
 log = logging.getLogger("app.scheduler")
@@ -64,7 +64,7 @@ async def run() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=get_settings().log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    setup_logging()
     asyncio.run(run())
 
 

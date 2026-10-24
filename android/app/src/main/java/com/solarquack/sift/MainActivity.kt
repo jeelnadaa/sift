@@ -1,173 +1,123 @@
 package com.solarquack.sift
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import com.google.firebase.FirebaseApp
-import com.google.firebase.messaging.FirebaseMessaging
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.solarquack.sift.data.Session
+import com.solarquack.sift.ui.screens.AccountsScreen
+import com.solarquack.sift.ui.screens.FeedScreen
+import com.solarquack.sift.ui.screens.LoginScreen
+import com.solarquack.sift.ui.screens.MailScreen
+import com.solarquack.sift.ui.screens.RulesScreen
+import com.solarquack.sift.ui.screens.SettingsScreen
+import com.solarquack.sift.ui.theme.Ink
+import com.solarquack.sift.ui.theme.Radius
+import com.solarquack.sift.ui.theme.SiftTheme
 
-/** Phase 0 setup screen: FCM token, notification permission, battery exemption, last push delay. */
 class MainActivity : ComponentActivity() {
+    /** Message to open, from a notification tap. */
+    private var openMessage by mutableStateOf<String?>(null)
 
-    private var refresh by mutableStateOf(0)
-    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { SetupScreen() }
+        enableEdgeToEdge()
+        openMessage = intent.getStringExtra(EXTRA_MESSAGE_ID)
+        if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        setContent { SiftTheme { App() } }
     }
 
-    override fun onResume() {
-        super.onResume()
-        refresh++
-    }
-
-    private fun notificationsGranted() = Build.VERSION.SDK_INT < 33 ||
-        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-
-    private fun batteryExempt() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
-
-    @SuppressLint("BatteryLife") // a personal notifier is a permitted use; the user confirms in a system dialog
-    private fun requestBatteryExemption() {
-        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_MESSAGE_ID)?.let { openMessage = it }
     }
 
     @Composable
-    private fun SetupScreen() {
-        var token by remember { mutableStateOf(Prefs.token(this)) }
-        val firebaseReady = remember { FirebaseApp.getApps(this).isNotEmpty() }
-        val tick = refresh // recompose on resume and permission result
-
-        LaunchedEffect(firebaseReady) {
-            if (firebaseReady) {
-                FirebaseMessaging.getInstance().token.addOnSuccessListener {
-                    Prefs.saveToken(this@MainActivity, it)
-                    token = it
-                }
-            }
+    private fun App() {
+        val nav = rememberNavController()
+        val start = if (Session.signedIn(this)) "feed" else "login"
+        LaunchedEffect(openMessage) {
+            openMessage?.let { if (Session.signedIn(this@MainActivity)) nav.navigate("mail/$it") }
+            openMessage = null
         }
-
-        Column(
-            Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("Sift", color = Ink.text, fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            Text("Phase 0 · push setup", color = Ink.text3, fontSize = 13.sp)
-            Spacer(Modifier.height(12.dp))
-
-            StatusRow("Notifications", if (notificationsGranted()) "Granted" else "Not granted", notificationsGranted(), tick) {
-                if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-            StatusRow("Battery optimization", if (batteryExempt()) "Exempt" else "Restricted", batteryExempt(), tick) {
-                requestBatteryExemption()
-            }
-
-            Card {
-                Text("FCM TOKEN", color = Ink.text3, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                Spacer(Modifier.height(8.dp))
-                when {
-                    !firebaseReady -> Text("Firebase not configured. Add app/google-services.json and rebuild.", color = Ink.warn, fontSize = 14.sp)
-                    token == null -> Text("Fetching…", color = Ink.text2, fontSize = 14.sp)
-                    else -> {
-                        Text(token!!, color = Ink.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.height(12.dp))
-                        PrimaryButton("Copy token") {
-                            getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("FCM token", token))
-                        }
+        val route = nav.currentBackStackEntryAsState().value?.destination?.route
+        Column(Modifier.fillMaxSize().background(Ink.bg).systemBarsPadding()) {
+            Box(Modifier.weight(1f)) {
+                NavHost(nav, startDestination = start) {
+                    composable("login") { LoginScreen { nav.navigate("feed") { popUpTo("login") { inclusive = true } } } }
+                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
+                    composable("silenced") { FeedScreen(silenced = true, onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
+                    composable("mail/{id}") { entry -> MailScreen(entry.arguments?.getString("id") ?: "") { nav.popBackStack() } }
+                    composable("accounts") { AccountsScreen() }
+                    composable("rules") { RulesScreen() }
+                    composable("settings") {
+                        SettingsScreen(
+                            onSignedOut = { nav.navigate("login") { popUpTo(0) } },
+                            onSilenced = { nav.navigate("silenced") },
+                        )
                     }
                 }
             }
-
-            Prefs.lastDelay(this@MainActivity)?.let { delay ->
-                Card {
-                    Text("LAST TEST PUSH", color = Ink.text3, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                    Text("${delay} ms from server to phone", color = Ink.signal, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+            if (route != null && route != "login") BottomBar(nav, route)
         }
     }
 
     @Composable
-    private fun StatusRow(label: String, value: String, ok: Boolean, @Suppress("UNUSED_PARAMETER") tick: Int, onFix: () -> Unit) {
-        Card {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(label, color = Ink.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text(value, color = if (ok) Ink.signal else Ink.urgent, fontSize = 13.sp)
-                }
-                if (!ok) PrimaryButton("Fix", onFix)
+    private fun BottomBar(nav: NavHostController, route: String) {
+        NavigationBar(containerColor = Ink.bg2, tonalElevation = androidx.compose.ui.unit.Dp(0f)) {
+            listOf("feed" to "Feed", "rules" to "Rules", "accounts" to "Accounts", "settings" to "Settings").forEach { (dest, label) ->
+                val selected = route == dest || (dest == "feed" && (route.startsWith("mail") || route == "silenced"))
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { nav.go(dest) },
+                    icon = { Text(ICONS.getValue(dest), fontSize = 17.sp) },
+                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Ink.signal, selectedTextColor = Ink.text, indicatorColor = Ink.signal.copy(alpha = 0.16f),
+                        unselectedIconColor = Ink.text3, unselectedTextColor = Ink.text3,
+                    ),
+                )
             }
         }
     }
 
-    @Composable
-    private fun Card(content: @Composable () -> Unit) {
-        Column(
-            Modifier.fillMaxWidth().background(Ink.surface, RoundedCornerShape(10.dp)).border(1.dp, Ink.line, RoundedCornerShape(10.dp)).padding(16.dp),
-        ) { content() }
+    private fun NavHostController.go(dest: String) = navigate(dest) {
+        popUpTo("feed") { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 
-    @Composable
-    private fun PrimaryButton(label: String, onClick: () -> Unit) {
-        Button(
-            onClick = onClick,
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Ink.signal, contentColor = Ink.signalInk),
-        ) { Text(label, fontWeight = FontWeight.Bold) }
+    companion object {
+        const val EXTRA_MESSAGE_ID = "message_id"
+        private val ICONS = mapOf("feed" to "◉", "rules" to "⚙", "accounts" to "✉", "settings" to "☰")
     }
-}
-
-/** Colors from DESIGN.md. Satoshi and Clash Display arrive with the Phase 1 UI. */
-object Ink {
-    val bg = Color(0xFF0A0A0B)
-    val surface = Color(0xFF151518)
-    val line = Color(0xFF26262B)
-    val text = Color(0xFFF4F3EE)
-    val text2 = Color(0xFFA9A9B1)
-    val text3 = Color(0xFF6E6E78)
-    val signal = Color(0xFFC8FF3D)
-    val signalInk = Color(0xFF10150A)
-    val urgent = Color(0xFFFF5A3C)
-    val warn = Color(0xFFFFB938)
 }
