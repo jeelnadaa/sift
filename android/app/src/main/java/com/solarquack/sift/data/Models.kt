@@ -33,6 +33,8 @@ data class MessageDto(
     val status: String? = null,
     @SerialName("has_attachment") val hasAttachment: Boolean = false,
     val unread: Boolean = false,
+    val starred: Boolean = false,
+    @SerialName("in_inbox") val inInbox: Boolean = true,
     val summary: String? = null,
     val company: String? = null,
     val platform: String? = null,
@@ -61,6 +63,7 @@ data class AccountDto(
     @SerialName("status_detail") val statusDetail: String? = null,
     val label: String? = null,
     val color: String? = null,
+    @SerialName("can_modify") val canModify: Boolean = false,
 )
 
 @Serializable
@@ -526,3 +529,35 @@ data class SavedSearchIn(val name: String, val query: String, val pinned: Boolea
 
 @Serializable
 data class FromTextResult(val query: String, val explanation: String = "")
+
+// ---- mail actions and snooze (Phase 3c) ----
+
+@Serializable
+data class ThreadRefDto(@SerialName("account_id") val accountId: String, @SerialName("thread_id") val threadId: String)
+
+@Serializable
+data class MailActionIn(@SerialName("message_ids") val messageIds: List<String> = emptyList(), val threads: List<ThreadRefDto> = emptyList(), val action: String, val label: String? = null)
+
+@Serializable
+data class MailActionResult(val done: Int = 0, @SerialName("failed_accounts") val failedAccounts: List<String> = emptyList())
+
+@Serializable
+data class SnoozeIn(@SerialName("message_ids") val messageIds: List<String>, val until: String)
+
+@Serializable
+data class SnoozeDto(val id: String, val until: String, @SerialName("in_gmail") val inGmail: Boolean = false)
+
+@Serializable
+data class LabelDto(val id: String, val name: String)
+
+@Serializable
+data class WriteAccessAccount(val id: String, val email: String)
+
+@Serializable
+data class WriteAccessDetail(val code: String? = null, val message: String? = null, val accounts: List<WriteAccessAccount> = emptyList())
+
+@Serializable
+data class WriteAccessError(val detail: WriteAccessDetail? = null)
+
+@Serializable
+data class AuthUrl(@SerialName("auth_url") val authUrl: String)

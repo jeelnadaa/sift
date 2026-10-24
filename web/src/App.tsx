@@ -6,6 +6,7 @@ import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
 import { MailDetail } from "./pages/Mail";
 import { SearchPage } from "./pages/Search";
+import { WriteAccessHost } from "./mailActions";
 import { Thread } from "./pages/Thread";
 import { Todos } from "./pages/Todo";
 import { Opportunities } from "./pages/Opportunities";
@@ -38,6 +39,7 @@ export function App() {
       <Toaster />
       <TooltipLayer />
       <DialogHost />
+      <WriteAccessHost />
     </>
   );
 }

@@ -97,6 +97,25 @@ class DemoReader:
     def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
         raise KeyError(attachment_id)
 
+    # actions on demo mail change only Sift's stored labels; there is no Gmail behind it
+    def modify_thread(self, thread_id: str, add: list[str], remove: list[str]) -> None:
+        pass
+
+    def modify_message(self, message_id: str, add: list[str], remove: list[str]) -> None:
+        pass
+
+    def trash_thread(self, thread_id: str) -> None:
+        pass
+
+    def untrash_thread(self, thread_id: str) -> None:
+        pass
+
+    def list_labels(self) -> list[dict]:
+        return [{"id": "Label_demo", "name": "Demo label", "type": "user"}]
+
+    def create_label(self, name: str) -> dict:
+        return {"id": f"Label_{name}", "name": name, "type": "user"}
+
 
 class DemoProvider:
     """MailProvider over in-memory samples (no network)."""

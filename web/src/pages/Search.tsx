@@ -6,6 +6,7 @@ import {
   Banner, FolderPicker, MailRow, Modal, Pager, Select, TextField, Toggle, confirmDialog, errorText, inputDialog, toast, useLoad, usePages,
 } from "../components";
 import { flatten } from "../util";
+import { SnoozeDialog, mailAction, type MailAction, type Target } from "../mailActions";
 
 interface Chip { text: string; kind: "gmail" | "sift"; label: string; negated: boolean }
 interface Result {
@@ -45,6 +46,7 @@ export function SearchPage() {
   const [filing, setFiling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [snoozingSel, setSnoozingSel] = useState(false);
   const accounts = useLoad(() => get<Account[]>("/accounts"));
   const tree = useLoad(() => get<FolderTree>("/folders"));
   const saved = useLoad(() => get<Saved[]>("/saved-searches"));
@@ -85,11 +87,19 @@ export function SearchPage() {
   const stored = items.filter((m) => m.id);
   const aiOn = !!sem.data?.ai_enabled;
 
+  const storedSel = [...selected].filter((k) => !k.startsWith("g:"));
+  const target = (): Target => ({
+    message_ids: storedSel,
+    threads: [...selected].filter((k) => k.startsWith("g:")).map((k) => { const [, account_id, thread_id] = k.split(":"); return { account_id, thread_id }; }),
+  });
+  async function bulk(action: MailAction) {
+    if (await mailAction(target(), action)) { setSelected(new Set()); results.reload(); }
+  }
   async function bulkTag() {
     const name = await inputDialog({ title: `Tag ${selected.size} mail${selected.size === 1 ? "" : "s"}`, label: "Tag", placeholder: "e.g. Later", confirm: "Tag" });
     if (!name) return;
     try {
-      await post("/search/tag", { message_ids: [...selected], name });
+      await post("/search/tag", { message_ids: storedSel, name });
       toast(`Tagged ${selected.size}`);
       setSelected(new Set());
     } catch (e) { toast(errorText(e)); }
@@ -177,8 +187,11 @@ export function SearchPage() {
               <div className="banner ok" style={{ marginBottom: 12 }}>
                 <span>{selected.size} selected</span>
                 <span className="spacer" />
-                <button className="btn btn-ghost btn-sm" onClick={() => setFiling(true)} data-tip="File the selected conversations in a folder">File in folder</button>
-                <button className="btn btn-ghost btn-sm" onClick={bulkTag} data-tip="Tag the selected mails">Tag</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => bulk("read")} data-tip="Mark the selected conversations read in Gmail">Mark read</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => bulk("archive")} data-tip="Archive the selected conversations in Gmail (Z to undo)">Archive</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSnoozingSel(true)} data-tip="Hide the selected conversations until later">Snooze…</button>
+                <button className="btn btn-ghost btn-sm" disabled={!storedSel.length} onClick={() => setFiling(true)} data-tip={storedSel.length ? "File the selected conversations in a folder" : "Filing needs mail Sift stored"}>File in folder</button>
+                <button className="btn btn-ghost btn-sm" disabled={!storedSel.length} onClick={bulkTag} data-tip={storedSel.length ? "Tag the selected mails" : "Tags need mail Sift stored"}>Tag</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())} data-tip="Clear the selection">Clear</button>
               </div>
             )}
@@ -187,10 +200,11 @@ export function SearchPage() {
               {items.map((m, i) => (
                 <MailRow key={m.id ?? `${m.account_id}:${m.thread_id}`} m={m} n={i + 1} highlight={r?.words}
                   draggable={!!m.id}
-                  lead={m.id ? (
-                    <input type="checkbox" checked={selected.has(m.id)} aria-label="Select" data-tip="Select for bulk actions"
-                      onClick={(e) => e.stopPropagation()} onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(m.id!)) n.delete(m.id!); else n.add(m.id!); return n; })} />
-                  ) : <span style={{ width: 13 }} data-tip="Older mail Sift never stored: you can read it, not file or tag it" />}
+                  lead={(() => {
+                    const key = m.id ?? `g:${m.account_id}:${m.thread_id}`;
+                    return <input type="checkbox" checked={selected.has(key)} aria-label="Select" data-tip={m.id ? "Select for bulk actions" : "Select (older mail: archive, read and snooze work; file and tag need mail Sift stored)"}
+                      onClick={(e) => e.stopPropagation()} onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />;
+                  })()}
                   extra={<>
                     {m.score !== undefined && <span className="tag ok" data-tip="How close in meaning (1 = identical)">{Math.round(m.score * 100)}%</span>}
                     {!m.id && <span className="tag" data-tip="Found in Gmail; Sift never processed it (older than Sift)">Gmail only</span>}
@@ -208,8 +222,9 @@ export function SearchPage() {
         onPick={async (f) => {
           setFiling(false);
           if (!f) return;
-          try { const res = await post<{ filed: number }>(`/folders/${f.id}/threads`, { message_ids: [...selected] }); toast(`Filed ${res.filed} in ${f.name}`); setSelected(new Set()); } catch (e) { toast(errorText(e)); }
+          try { const res = await post<{ filed: number }>(`/folders/${f.id}/threads`, { message_ids: storedSel }); toast(`Filed ${res.filed} in ${f.name}`); setSelected(new Set()); } catch (e) { toast(errorText(e)); }
         }} />}
+      {snoozingSel && <SnoozeDialog target={target()} onClose={() => setSnoozingSel(false)} onDone={() => { setSnoozingSel(false); setSelected(new Set()); results.reload(); }} />}
       {saving && <SaveDialog query={q} onClose={() => setSaving(false)} onSaved={() => { setSaving(false); saved.reload(); }} />}
       {managing && <ManageSaved list={saved.data ?? []} onClose={() => setManaging(false)} onChanged={saved.reload} />}
     </>

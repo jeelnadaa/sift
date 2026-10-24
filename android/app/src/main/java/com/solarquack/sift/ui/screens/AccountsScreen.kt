@@ -91,7 +91,19 @@ fun AccountsScreen(onScan: (String) -> Unit = {}) {
                     }
                 }
                 Spacer(Modifier.height(10.dp))
+                if (a.status == "active") {
+                    Text(
+                        if (a.canModify) "Can change mail: archive, labels, read state, star, snooze." else "Read-only. Sift asks for permission the first time you archive or mark mail read here.",
+                        color = if (a.canModify) Ink.signal else Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (a.status == "active" && !a.canModify) GhostButton("Allow changes") {
+                        scope.launch {
+                            try { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(Api.get(context).writeAccessUrl(a.id).authUrl))) }
+                            catch (t: Throwable) { error = t.userMessage() }
+                        }
+                    }
                     if (a.status == "active") GhostButton("First scan") { onScan(a.id) }
                     GhostButton("Remove", color = Ink.urgent) { removing = a }
                 }

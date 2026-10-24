@@ -126,6 +126,11 @@ interface SiftApi {
     @POST("api/v1/saved-searches") suspend fun saveSearch(@Body body: SavedSearchIn): SavedSearchDto
     @GET("api/v1/accounts/{account}/threads/{thread}") suspend fun accountThread(@Path("account") accountId: String, @Path("thread") threadId: String, @Query("images") images: Boolean? = null): ThreadDto
 
+    @POST("api/v1/mail/actions") suspend fun mailAction(@Body body: MailActionIn): MailActionResult
+    @POST("api/v1/snoozes") suspend fun snooze(@Body body: SnoozeIn): List<SnoozeDto>
+    @GET("api/v1/accounts/{id}/labels") suspend fun labels(@Path("id") accountId: String): List<LabelDto>
+    @GET("api/v1/accounts/{id}/write-access-url") suspend fun writeAccessUrl(@Path("id") accountId: String): AuthUrl
+
     @POST("api/v1/devices") suspend fun registerDevice(@Body body: DeviceIn)
     @POST("api/v1/notifications/{id}/ack") suspend fun ack(@Path("id") id: String)
 }
@@ -173,4 +178,12 @@ fun Throwable.userMessage(): String = when (this) {
     is java.net.UnknownHostException, is java.net.ConnectException -> "Can't reach the Sift server. Check the address and that it is running."
     is java.net.SocketTimeoutException -> "The server took too long to answer."
     else -> message ?: "Something went wrong."
+}
+
+/** The accounts that still need write access, when the server answered 403 needs_write_access. */
+fun Throwable.writeAccessNeeded(): List<WriteAccessAccount>? {
+    if (this !is HttpException || code() != 403) return null
+    val body = runCatching { response()?.errorBody()?.string() }.getOrNull() ?: return null
+    val err = runCatching { Api.json.decodeFromString(WriteAccessError.serializer(), body) }.getOrNull() ?: return null
+    return err.detail?.takeIf { it.code == "needs_write_access" }?.accounts
 }

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { get, post, type Draft, type Folder, type FolderTree, type Mail, type Preview } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Thread } from "./Thread";
+import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailActions";
 import { Avatar, Banner, FolderPicker, Modal, Tag, errorText, toast, useLoad } from "../components";
 import { findFolder, fullTime, safeUrl } from "../util";
 
@@ -16,6 +17,13 @@ export function MailDetail() {
   const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id]);
   const [picking, setPicking] = useState(false);
   const [likeThis, setLikeThis] = useState<{ draft: Draft; preview: Preview } | null>(null);
+  const [snoozing, setSnoozing] = useState(false);
+  const [labelling, setLabelling] = useState(false);
+  async function gmail(action: MailAction, leave = false, label?: string) {
+    if (await mailAction({ message_ids: [id] }, action, label)) {
+      if (leave) navigate(-1); else mail.reload();
+    }
+  }
 
   const m = mail.data;
   async function file(f: Folder) {
@@ -76,6 +84,17 @@ export function MailDetail() {
             )}
             {m.opportunity_id && <Banner tone="ok" action="Open timeline" onAction={() => navigate(`/opportunities/${m.opportunity_id}`)}>On the <b>{m.company ?? "company"}</b> timeline</Banner>}
 
+            <div className="inline mail-toolbar" role="toolbar" aria-label="Change this conversation in Gmail">
+              {m.in_inbox === false
+                ? <button className="btn btn-ghost btn-sm" onClick={() => gmail("unarchive")} data-tip="Put it back in Gmail's inbox">Move to inbox</button>
+                : <button className="btn btn-ghost btn-sm" onClick={() => gmail("archive", true)} data-tip="Archive in Gmail: out of the inbox, still searchable  (Z to undo)">Archive</button>}
+              <button className="btn btn-ghost btn-sm" onClick={() => gmail(m.unread ? "read" : "unread")} data-tip={m.unread ? "Mark the conversation read in Gmail" : "Mark it unread in Gmail"}>{m.unread ? "Mark read" : "Mark unread"}</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => gmail(m.starred ? "unstar" : "star")} data-tip={m.starred ? "Remove the star in Gmail" : "Star it in Gmail"}>{m.starred ? "★ Starred" : "☆ Star"}</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setLabelling(true)} data-tip="Add a Gmail label">Label…</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSnoozing(true)} data-tip="Hide it until later; it comes back and notifies you">Snooze…</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => gmail("spam", true)} data-tip="Report as spam in Gmail (Z to undo)">Spam</button>
+              <button className="btn btn-danger btn-sm" onClick={() => gmail("trash", true)} data-tip="Move to Gmail's trash. Gmail keeps it 30 days; Sift never deletes (Z to undo)">Trash</button>
+            </div>
             <div className="inline">
               <button className="btn btn-ghost btn-sm" onClick={() => setPicking(true)} data-tip="File this conversation into one of your folders">File in folder</button>
               {last && !(inFolders.data ?? []).some((f) => f.id === last.id) && <button className="btn btn-ghost btn-sm" onClick={() => file(last)}>Move to {last.name}</button>}
@@ -104,6 +123,8 @@ export function MailDetail() {
         )}
       </section>
 
+      {snoozing && <SnoozeDialog target={{ message_ids: [id] }} onClose={() => setSnoozing(false)} onDone={() => { setSnoozing(false); navigate(-1); }} />}
+      {labelling && m && <LabelDialog accountId={m.account_id} onClose={() => setLabelling(false)} onPick={(name) => { setLabelling(false); gmail("label", false, name); }} />}
       {picking && <FolderPicker title="File in folder" exclude={new Set((inFolders.data ?? []).map((f) => f.id))}
         note="The whole conversation is filed, so replies show up there too. Nothing changes in Gmail."
         onClose={() => setPicking(false)} onPick={(f) => { setPicking(false); if (f) file(f); }} />}

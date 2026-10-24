@@ -17,6 +17,13 @@ export function Accounts() {
       if (u) location.assign(u);  // Google's consent page; it comes back to the server's callback
     } catch (e) { toast(errorText(e)); }
   }
+  async function allowChanges(a: Account) {
+    try {
+      const r = await get<{ auth_url: string }>(`/accounts/${a.id}/write-access-url`);
+      const u = safeUrl(r.auth_url);
+      if (u) location.assign(u);
+    } catch (e) { toast(errorText(e)); }
+  }
   async function remove(a: Account) {
     if (!(await confirmDialog({ title: `Remove ${a.email}?`, confirm: "Remove account", danger: true,
       body: "Sift stops watching it, deletes its tokens and deletes its stored mail, filing and timelines from Sift. Gmail itself is untouched, and you can connect it again later." }))) return;
@@ -39,8 +46,16 @@ export function Accounts() {
                     : a.status === "needs_reconnect" ? "Sift lost access to this account. Reconnect it; other accounts are fine."
                     : a.watch_expires_at ? `Instant push · watch renews by ${fullTime(a.watch_expires_at)}` : "Checked every few seconds"}
                 </div>
+                {a.status === "active" && (
+                  <div style={{ marginTop: 8 }}>
+                    {a.can_modify
+                      ? <Tag tone="ok" tip="Sift can archive, label, mark read, star and snooze here. It never sends or deletes mail on its own.">Can change mail</Tag>
+                      : <Tag tip="Sift only reads this account. Archive, labels and read state ask for permission the first time.">Read-only</Tag>}
+                  </div>
+                )}
                 <div className="inline" style={{ marginTop: 16 }}>
                   {a.status !== "active" && <button className="btn btn-primary btn-sm" onClick={() => connect(a.email)} data-tip="Sign in to Google again to restore access">Reconnect</button>}
+                  {a.status === "active" && !a.can_modify && <button className="btn btn-ghost btn-sm" onClick={() => allowChanges(a)} data-tip="Let Sift archive, label, mark read, star and snooze mail in this account. Google asks once.">Allow changes</button>}
                   {a.status === "active" && <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/scan?account=${a.id}`)} data-tip="List this account's top senders from the last 30 days and set them in bulk">First scan</button>}
                   <button className="btn btn-danger btn-sm" onClick={() => remove(a)} data-tip="Remove from Sift: stops its watch, deletes its tokens and its stored mail. Gmail is untouched">Remove</button>
                 </div>

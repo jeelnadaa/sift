@@ -56,7 +56,12 @@ def provider_for(account: GmailAccount) -> MailProvider:
 
 
 def can_modify(account: GmailAccount) -> bool:
-    """Whether the user gave Sift write access to this account (archive, labels, read state…)."""
+    """Whether the user gave Sift write access to this account (archive, labels, read state…).
+    The demo account has no Gmail: its actions only change Sift's copy (see demo.DemoReader)."""
+    from app import demo
+
+    if demo.is_demo(account) and not account.encrypted_refresh_token:
+        return True
     return google_oauth.MODIFY_SCOPE in (account.scopes or [])
 
 

@@ -224,6 +224,7 @@ def test_rule_mark_read_and_star_run_in_gmail_once_write_access_exists(db, keys,
     db.add(user)
     db.flush()
     acc = demo.demo_account(db, user)
+    acc.encrypted_refresh_token = "x"  # behaves like a real Gmail account here (no demo shortcut)
     db.add(Rule(user_id=user.id, position=0, name="r", origin="editor", conditions={"field": "subject", "op": "contains_any", "value": ["globex"]},
                 action={"type": "notify_normal", "mark_read": True, "star": True}))
     db.commit()
@@ -243,3 +244,19 @@ def test_rule_mark_read_and_star_run_in_gmail_once_write_access_exists(db, keys,
     m = db.get(Message, out.message_id)
     assert g.calls == [("modify_message", "other-id", ("STARRED",), ("UNREAD",))] and "pending_gmail_actions" not in (m.extraction or {})
     assert "UNREAD" not in m.labels and "STARRED" in m.labels
+
+
+def test_demo_account_actions_change_only_sift(client, db, keys):
+    from app import demo
+    user = User(email="d@gmail.com")
+    db.add(user)
+    db.flush()
+    acc = demo.demo_account(db, user)
+    m = Message(user_id=user.id, account_id=acc.id, gmail_id="demo-bank-x", thread_id="demo-thread-bank", subject="x", status="processed",
+                priority="normal", labels=["INBOX", "UNREAD"])
+    db.add(m)
+    db.commit()
+    r = client.post("/api/v1/mail/actions", headers=H(user), json={"message_ids": [str(m.id)], "action": "archive"})
+    assert r.status_code == 200 and r.json()["done"] == 1
+    db.expire_all()
+    assert db.get(Message, m.id).labels == ["UNREAD"]

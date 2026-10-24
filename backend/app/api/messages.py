@@ -32,6 +32,7 @@ def message_json(m: Message, account: GmailAccount | None = None, notification: 
         "received_at": m.received_at.isoformat() if m.received_at else None,
         "priority": m.priority, "category": m.category, "status": m.status,
         "has_attachment": m.has_attachment, "unread": "UNREAD" in (m.labels or []),
+        "starred": "STARRED" in (m.labels or []), "in_inbox": "INBOX" in (m.labels or []),
         "matched_rule_id": str(m.matched_rule_id) if m.matched_rule_id else None,
         "summary": ext.get("summary"), "company": ext.get("company"), "platform": ext.get("platform"),
         "deadline": ext.get("deadline"), "links": ext.get("links") or [], "action_needed": ext.get("action_needed", False),

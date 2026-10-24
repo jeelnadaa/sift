@@ -37,7 +37,7 @@ Two independent choices, both set in `.env`, no code changes:
 2. APIs & Services → Library → enable **Gmail API**.
 3. APIs & Services → **OAuth consent screen** (Google Auth Platform):
    - User type **External**, publishing status **Testing**.
-   - Data access / scopes: add `https://www.googleapis.com/auth/gmail.readonly` only.
+   - Data access / scopes: add `https://www.googleapis.com/auth/gmail.readonly` and, for Phase 3c (archive, labels, read state, star, snooze), `https://www.googleapis.com/auth/gmail.modify`. Sift asks for `gmail.modify` only per account, the first time you use one of those actions in it.
    - Audience → **Test users**: add every Gmail address you will connect.
 4. APIs & Services → Credentials → Create credentials → **OAuth client ID** → **Web application**. Authorized redirect URIs:
    - `http://localhost:8000/api/v1/accounts/oauth/callback` (laptop)
@@ -182,6 +182,10 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 **Company timelines (Phase 2a):** with AI on, placement mail (announcements, registrations, assessment links, interviews, results, recruiters) is put on one timeline per company across all accounts (app → Deals). When Sift cannot tell which company a mail is about, the notification asks with one-tap buttons and remembers your answer. Mail that needs action becomes a to-do (app → To-do); deadlines get reminders 24 h and 2 h before, and "Add to calendar" opens your phone's calendar. Without AI, create timelines and to-dos by hand from any mail.
 
 **Rules (Phase 2b):** More → Rules. Create rules in the editor (live "N of your last 500 mails would match" preview), describe one in plain English (needs your AI key; you review the draft before saving), accept suggestions for templates that keep repeating, or tap "Ignore mails like this" on any mail or notification. When you connect a new account, Sift reads the last 30 days of headers (no bodies, no AI) and lists top senders so you can set their actions in bulk (Accounts → First scan). Your own categories live under More → Categories, and token usage under More → Token usage.
+
+**Changing mail (Phase 3c):** the mail page has Archive (or Move to inbox), Mark read/unread, Star, Label…, Snooze…, Spam and Trash; search results can be marked read, archived or snoozed in bulk. They act on whole conversations, like Gmail's buttons. Each account starts read-only: the first time you change mail in it, Sift asks you to allow it in Google (Accounts also has **Allow changes**). Trash is Gmail's own trash (Gmail empties it after 30 days); Sift never deletes mail or sends anything on its own. On the web, press Z within a few seconds to undo archive, trash, spam, read or star.
+- **Snooze** hides the conversation until the time you pick (later today, tomorrow, this weekend, next week, or any time). It comes back to your feed with a "Back from snooze" notification; with write access it's also archived in Gmail and returns to the inbox, marked unread. A reply brings it back early. Find snoozed mail with the feed's **Snoozed** chip (search `is:snoozed`).
+- Rules can now really mark mail read or star it in Gmail (accounts with write access); before, those parts of a rule waited.
 
 **Search (Phase 3b):** web sidebar → Search (or press `/`), or the ⌕ Search button on the phone's feed.
 - Type Gmail syntax exactly as in Gmail (`from:kotak has:attachment newer_than:30d`, `"exact words"`, `OR`, `-word`, `( )`); it searches every connected account and merges the results, one row per conversation. Older mail Sift never processed shows as "Gmail only" and opens straight from Gmail.

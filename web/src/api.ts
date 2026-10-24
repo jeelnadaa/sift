@@ -6,7 +6,12 @@ const TOKEN_KEY = "sift.token";
 const EMAIL_KEY = "sift.email";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  /** `body` is the server's JSON error, e.g. {detail: {code: "needs_write_access", accounts: [...]}}. */
+  constructor(public status: number, message: string, public body: unknown = null) { super(message); }
+  get code(): string | null {
+    const d = (this.body as { detail?: { code?: string } } | null)?.detail;
+    return d && typeof d === "object" && typeof d.code === "string" ? d.code : null;
+  }
 }
 
 export const session = {
@@ -22,6 +27,7 @@ export function setSignedOutHandler(fn: () => void) { onSignedOut = fn; }
 function detail(body: unknown, status: number): string {
   const d = (body as { detail?: unknown })?.detail;
   if (typeof d === "string") return d.charAt(0).toUpperCase() + d.slice(1);
+  if (d && typeof d === "object" && "message" in d && typeof (d as { message: unknown }).message === "string") return (d as { message: string }).message;
   if (Array.isArray(d) && d[0]?.msg) return `Please check what you entered (${d[0].loc?.slice(-1)[0] ?? "field"}: ${d[0].msg})`;
   if (status === 401) return "Signed out. Sign in again.";
   if (status === 404) return "Not found.";
@@ -46,7 +52,7 @@ export async function request<T>(method: string, path: string, body?: unknown, q
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && path !== "/auth/login") { session.clear(); onSignedOut(); }
-    throw new ApiError(res.status, detail(data, res.status));
+    throw new ApiError(res.status, detail(data, res.status), data);
   }
   return data as T;
 }
@@ -72,7 +78,7 @@ export interface Mail {
   company: string | null; platform: string | null; deadline: string | null; links: Link[]; action_needed: boolean;
   opportunity_id: string | null; todo_id: string | null; decided_by: string | null;
   notified_at?: string | null; delivered_at?: string | null;
-  thread_count?: number; thread_unread?: number;
+  thread_count?: number; thread_unread?: number; starred?: boolean; in_inbox?: boolean;
 }
 
 export interface Group {
@@ -84,7 +90,7 @@ export interface Group {
 
 export interface Page<T> { items: T[]; next_before: string | null; grouped?: boolean; total: number; pages: number }
 
-export interface Account { id: string; email: string; status: "active" | "needs_reconnect" | "blocked"; status_detail: string | null; label: string | null; color: string | null; watch_expires_at: string | null }
+export interface Account { id: string; email: string; status: "active" | "needs_reconnect" | "blocked"; status_detail: string | null; label: string | null; color: string | null; watch_expires_at: string | null; can_modify: boolean }
 
 export interface Folder {
   id: string; parent_id: string | null; name: string; color: string | null; icon: string | null; position: number;

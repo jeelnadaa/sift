@@ -107,6 +107,9 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             }
         }
 
+        MailActionsRow(msg, onChanged = { scope.launch { m = Api.get(context).message(id) } }, onLeave = onBack,
+            onInfo = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() })
+
         CompanySection(msg, onOpenOpportunity, onChanged = { scope.launch { m = Api.get(context).message(id) } })
 
         Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
