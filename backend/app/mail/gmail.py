@@ -65,6 +65,18 @@ class GmailProvider:
                 return Changes(message_ids=ids, cursor=cursor)
             params["pageToken"] = token
 
+    def list_message_ids(self, query: str, limit: int) -> list[str]:
+        """Newest first, up to `limit` (messages.list: 5 units per page of up to 500)."""
+        ids: list[str] = []
+        params = {"q": query, "maxResults": "500"}
+        while len(ids) < limit:
+            page = self._call("GET", "/messages", params=params)
+            ids.extend(m["id"] for m in page.get("messages", []))
+            if not page.get("nextPageToken"):
+                break
+            params["pageToken"] = page["nextPageToken"]
+        return ids[:limit]
+
     def get_metadata(self, message_id: str) -> dict:
         """Headers only (20 quota units). Never fetches the body."""
         params = [("format", "metadata")] + [("metadataHeaders", h) for h in METADATA_HEADERS]

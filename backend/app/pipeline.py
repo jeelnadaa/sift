@@ -72,8 +72,8 @@ def _apply_extras(db: Session, msg: Message, action: dict) -> list[str]:
     return [k for k in ("mark_read", "star") if action.get(k)]
 
 
-def _touch_fingerprint(db: Session, user_id: uuid.UUID, fp: str, template: str, action: str | None, source: str | None) -> Fingerprint:
-    stmt = insert(Fingerprint).values(user_id=user_id, hash=fp, sample_subject=template[:300], seen_count=1, last_seen_at=datetime.now(UTC))
+def _touch_fingerprint(db: Session, user_id: uuid.UUID, fp: str, template: str, action: str | None, source: str | None, domain: str | None = None) -> Fingerprint:
+    stmt = insert(Fingerprint).values(user_id=user_id, hash=fp, domain=domain, sample_subject=template[:300], seen_count=1, last_seen_at=datetime.now(UTC))
     stmt = stmt.on_conflict_do_update(
         index_elements=["user_id", "hash"],
         set_={"seen_count": Fingerprint.seen_count + 1, "last_seen_at": datetime.now(UTC)},
@@ -101,7 +101,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
             message_id_header=meta.message_id, sender=meta.sender[:320], sender_name=meta.sender_name[:200],
             authenticated_domain=meta.authenticated_domain, subject=meta.subject, snippet=meta.snippet[:300],
             received_at=meta.received_at, labels=meta.labels, list_id=meta.list_id[:320] if meta.list_id else None,
-            has_attachment=meta.has_attachment, status="duplicate" if duplicate else "processing",
+            has_attachment=meta.has_attachment, header_names=sorted(meta.headers), status="duplicate" if duplicate else "processing",
             priority="silent" if duplicate else None,
         ).on_conflict_do_nothing(index_elements=["account_id", "gmail_id"]).returning(Message.id)
         message_id = db.execute(stmt).scalar()
@@ -170,7 +170,7 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
             extras["pending_gmail_actions"] = pending
         kind = match.action["type"]
         if fp:
-            _touch_fingerprint(db, user_id, fp, template, kind if kind in SILENT_ACTIONS else None, "rule")
+            _touch_fingerprint(db, user_id, fp, template, kind if kind in SILENT_ACTIONS else None, "rule", meta.authenticated_domain)
         if kind in SILENT_ACTIONS:
             msg.status, msg.priority = SILENT_ACTIONS[kind], "silent"
             msg.extraction = extras or None
@@ -187,7 +187,7 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
 
     # 7. fingerprint: a template a rule or the user silenced before is silenced again
     if fp and not match:
-        row = _touch_fingerprint(db, user_id, fp, template, None, None)
+        row = _touch_fingerprint(db, user_id, fp, template, None, None, meta.authenticated_domain)
         if row.last_action in SILENT_ACTIONS and row.last_action_source in ("rule", "user"):
             msg.status, msg.priority, msg.category = SILENT_ACTIONS[row.last_action], "silent", "other"
             return Outcome(msg.id, "silent", "fingerprint")

@@ -145,6 +145,8 @@ class Message(Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     labels: Mapped[list | None] = mapped_column(JSONB)
     list_id: Mapped[str | None] = mapped_column(String(320))
+    # Lowercased names of the metadata headers present (not their values), for rule previews.
+    header_names: Mapped[list | None] = mapped_column(JSONB)
     has_attachment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     category: Mapped[str | None] = mapped_column(String(80))
     priority: Mapped[str | None] = mapped_column(String(10))
@@ -192,11 +194,30 @@ class Fingerprint(Base):
     id: Mapped[uuid.UUID] = pk()
     user_id: Mapped[uuid.UUID] = user_fk()
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(253))  # authenticated sender domain
     sample_subject: Mapped[str | None] = mapped_column(Text)  # the normalized template, not a real subject
     seen_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # silent / ignore: applied to the next mail; keep: the user declined a suggestion
     last_action: Mapped[str | None] = mapped_column(String(20))
     last_action_source: Mapped[str | None] = mapped_column(String(20))  # rule or user
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created()
+
+
+class OnboardingScan(Base):
+    """Headers-only scan of an account's last 30 days (brief section 8): top senders, no bodies, no LLM."""
+    __tablename__ = "onboarding_scans"
+    __table_args__ = (CheckConstraint("status IN ('queued', 'running', 'done', 'failed')", name="status_valid"),)
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gmail_accounts.id", ondelete="CASCADE"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), default="queued", server_default="queued", nullable=False)
+    scanned: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    senders: Mapped[list | None] = mapped_column(JSONB)  # [{key, kind, name, count, sample_subject, hints, suggested}]
+    error: Mapped[str | None] = mapped_column(Text)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Notification(Base):

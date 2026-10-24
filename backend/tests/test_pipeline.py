@@ -29,6 +29,9 @@ class FakeLlm:
         self.calls.append({"system": system, "prompt": prompt})
         if self.fail_with:
             raise self.fail_with
+        if system.startswith("Convert the user's sentence"):
+            rule = getattr(self, "rule", None) or {"name": "invalid", "match": "all", "conditions": [], "exceptions": [], "action": "silent"}
+            return LlmResult(text=json.dumps(rule), input_tokens=120, output_tokens=40)
         p = prompt.lower()
         if "campus drive" in p:
             out = {"category": "placement_announcement", "company": "Acme Corp", "platform": None, "deadline": "set",

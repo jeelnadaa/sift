@@ -65,7 +65,14 @@ def handle_send_reminders(payload: dict) -> None:
         log.info("sent %d reminder(s)", n)
 
 
+def handle_onboarding_scan(payload: dict) -> None:
+    from app.scan import run
+
+    run(payload["scan_id"])
+
+
 HANDLERS = {
+    "onboarding_scan": handle_onboarding_scan,
     "send_reminders": handle_send_reminders,
     "resend_notifications": handle_resend_notifications,
     "gmail_push": handle_gmail_push,
@@ -97,6 +104,18 @@ async def _enqueue_redis(kind: str, payload: dict, dedupe_key: str | None) -> No
         _redis_pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
     # arq skips a job whose _job_id is queued or running (results are not kept, see worker.py).
     await _redis_pool.enqueue_job("run_job", kind, payload, _job_id=dedupe_key)
+
+
+def enqueue_sync(kind: str, payload: dict, dedupe_key: str | None = None) -> None:
+    """For synchronous callers (e.g. request handlers that are plain functions)."""
+    import asyncio
+
+    if get_settings().queue_backend == "redis":
+        asyncio.run(_enqueue_redis(kind, payload, dedupe_key))
+    else:
+        with get_sessionmaker()() as db:
+            enqueue_pg(db, kind, payload, dedupe_key)
+            db.commit()
 
 
 def enqueue_pg(db: Session, kind: str, payload: dict, dedupe_key: str | None = None) -> None:

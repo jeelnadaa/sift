@@ -64,6 +64,7 @@ def account(db) -> GmailAccount:
 
 def test_connect_new_account_starts_from_now_and_encrypts_token(db, user, fake):
     a = accounts.connect_account(db, "owner@gmail.com", "code")
+    assert db.scalar(select(Job.kind).where(Job.kind == "onboarding_scan"))  # first-run scan queued
     a = account(db)
     assert (a.email, a.status, a.history_id) == ("me@gmail.com", "active", 500)
     assert a.encrypted_refresh_token != "rt" and crypto.decrypt(a.encrypted_refresh_token) == "rt"
@@ -183,13 +184,13 @@ def test_scheduler_queues_one_check_per_active_account_without_piling_up(db, con
     override_settings(change_detection="poll")
     asyncio.run(scheduler.queue_checks())
     asyncio.run(scheduler.queue_checks())  # previous check still queued: deduped
-    rows = list(db.scalars(select(Job)))
+    rows = list(db.scalars(select(Job).where(Job.kind == "check_account")))
     assert [(j.kind, j.dedupe_key) for j in rows] == [("check_account", f"check:{connected.id}")]
 
     rows[0].status = "done"
     db.commit()
     asyncio.run(scheduler.queue_checks())  # finished: a new check may be queued
-    assert len(list(db.scalars(select(Job)))) == 2
+    assert len(list(db.scalars(select(Job).where(Job.kind == "check_account")))) == 2
 
 
 def test_cleanup_removes_old_finished_jobs(db):

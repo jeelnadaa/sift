@@ -73,6 +73,7 @@ def connect_account(db: Session, user_email: str, code: str) -> GmailAccount:
     account = db.scalar(select(GmailAccount).where(GmailAccount.email == profile.email))
     if account is not None and account.user_id != user.id:
         raise ConnectError("this Gmail address is connected to another Sift user")
+    is_new = account is None
     if account is None:
         account = GmailAccount(user_id=user.id, email=profile.email, label=profile.email.split("@")[0])
         db.add(account)
@@ -85,7 +86,16 @@ def connect_account(db: Session, user_email: str, code: str) -> GmailAccount:
 
     if get_settings().change_detection == "push":
         _start_watch(account, provider)
+    scan_id = None
+    if is_new:
+        from app import scan
+
+        scan_id = scan.start(db, account).id  # headers-only look at the last 30 days
     db.commit()
+    if scan_id is not None:
+        from app import jobs
+
+        jobs.enqueue_sync("onboarding_scan", {"scan_id": str(scan_id)}, dedupe_key=f"scan:{scan_id}")
     log.info("connected account %s", account.id)
     return account
 

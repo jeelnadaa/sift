@@ -2,10 +2,12 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
+from app import rule_tools
 from app.db import get_db
 from app.mail.base import AuthRevoked
 from app.mail.message import extract_body
@@ -96,3 +98,38 @@ def get_body(message_id: uuid.UUID, user: User = Depends(current_user), db: Sess
         raise HTTPException(409, f"account is {account.status}") from exc
     text, files = extract_body(full.get("payload", {}))
     return {"text": text.strip()[:100_000], "attachments": files}
+
+
+class LikeThisIn(BaseModel):
+    action: str = Field(default="silent", pattern="^(silent|digest|ignore)$")
+    save: bool = True  # False returns the draft + preview without saving (for review)
+
+
+@router.post("/{message_id}/like-this")
+def like_this(message_id: uuid.UUID, body: LikeThisIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """One-tap "ignore mails like this": same verified sender + same subject template."""
+    m = _own(db, user, message_id)
+    try:
+        draft = rule_tools.like_this(m, body.action)
+    except rule_tools.RuleToolError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    result = {"draft": draft, "preview": rule_tools.preview(db, user.id, draft["conditions"])}
+    if body.save:
+        rule = rule_tools.save_rule(db, user.id, draft, origin="one_tap")
+        if body.action in ("silent", "ignore"):
+            rule_tools.remember_template(db, m, body.action)
+            m.status, m.priority = ("silenced" if body.action == "silent" else "ignored"), "silent"
+        db.commit()
+        result["rule_id"] = str(rule.id)
+    return result
+
+
+@router.post("/{message_id}/unsilence")
+def unsilence(message_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """"Not like this" from the Silenced view."""
+    m = _own(db, user, message_id)
+    if m.status not in SILENCED_STATUSES:
+        raise HTTPException(409, "mail is not silenced")
+    result = rule_tools.unsilence(db, m)
+    db.commit()
+    return result
