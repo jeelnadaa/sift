@@ -115,6 +115,14 @@ class SiftMessagingService : FirebaseMessagingService() {
             builder.addAction(0, "Ignore like this", broadcast(id + 4, NotificationActionReceiver.ACTION_IGNORE, id) {
                 putExtra(NotificationActionReceiver.EXTRA_MESSAGE_ID, messageId)
             })
+            slots--
+        }
+        // "File in <last used folder>" (filing never changes the mail in Gmail)
+        data["last_folder"]?.takeIf { it.isNotBlank() && slots > 0 && data["type"] == "mail" && messageId != null }?.let { folder ->
+            builder.addAction(0, "File in $folder", broadcast(id + 5, NotificationActionReceiver.ACTION_FILE_LAST, id) {
+                putExtra(NotificationActionReceiver.EXTRA_MESSAGE_ID, messageId)
+                putExtra(NotificationActionReceiver.EXTRA_LABEL, folder)
+            })
         }
     }
 

@@ -22,6 +22,8 @@ import com.solarquack.sift.ui.theme.Ink
 fun MoreScreen(onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(Ink.bg).padding(18.dp)) {
         Text("More", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
+        SectionLabel("Organize")
+        Item("Folders", "Your own folders, nested; rules can file into them") { onNavigate("folders") }
         SectionLabel("Control")
         Item("Rules", "What gets silenced, digested or marked urgent") { onNavigate("rules") }
         Item("Silenced mail", "Stored and searchable, never notified") { onNavigate("silenced") }

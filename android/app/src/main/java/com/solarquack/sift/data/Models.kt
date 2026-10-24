@@ -303,3 +303,137 @@ data class UsageDay(val day: String, val calls: Int = 0, @SerialName("input_toke
 
 @Serializable
 data class UsageDto(val days: List<UsageDay> = emptyList(), @SerialName("tokens_today") val tokensToday: Int = 0, @SerialName("daily_token_cap") val dailyTokenCap: Int = 0)
+
+// ---- folders (brief section 18) ----
+
+@Serializable
+data class FolderDto(
+    val id: String,
+    @SerialName("parent_id") val parentId: String? = null,
+    val name: String,
+    val color: String? = null,
+    val icon: String? = null,
+    val position: Int = 0,
+    val pinned: Boolean = false,
+    @SerialName("notify_mode") val notifyMode: String = "default",
+    val smart: Boolean = false,
+    val threads: Int = 0,
+    val unread: Int = 0,
+    @SerialName("unread_total") val unreadTotal: Int = 0,
+    val children: List<FolderDto> = emptyList(),
+)
+
+@Serializable
+data class FolderTree(val folders: List<FolderDto> = emptyList(), @SerialName("max_depth") val maxDepth: Int = 10, @SerialName("last_used_id") val lastUsedId: String? = null)
+
+@Serializable
+data class FolderIn(val name: String, @SerialName("parent_id") val parentId: String? = null, val color: String? = null)
+
+@Serializable
+data class FolderPatch(
+    val name: String? = null,
+    val color: String? = null,
+    val pinned: Boolean? = null,
+    @SerialName("notify_mode") val notifyMode: String? = null,
+    @SerialName("clear_color") val clearColor: Boolean = false,
+)
+
+@Serializable
+data class MoveIn(@SerialName("parent_id") val parentId: String? = null, val position: Int? = null)
+
+@Serializable
+data class TargetIn(@SerialName("target_id") val targetId: String)
+
+@Serializable
+data class PathPart(val id: String, val name: String)
+
+@Serializable
+data class ThreadRow(
+    val id: String,
+    @SerialName("account_id") val accountId: String,
+    val account: String? = null,
+    @SerialName("account_color") val accountColor: String? = null,
+    val sender: String? = null,
+    @SerialName("sender_name") val senderName: String? = null,
+    val subject: String? = null,
+    val summary: String? = null,
+    @SerialName("received_at") val receivedAt: String? = null,
+    val priority: String? = null,
+    val unread: Boolean = false,
+    @SerialName("thread_count") val threadCount: Int = 1,
+    @SerialName("thread_unread") val threadUnread: Int = 0,
+) {
+    fun asMessage() = MessageDto(id = id, accountId = accountId, account = account, accountColor = accountColor, sender = sender,
+        senderName = senderName, subject = subject, summary = summary, receivedAt = receivedAt, priority = priority, unread = unread)
+}
+
+@Serializable
+data class FolderView(val folder: FolderDto, val path: List<PathPart> = emptyList(), val items: List<ThreadRow> = emptyList(), @SerialName("next_before") val nextBefore: String? = null)
+
+@Serializable
+data class FileIn(@SerialName("message_ids") val messageIds: List<String>)
+
+@Serializable
+data class FiledResult(val filed: Int = 0, @SerialName("folder_id") val folderId: String? = null)
+
+@Serializable
+data class RemoveResult(val removed: Int = 0)
+
+@Serializable
+data class DeleteFolderResult(@SerialName("deleted_folders") val deletedFolders: Int = 0, @SerialName("rules_updated") val rulesUpdated: Int = 0)
+
+@Serializable
+data class LikeThisHereIn(@SerialName("message_id") val messageId: String, val save: Boolean = false)
+
+// ---- grouping (brief section 21) ----
+
+@Serializable
+data class GroupingStatus(@SerialName("grouping_enabled") val groupingEnabled: String = "not_asked", val prompts: Int = 0, @SerialName("should_ask") val shouldAsk: Boolean = false)
+
+@Serializable
+data class AnswerIn(val answer: String)
+
+@Serializable
+data class GroupDto(
+    val id: String,
+    val title: String,
+    val kind: String = "",
+    val muted: Boolean = false,
+    val collapsed: Boolean = true,
+    val count: Int = 0,
+    val unread: Int = 0,
+    val urgent: Int = 0,
+    @SerialName("latest_sender") val latestSender: String? = null,
+    @SerialName("latest_subject") val latestSubject: String? = null,
+    @SerialName("received_at") val receivedAt: String? = null,
+    val items: List<MessageDto> = emptyList(),
+)
+
+/** A grouped feed page mixes mail rows and group rows; "type" tells them apart. */
+@Serializable
+data class GroupedPage(val items: List<JsonObject> = emptyList(), @SerialName("next_before") val nextBefore: String? = null)
+
+sealed interface FeedItem { val key: String }
+data class MailItem(val m: MessageDto) : FeedItem { override val key get() = "m:" + m.id }
+data class GroupItem(val g: GroupDto) : FeedItem { override val key get() = "g:" + g.id }
+
+@Serializable
+data class GroupPatch(val title: String? = null, val muted: Boolean? = null, val collapsed: Boolean? = null)
+
+@Serializable
+data class SplitIn(@SerialName("message_ids") val messageIds: List<String>, val title: String? = null)
+
+@Serializable
+data class MessageIdIn(@SerialName("message_id") val messageId: String)
+
+@Serializable
+data class FolderIdIn(@SerialName("folder_id") val folderId: String)
+
+@Serializable
+data class GroupRuleIn(val action: String, @SerialName("folder_id") val folderId: String? = null, val save: Boolean = false)
+
+@Serializable
+data class PreferenceIn(@SerialName("sender_or_domain") val senderOrDomain: String, val mode: String? = null)
+
+@Serializable
+data class PreferenceDto(@SerialName("sender_or_domain") val senderOrDomain: String, val mode: String)

@@ -76,6 +76,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
+    var grouping by remember { mutableStateOf<com.solarquack.sift.data.GroupingStatus?>(null) }
 
     // re-check permissions when returning from system settings
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -93,6 +94,7 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
             val api = Api.get(context)
             ai = api.ai().also { if (model.isBlank()) model = it.model ?: it.suggestedModel ?: "" }
             settings = api.settings()
+            grouping = runCatching { api.grouping() }.getOrNull()
             error = null
         } catch (t: Throwable) { error = t.userMessage() }
     }
@@ -183,6 +185,22 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
         }
 
         SectionLabel("Mail")
+        grouping?.let { g ->
+            SiftCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Group similar emails", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                        Text("Only changes how mail is shown. Urgent mail stays on its own row; notifications don't change.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = g.groupingEnabled == "yes", onCheckedChange = { on ->
+                        scope.launch {
+                            try { grouping = Api.get(context).answerGrouping(com.solarquack.sift.data.AnswerIn(if (on) "yes" else "no")) } catch (t: Throwable) { error = t.userMessage() }
+                        }
+                    }, colors = SwitchDefaults.colors(checkedTrackColor = Ink.signal, checkedThumbColor = Ink.signalInk, uncheckedTrackColor = Ink.line2))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         GhostButton("Silenced mail", Modifier.fillMaxWidth(), onClick = onSilenced)
 
         SectionLabel("Server")

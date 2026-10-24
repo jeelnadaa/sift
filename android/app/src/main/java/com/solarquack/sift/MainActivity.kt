@@ -42,6 +42,9 @@ import com.solarquack.sift.ui.screens.MoreScreen
 import com.solarquack.sift.ui.screens.OpportunityScreen
 import com.solarquack.sift.ui.screens.TodoScreen
 import com.solarquack.sift.ui.screens.FeedScreen
+import com.solarquack.sift.ui.screens.FolderScreen
+import com.solarquack.sift.ui.screens.FoldersScreen
+import com.solarquack.sift.ui.screens.GroupScreen
 import com.solarquack.sift.ui.screens.LoginScreen
 import com.solarquack.sift.ui.screens.MailScreen
 import com.solarquack.sift.ui.screens.RulesScreen
@@ -82,7 +85,14 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.weight(1f)) {
                 NavHost(nav, startDestination = start) {
                     composable("login") { LoginScreen { nav.navigate("feed") { popUpTo("login") { inclusive = true } } } }
-                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
+                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }) }
+                    composable("group/{id}") { entry ->
+                        GroupScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") }, onEditRule = { nav.navigate("rule-edit") })
+                    }
+                    composable("folders") { FoldersScreen(onOpen = { nav.navigate("folder/$it") }, onBack = { nav.popBackStack() }) }
+                    composable("folder/{id}") { entry ->
+                        FolderScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") }, onOpenFolder = { nav.navigate("folder/$it") })
+                    }
                     composable("silenced") { FeedScreen(silenced = true, onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
                     composable("mail/{id}") { entry ->
                         MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") }, onEditRule = { nav.navigate("rule-edit") })
@@ -116,9 +126,9 @@ class MainActivity : ComponentActivity() {
         NavigationBar(containerColor = Ink.bg2, tonalElevation = androidx.compose.ui.unit.Dp(0f)) {
             listOf("feed" to "Feed", "deals" to "Deals", "todo" to "To-do", "more" to "More").forEach { (dest, label) ->
                 val selected = when (dest) {
-                    "feed" -> route == "feed" || route.startsWith("mail")
+                    "feed" -> route == "feed" || route.startsWith("mail") || route.startsWith("group/")
                     "deals" -> route == "deals" || route.startsWith("deal/")
-                    "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage") || route.startsWith("scan/")
+                    "more" -> route in setOf("more", "rules", "rule-edit", "accounts", "settings", "silenced", "categories", "usage", "folders") || route.startsWith("scan/") || route.startsWith("folder/")
                     else -> route == dest
                 }
                 NavigationBarItem(

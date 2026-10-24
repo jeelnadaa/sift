@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
 import com.solarquack.sift.data.Api
 import com.solarquack.sift.data.CompanyAnswer
+import com.solarquack.sift.data.FileIn
 import com.solarquack.sift.data.LikeThisIn
 import com.solarquack.sift.data.Session
 import com.solarquack.sift.data.TodoPatch
@@ -36,6 +37,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         api.likeThis(intent.getStringExtra(EXTRA_MESSAGE_ID)!!, LikeThisIn("silent", save = true))
                         "Mails like this will be silenced"
                     }
+                    ACTION_FILE_LAST -> {
+                        api.fileLastUsed(FileIn(listOf(intent.getStringExtra(EXTRA_MESSAGE_ID)!!)))
+                        "Filed in ${intent.getStringExtra(EXTRA_LABEL)}"
+                    }
                     ACTION_TODO_DONE -> {
                         api.updateTodo(intent.getStringExtra(EXTRA_TODO_ID)!!, TodoPatch(done = true))
                         "Marked done"
@@ -59,6 +64,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         const val ACTION_COMPANY = "com.solarquack.sift.action.COMPANY"
         const val ACTION_TODO_DONE = "com.solarquack.sift.action.TODO_DONE"
         const val ACTION_IGNORE = "com.solarquack.sift.action.IGNORE"
+        const val ACTION_FILE_LAST = "com.solarquack.sift.action.FILE_LAST"
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_MESSAGE_ID = "message_id"
         const val EXTRA_OPPORTUNITY_ID = "opportunity_id"

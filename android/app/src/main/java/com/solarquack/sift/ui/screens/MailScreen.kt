@@ -125,6 +125,8 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             }
         }
 
+        FilingSection(msg.id) { r -> RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; onEditRule() }
+
         SectionLabel("Message")
         when {
             body != null -> SelectionContainer { Text(body!!.text.ifBlank { msg.snippet ?: "" }, color = Ink.text2, style = MaterialTheme.typography.bodyLarge) }

@@ -33,7 +33,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.solarquack.sift.data.AccountDto
 import com.solarquack.sift.data.Api
+import com.solarquack.sift.data.FeedItem
+import com.solarquack.sift.data.GroupDto
+import com.solarquack.sift.data.GroupItem
+import com.solarquack.sift.data.MailItem
 import com.solarquack.sift.data.MessageDto
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import com.solarquack.sift.data.userMessage
 import com.solarquack.sift.ui.Avatar
 import com.solarquack.sift.ui.Banner
@@ -47,10 +53,11 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit) {
+fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit, onOpenGroup: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var items by remember { mutableStateOf<List<MessageDto>>(emptyList()) }
+    var items by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
+    var askGrouping by remember { mutableStateOf(false) }
     var accounts by remember { mutableStateOf<List<AccountDto>>(emptyList()) }
     var priority by remember { mutableStateOf<String?>(null) }
     var account by remember { mutableStateOf<String?>(null) }
@@ -63,7 +70,14 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             try {
                 val api = Api.get(context)
                 accounts = api.accounts()
-                items = api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed").items
+                val grouping = if (silenced) null else runCatching { api.grouping() }.getOrNull()
+                if (grouping?.shouldAsk == true && !GroupingPrompt.askedThisOpen) { GroupingPrompt.askedThisOpen = true; askGrouping = true }
+                items = if (grouping?.groupingEnabled == "yes") {
+                    api.groupedFeed(priority = priority, accountId = account).items.map { o ->
+                        if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
+                        else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
+                    }
+                } else api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed").items.map { MailItem(it) }
                 error = null
             } catch (t: Throwable) {
                 error = t.userMessage()
@@ -73,6 +87,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
     }
     LaunchedEffect(priority, account, silenced) { load() }
+    if (askGrouping) GroupingPromptDialog { answer -> askGrouping = false; if (answer == "yes") load() }
 
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
         Text(if (silenced) "Silenced" else "Feed", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 10.dp))
@@ -109,7 +124,12 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                         )
                     }
                 }
-                items(items, key = { it.id }) { m -> MailRow(m) { onOpen(m.id) } }
+                items(items, key = { it.key }) { item ->
+                    when (item) {
+                        is MailItem -> MailRow(item.m) { onOpen(item.m.id) }
+                        is GroupItem -> GroupRow(item.g) { onOpenGroup(item.g.id) }
+                    }
+                }
             }
         }
     }

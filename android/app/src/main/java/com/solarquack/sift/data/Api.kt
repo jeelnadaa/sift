@@ -79,6 +79,42 @@ interface SiftApi {
     @PATCH("api/v1/todos/{id}") suspend fun updateTodo(@Path("id") id: String, @Body body: TodoPatch): TodoDto
     @DELETE("api/v1/todos/{id}") suspend fun deleteTodo(@Path("id") id: String)
 
+    @GET("api/v1/messages") suspend fun groupedFeed(
+        @Query("priority") priority: String? = null,
+        @Query("account_id") accountId: String? = null,
+        @Query("before") before: String? = null,
+        @Query("grouped") grouped: Boolean = true,
+    ): GroupedPage
+
+    @GET("api/v1/folders") suspend fun folders(): FolderTree
+    @POST("api/v1/folders") suspend fun createFolder(@Body body: FolderIn): FolderDto
+    @PATCH("api/v1/folders/{id}") suspend fun editFolder(@Path("id") id: String, @Body body: FolderPatch): FolderDto
+    @POST("api/v1/folders/{id}/move") suspend fun moveFolder(@Path("id") id: String, @Body body: MoveIn): FolderTree
+    @POST("api/v1/folders/{id}/merge") suspend fun mergeFolder(@Path("id") id: String, @Body body: TargetIn)
+    @DELETE("api/v1/folders/{id}") suspend fun deleteFolder(@Path("id") id: String, @Query("subfolders") subfolders: String): DeleteFolderResult
+    @GET("api/v1/folders/{id}/threads") suspend fun folderThreads(
+        @Path("id") id: String,
+        @Query("include_subfolders") includeSubfolders: Boolean = false,
+        @Query("q") q: String? = null,
+    ): FolderView
+    @POST("api/v1/folders/{id}/threads") suspend fun fileMail(@Path("id") id: String, @Body body: FileIn): FiledResult
+    @POST("api/v1/folders/last-used/threads") suspend fun fileLastUsed(@Body body: FileIn): FiledResult
+    @POST("api/v1/folders/{id}/threads/remove") suspend fun unfileMail(@Path("id") id: String, @Body body: FileIn): RemoveResult
+    @GET("api/v1/folders/for-message/{id}") suspend fun foldersForMessage(@Path("id") messageId: String): List<FolderDto>
+    @POST("api/v1/folders/{id}/rule-from-message") suspend fun fileLikeThisHere(@Path("id") id: String, @Body body: LikeThisHereIn): DraftResponse
+
+    @GET("api/v1/grouping") suspend fun grouping(): GroupingStatus
+    @POST("api/v1/grouping") suspend fun answerGrouping(@Body body: AnswerIn): GroupingStatus
+    @GET("api/v1/groups") suspend fun groups(): List<GroupDto>
+    @GET("api/v1/groups/{id}") suspend fun group(@Path("id") id: String): GroupDto
+    @POST("api/v1/groups/{id}/split") suspend fun splitGroup(@Path("id") id: String, @Body body: SplitIn): GroupDto
+    @POST("api/v1/groups/{id}/merge") suspend fun mergeGroup(@Path("id") id: String, @Body body: TargetIn): GroupDto
+    @PATCH("api/v1/groups/{id}") suspend fun editGroup(@Path("id") id: String, @Body body: GroupPatch): GroupDto
+    @POST("api/v1/groups/{id}/remove") suspend fun removeFromGroup(@Path("id") id: String, @Body body: MessageIdIn)
+    @POST("api/v1/groups/{id}/file") suspend fun fileGroup(@Path("id") id: String, @Body body: FolderIdIn): FiledResult
+    @POST("api/v1/groups/{id}/rule") suspend fun ruleFromGroup(@Path("id") id: String, @Body body: GroupRuleIn): DraftResponse
+    @PUT("api/v1/grouping/preferences") suspend fun setGroupPreference(@Body body: PreferenceIn): List<PreferenceDto>
+
     @POST("api/v1/devices") suspend fun registerDevice(@Body body: DeviceIn)
     @POST("api/v1/notifications/{id}/ack") suspend fun ack(@Path("id") id: String)
 }

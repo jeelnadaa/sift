@@ -178,7 +178,7 @@ private fun describe(tree: JsonElement?): String = when {
     else -> leafToRow(tree)?.let { "${it.kind.label.lowercase()} ${it.text}".trim() } ?: tree.toString()
 }
 
-private val ACTIONS = listOf("notify_urgent" to "Notify urgent", "notify_normal" to "Notify normal", "digest" to "Digest", "silent" to "Store silently", "ignore" to "Ignore", "llm" to "Ask AI")
+private val ACTIONS = listOf("notify_urgent" to "Notify urgent", "notify_normal" to "Notify normal", "digest" to "Digest", "silent" to "Store silently", "ignore" to "Ignore", "llm" to "Classify as usual")
 private val QUIETING = setOf("silent", "ignore", "digest")
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -201,6 +201,12 @@ fun RuleEditorScreen(onDone: () -> Unit) {
         mutableStateListOf<SnapshotStateList<CondRow>>().apply { parsedExc?.forEach { g -> add(mutableStateListOf<CondRow>().apply { addAll(g) }) } }
     }
     var action by remember { mutableStateOf(source?.action?.get("type")?.jsonPrimitive?.contentOrNull ?: "silent") }
+    var folderId by remember { mutableStateOf(source?.action?.get("folder_id")?.jsonPrimitive?.contentOrNull) }
+    var folderName by remember { mutableStateOf<String?>(null) }
+    var pickingFolder by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        folderId?.let { fid -> folderName = runCatching { flatten(Api.get(context).folders().folders).firstOrNull { it.first.id == fid }?.first?.name }.getOrNull() ?: "a deleted folder" }
+    }
     var preview by remember { mutableStateOf<PreviewResult?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -234,13 +240,22 @@ fun RuleEditorScreen(onDone: () -> Unit) {
         saving = true
         scope.launch {
             try {
-                val body = RuleIn(name.trim(), existing?.enabled ?: true, conditionsJson()!!, buildJsonObject { put("type", action) }, exceptionsJson(), existing?.accountScope, origin = origin)
+                // keep extras this form doesn't edit (category, tag); folder comes from the picker
+                val actionJson = buildJsonObject {
+                    source?.action?.forEach { (k, v) -> if (k != "type" && k != "folder_id") put(k, v) }
+                    put("type", action)
+                    folderId?.let { put("folder_id", it) }
+                }
+                val body = RuleIn(name.trim(), existing?.enabled ?: true, conditionsJson()!!, actionJson, exceptionsJson(), existing?.accountScope, origin = origin)
                 if (existing != null) Api.get(context).updateRule(existing.id, body) else Api.get(context).createRule(body)
                 RuleEditorSeed.clear()
                 onDone()
             } catch (t: Throwable) { error = t.userMessage() } finally { saving = false }
         }
     }
+
+    if (pickingFolder) FolderPickerDialog("File matching mail in…", null, note = "Filing never changes the mail in Gmail.",
+        onDismiss = { pickingFolder = false }) { f -> pickingFolder = false; f?.let { folderId = it.id; folderName = it.name } }
 
     Column(Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).imePadding().padding(18.dp)) {
         Text("‹ Rules", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { RuleEditorSeed.clear(); onDone() }.padding(vertical = 6.dp))
@@ -288,6 +303,12 @@ fun RuleEditorScreen(onDone: () -> Unit) {
         SectionLabel("Then")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ACTIONS.forEach { (key, label) -> Chip(label, action == key, dot = Ink.tier(when (key) { "notify_urgent" -> "urgent"; "notify_normal", "llm" -> "normal"; "digest" -> "digest"; else -> null })) { action = key } }
+        }
+        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (folderId == null) "Also file in a folder" else "Also file in ${folderName ?: "…"}", color = Ink.text2,
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(if (folderId == null) "Pick" else "Change", color = Ink.signal, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { pickingFolder = true }.padding(6.dp))
+            if (folderId != null) Text("Remove", color = Ink.text3, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { folderId = null; folderName = null }.padding(6.dp))
         }
 
         val p = preview
