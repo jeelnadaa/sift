@@ -223,8 +223,8 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 
 ## Known limitations (Phase 0)
 
-- Docker Compose, the Redis queue, Cloudflare Tunnel and push mode were written but not run on the development machine (no Docker, no cloud credentials). Native Windows + Postgres queue + poll mode were run end to end with fake Gmail credentials; real Gmail and FCM calls need your project.
-- Poll mode detects mail within `POLL_INTERVAL_SECONDS` (default 10 s); push mode is ~1–3 s.
+- Accepted on the owner's laptop (native Windows, Postgres queue, poll mode) with a real Gmail account and phone. Docker Compose, the Redis queue, Cloudflare Tunnel and push mode are written but not yet run.
+- Poll mode: measured about 18 s from Gmail receiving a mail to detection at the default 10 s interval (Gmail's history lags a few seconds). Lower `POLL_INTERVAL_SECONDS` or use push mode (~1–3 s) for faster alerts.
 - `/api/v1/accounts`, `/api/v1/devices` and `/api/v1/dev/*` use a shared admin token; per-user JWT auth arrives in Phase 1.
 - If an account is offline for over a week, Gmail's history expires and Sift restarts from "now"; a catch-up scan of recent mail comes with the Phase 1 pipeline.
 - The Android app is a setup screen only and does not yet use the Satoshi and Clash Display fonts.

@@ -11,8 +11,8 @@ Rule: commit every change to git, never push (the owner pushes).
 | Track | State |
 |-------|-------|
 | Design (landing, web UI, mobile) | Approved by owner (v2 + font fix). See `DESIGN.md`, `design/README.md` |
-| Phase 0 (setup) | **Code done, locally verified. Waiting on owner:** Google OAuth client + Firebase, run on laptop, then the two acceptance checks (README §5) |
-| Phase 1 (notification pipeline) | Not started. Do not start until the owner confirms Phase 0 acceptance |
+| Phase 0 (setup) | **Accepted 2026-10-24** on the owner's laptop (native Windows, Postgres queue, poll mode). Both checks passed |
+| Phase 1 (notification pipeline) | Not started. Waiting for the owner's go-ahead and the Phase 1 decisions under Open questions |
 | Phases 2–5 | Not started |
 
 ## Log (newest last)
@@ -37,6 +37,10 @@ Rule: commit every change to git, never push (the owner pushes).
   - 72 tests pass. `run-local.ps1` run end to end with fake credentials: API healthy, scheduler queues checks, worker runs them, failures back off as one job.
   - README rewritten: laptop first (native or Docker Desktop), Cloudflare Tunnel, acceptance checks, "Move to Oracle", optional Pub/Sub.
 - 2026-10-24 — Owner can enable Pub/Sub and has separate Google and Firebase projects. Documented: Pub/Sub goes in the Gmail/OAuth project; Firebase may be separate. Still on poll mode until the owner switches (needs billing + stable tunnel hostname).
+- 2026-10-24 — **Phase 0 accepted** on the owner's laptop. Setup: native Windows via `scripts/run-local.ps1`, owner's Postgres 18 (`sift` user/db), `QUEUE_BACKEND=postgres`, `CHANGE_DETECTION=poll` (10 s), Google project `sift-quack` (OAuth client, Gmail API, Pub/Sub topic + push service account prepared but unused), Firebase project `sift-quack-firebase`. Owner account `jeelnadaa@gmail.com` created; Gmail `jeelnadaa@gmail.com` connected (read-only, active).
+  - Check A: test email received by Gmail 06:14:15, detected by Sift 06:14:32 (**17.8 s**, one sample; poll interval 10 s plus Gmail history lag). Slower than the 5–10 s estimate.
+  - Check B: device registered, FCM accepted the test push and the owner confirmed the notification arrived on the phone.
+  - Fixed during setup: `.env` had `QUEUE_BACKEND=redis` (no Redis on the laptop) and empty `APP_SECRET`/`ENCRYPTION_KEYS`/`ADMIN_TOKEN`; set to postgres and random values. DB user password mismatch resolved by the owner.
 
 ## Decisions
 - Designs are static HTML/CSS/JS prototypes; the visual reference for the React web UI and Compose app. Keep `DESIGN.md` in sync with any design change, in the same commit.
@@ -56,14 +60,14 @@ Rule: commit every change to git, never push (the owner pushes).
 - `notifications.message_id` is unique so a message can never notify twice.
 
 ## Open questions (for the owner)
-1. Create the Google OAuth client (README §1) and Firebase project (§2); no billing needed.
-2. Run Sift on the laptop (§4) and the two Phase 0 checks (§5): new mail detected within ~10 s, test push reaches the phone. Report back before Phase 1 starts.
-3. Is `solarquack.in` on Cloudflare DNS (for a stable tunnel hostname)? Not needed until Phase 1.
+Phase 1 decisions (asked 2026-10-24):
+1. Lower `POLL_INTERVAL_SECONDS` to 5 (measured 17.8 s at 10 s)? Costs ~24 of 6,000 Gmail quota units/min per account.
+2. The phone app must reach the API in Phase 1: is `solarquack.in` on Cloudflare DNS (stable tunnel hostname such as `sift.solarquack.in`)?
+3. App sign-in: email + password for the owner account (JWT), as the default?
 
 ## Known limitations (Phase 0)
 - Docker Compose, Redis queue, Cloudflare Tunnel and push mode not run locally (no Docker, no credentials). Native + Postgres queue + poll mode verified end to end with fake Gmail credentials.
-- No real Gmail, OAuth or FCM call made yet (needs the owner's projects).
-- Poll latency is up to `POLL_INTERVAL_SECONDS`; push is faster.
+- Poll latency: measured 17.8 s end to end at a 10 s interval (one sample). Push mode or a shorter interval would be faster.
 - History older than ~a week expires: Sift restarts from now (catch-up scan comes with the Phase 1 pipeline).
 - Admin-token auth on account/device/dev endpoints until Phase 1 JWT.
 - Android app: setup screen only; no custom fonts yet.
