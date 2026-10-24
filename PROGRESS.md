@@ -55,6 +55,9 @@ Rule: commit every change to git, never push (the owner pushes).
   - Hardening for internet exposure: `/docs` and `/openapi.json` off unless `API_DOCS=true`; failed sign-ins throttled per email and per visitor (`LOGIN_ATTEMPTS`, 15 min, CF-Connecting-IP behind the tunnel). 146 tests pass.
   - `.env`: `PUBLIC_BASE_URL=https://sift.solarquack.in`. Sift now runs without `-Lan` (nothing listens on Wi-Fi).
 - 2026-10-24 — Owner verified the app over **mobile data** via https://sift.solarquack.in: sign-in, feed, adding a Gmail account from the phone (OAuth redirect on the public address) and removing it all work. Main account still active.
+- 2026-10-24 — **Auto-start on the laptop.** `scripts/install-autostart.ps1` registers a per-user "Sift" scheduled task (at sign-in + every 5 minutes as a watchdog, MultipleInstances=IgnoreNew) that runs `run-local.ps1` hidden. `run-local.ps1` now supervises its three services (restarts a crashed one after 10 s, logs to `logs/supervisor.log`, keeps the previous log as `<name>.prev.log`) and kills leftover Sift processes from an earlier run before starting. Task Scheduler's restart-on-failure did not fire for a script exit, hence the in-script supervisor plus watchdog. Verified: killed API restarted by the supervisor in ~15 s.
+  - Seen once and not explained: the task ended with 0xC000013A (Ctrl+C/console close) after a test that killed child processes; the watchdog trigger covers that case.
+- 2026-10-24 — Hosting research (owner: free, no card, only the owner uses it). Findings: laptop + Cloudflare Tunnel stays the only fully free always-on option without a card; Azure for Students (full-time students, no card, $100 credit per year) is the best VM option; single-service free PaaS (e.g. Koyeb, card "sometimes" required) would need api+worker+scheduler merged into one process plus a separate no-card Postgres (e.g. Aiven free). Render free sleeps (not allowed by the brief); Fly.io and Railway are trial/credit only.
 
 ## Decisions
 - Designs are static HTML/CSS/JS prototypes; the visual reference for the React web UI and Compose app. Keep `DESIGN.md` in sync with any design change, in the same commit.
@@ -84,7 +87,7 @@ Rule: commit every change to git, never push (the owner pushes).
    a. Web UI: serve the React build from the same server (https://sift.solarquack.in/app, same sign-in) — proposed default.
    b. "Add to calendar": Android calendar intent (no extra Google permission) — proposed default — instead of requesting the Google Calendar scope.
    c. Build Phase 2 in three reviewable steps: 2a opportunities, timelines, deadlines/reminders, to-do (the acceptance criterion); 2b rule editor with preview, one-tap and plain-English rules, fingerprint suggestions, onboarding scan, custom categories, token usage screen; 2c folders, opt-in grouping, web UI pages.
-3. Optional: start Sift automatically at Windows sign-in (Task Scheduler) so sift.solarquack.in survives reboots.
+3. Pub/Sub push test: owner creates the push subscription (see README §7), then switch `CHANGE_DETECTION=push` and measure.
 
 ## Known limitations (Phase 1)
 - Poll mode end to end ~25 s (Gmail history lag dominates); push mode needs billing + a stable public hostname.

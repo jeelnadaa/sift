@@ -130,6 +130,8 @@ With Docker instead of a Windows service: put the token in `TUNNEL_TOKEN`, add `
 
 Exposed to the internet, Sift keeps `/docs` off (`API_DOCS=false`), throttles failed sign-ins (`LOGIN_ATTEMPTS` per email and per visitor in 15 minutes), requires sign-in on every app endpoint, and verifies Google's signature on the Pub/Sub webhook.
 
+**Start automatically (Windows):** `powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1` registers a "Sift" task for your user that starts `run-local.ps1` hidden at every sign-in. `run-local.ps1` restarts any service that crashes (see `logs\supervisor.log`), and the task re-fires every 5 minutes as a watchdog in case the supervisor itself dies. Control it with `Start-ScheduledTask Sift` / `Stop-ScheduledTask Sift`; remove it with `install-autostart.ps1 -Remove`. The Cloudflare Tunnel runs as its own Windows service.
+
 **Laptop as a server:** set Windows to never sleep while plugged in (Settings → System → Power). While the laptop sleeps nothing is detected; on wake, Sift resumes from its saved position and processes everything that arrived (Gmail keeps about a week of history).
 
 ## 5. Phase 0 acceptance checks
