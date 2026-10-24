@@ -14,47 +14,10 @@ from sqlalchemy.orm import Session
 from app import notify
 from app.models import GmailAccount, Message, Notification, SavedSearch
 from app.search import engine
-from app.search.query import QueryError, parse, tokenize
+from app.search.local import Unknown, gmail_match
+from app.search.query import QueryError, parse
 
 log = logging.getLogger(__name__)
-CATEGORY_LABELS = {"primary": "CATEGORY_PERSONAL", "social": "CATEGORY_SOCIAL", "promotions": "CATEGORY_PROMOTIONS",
-                   "updates": "CATEGORY_UPDATES", "forums": "CATEGORY_FORUMS"}
-
-
-class Unknown(Exception):
-    """The Gmail part uses something we can't decide locally."""
-
-
-def _local_gmail_match(gmail: str, m: Message) -> bool:
-    hay = " ".join(x for x in (m.subject, m.snippet, m.sender, m.sender_name) if x).lower()
-    for tok in tokenize(gmail):
-        neg = tok.startswith("-")
-        body = tok[1:] if neg else tok
-        if body.upper() in ("OR", "AROUND") or body.startswith(("(", "{")):
-            raise Unknown(tok)
-        key, sep, value = body.partition(":")
-        value = value.strip('"').lower()
-        if not sep:
-            ok = body.strip('"').lower() in hay
-        elif key == "from":
-            ok = value in (m.sender or "").lower() or value in (m.sender_name or "").lower()
-        elif key == "subject":
-            ok = value in (m.subject or "").lower()
-        elif key == "has" and value == "attachment":
-            ok = m.has_attachment
-        elif key == "category" and value in CATEGORY_LABELS:
-            ok = CATEGORY_LABELS[value] in (m.labels or [])
-        elif key == "label":
-            ok = value.upper() in [x.upper() for x in (m.labels or [])]
-        elif key == "is" and value in ("unread", "read"):
-            ok = ("UNREAD" in (m.labels or [])) == (value == "unread")
-        else:
-            raise Unknown(tok)
-        if ok == neg:
-            return False
-    return True
-
-
 def matches(db: Session, m: Message, s: SavedSearch, provider) -> bool:
     try:
         p = parse(s.query)
@@ -68,7 +31,7 @@ def matches(db: Session, m: Message, s: SavedSearch, provider) -> bool:
     if not p.has_gmail:
         return True
     try:
-        return _local_gmail_match(p.gmail, m)
+        return gmail_match(p.gmail, m)
     except Unknown:
         if not m.message_id_header or not hasattr(provider, "search"):
             return False

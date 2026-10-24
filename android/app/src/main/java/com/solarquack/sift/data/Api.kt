@@ -117,6 +117,15 @@ interface SiftApi {
     @POST("api/v1/groups/{id}/rule") suspend fun ruleFromGroup(@Path("id") id: String, @Body body: GroupRuleIn): DraftResponse
     @PUT("api/v1/grouping/preferences") suspend fun setGroupPreference(@Body body: PreferenceIn): List<PreferenceDto>
 
+    @GET("api/v1/search") suspend fun search(@Query("q") q: String, @Query("cursor") cursor: String? = null, @Query("limit") limit: Int = 30): SearchResult
+    @GET("api/v1/search/semantic") suspend fun semantic(@Query("q") q: String, @Query("offset") offset: Int = 0, @Query("limit") limit: Int = 30): SemanticResult
+    @GET("api/v1/search/semantic/status") suspend fun semanticStatus(): SemanticStatus
+    @POST("api/v1/search/parse") suspend fun parseQuery(@Body body: QueryIn): ParseResult
+    @POST("api/v1/search/from-text") suspend fun searchFromText(@Body body: TextIn): FromTextResult
+    @GET("api/v1/saved-searches") suspend fun savedSearches(): List<SavedSearchDto>
+    @POST("api/v1/saved-searches") suspend fun saveSearch(@Body body: SavedSearchIn): SavedSearchDto
+    @GET("api/v1/accounts/{account}/threads/{thread}") suspend fun accountThread(@Path("account") accountId: String, @Path("thread") threadId: String, @Query("images") images: Boolean? = null): ThreadDto
+
     @POST("api/v1/devices") suspend fun registerDevice(@Body body: DeviceIn)
     @POST("api/v1/notifications/{id}/ack") suspend fun ack(@Path("id") id: String)
 }

@@ -179,3 +179,43 @@ def test_reading_a_conversation_sift_never_stored(client, db, world, keys):
     db.commit()
     assert client.get(f"/api/v1/accounts/{a2.id}/threads/ct5", headers=H(other)).status_code == 404
     assert client.get(f"/api/v1/accounts/{uuid.uuid4()}/threads/ct5", headers=H(user)).status_code == 404
+
+
+def test_sift_filters_skip_header_fetches_and_page_exactly(client, db, world):
+    user, a1, a2, g1, g2 = world
+    r = search(client, user, "invoice priority:normal", limit=1)
+    assert g1.meta_calls == g2.meta_calls == 0  # mail Sift never stored can't match a Sift filter
+    seen = [i["gmail_id"] for i in r["items"]]
+    while r["next_cursor"]:
+        r = search(client, user, "invoice priority:normal", limit=1, cursor=r["next_cursor"])
+        seen += [i["gmail_id"] for i in r["items"]]
+    assert sorted(seen) == ["c0", "p0", "p1"]  # every stored match once, none skipped
+
+
+def test_filtered_searches_are_answered_exactly_without_gmail(client, db, world):
+    user, a1, a2, g1, g2 = world
+    r = search(client, user, "invoice newer_than:30d priority:normal", limit=2)
+    assert g1.list_calls == g2.list_calls == 0 and r["estimated"] is False and r["total"] == 3
+    page2 = search(client, user, "invoice newer_than:30d priority:normal", limit=2, cursor=r["next_cursor"])
+    assert len(r["items"]) + len(page2["items"]) == 3 and page2["next_cursor"] is None
+    assert search(client, user, "invoice older_than:30d priority:normal")["total"] == 0
+    # something only Gmail can decide (AROUND) still goes to Gmail
+    search(client, user, "invoice AROUND 2 personal priority:normal")
+    assert g1.list_calls > 0
+
+
+def test_local_matcher_decides_common_gmail_syntax():
+    from datetime import datetime, timedelta, timezone
+
+    import pytest as _pytest
+
+    from app.models import Message
+    from app.search.local import Unknown, gmail_match
+    now = datetime(2026, 10, 24, tzinfo=timezone.utc)
+    m = Message(subject="Invoice for October", snippet="paid", sender="bill@shop.com", sender_name="Shop", labels=["INBOX", "UNREAD"],
+                has_attachment=True, received_at=now - timedelta(days=3))
+    for q, want in [("invoice", True), ("-invoice", False), ("from:shop.com has:attachment is:unread", True), ("is:read", False),
+                    ("newer_than:7d", True), ("older_than:7d", False), ("after:2026/10/01 before:2026/10/30", True), ('subject:"for october"', True)]:
+        assert gmail_match(q, m, now) is want, q
+    with _pytest.raises(Unknown):
+        gmail_match("filename:pdf", m, now)

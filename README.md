@@ -183,6 +183,13 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 
 **Rules (Phase 2b):** More → Rules. Create rules in the editor (live "N of your last 500 mails would match" preview), describe one in plain English (needs your AI key; you review the draft before saving), accept suggestions for templates that keep repeating, or tap "Ignore mails like this" on any mail or notification. When you connect a new account, Sift reads the last 30 days of headers (no bodies, no AI) and lists top senders so you can set their actions in bulk (Accounts → First scan). Your own categories live under More → Categories, and token usage under More → Token usage.
 
+**Search (Phase 3b):** web sidebar → Search (or press `/`), or the ⌕ Search button on the phone's feed.
+- Type Gmail syntax exactly as in Gmail (`from:kotak has:attachment newer_than:30d`, `"exact words"`, `OR`, `-word`, `( )`); it searches every connected account and merges the results, one row per conversation. Older mail Sift never processed shows as "Gmail only" and opens straight from Gmail.
+- Add Sift's own filters (shown with ◆): `folder:Work` (with subfolders) or `folder:none`, `tag:`, `priority:urgent|normal|digest|silent`, `type:` (Sift category), `company:`, `account:`, `rule:`, `is:silenced`, `is:grouped`, `is:notified`, `has:note`, `has:link`, `saved:NAME`; negate with `-`, OR several with `{folder:A folder:B}`. Chips can be removed or negated, and the Gmail part can be copied into Gmail.
+- **By meaning** (needs your AI key): describe what a mail is about ("job offers", "bank transaction"). Sift indexes new mail and, once, the last 90 days (sender, subject, preview and summary with personal details removed; never the full mail, never mail a rule silenced).
+- **Describe it** (needs your AI key): "mails from Walmart last week" becomes `from:walmart newer_than:7d`, which you can edit.
+- **Saved searches**: save any search; pin it, get notified when new mail matches (even mail a rule keeps quiet), or show it as a smart folder in the folder tree. Bulk: file results in a folder, tag them, export to CSV.
+
 **Reading mail (Phase 3a):** opening a mail shows the whole conversation, fetched live from Gmail and never stored. HTML mail is cleaned on the server and shown in a locked frame (web) or WebView (phone) where nothing can run. Remote images, which can tell senders you opened their mail, are blocked until you press "Load images"; then they come through your Sift server, so the sender sees the server, not you. Attachments download straight from Gmail through short-lived links. The demo account's mail opens too (the placement mail has an HTML version with a blocked tracking pixel).
 
 **Folders, grouping and the web UI (Phase 2c):**

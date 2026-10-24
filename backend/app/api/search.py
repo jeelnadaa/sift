@@ -48,7 +48,7 @@ def search(q: str = Query(min_length=1, max_length=1000), cursor: str | None = Q
     db.commit()
     return {
         "items": [engine.hit_json(h, message_json) for h in hits], "next_cursor": nxt,
-        "total": total, "estimated": parsed.has_gmail, "failed_accounts": failed,
+        "total": total, "estimated": parsed.has_gmail and not engine.answered_locally(parsed), "failed_accounts": failed,
         "gmail_query": parsed.gmail, "words": parsed.words,
         "chips": [c.__dict__ for c in parsed.chips],
     }

@@ -67,7 +67,8 @@ export function SearchPage() {
       return { items: r.items, next_before: r.next_offset === null ? null : String(r.next_offset), total: r.total, pages: Math.max(1, Math.ceil(r.total / PAGE)) };
     }
     const r = await get<Result & { next_cursor: string | null }>("/search", { q, cursor: before, limit: PAGE });
-    return { ...r, next_before: r.next_cursor, pages: r.next_cursor ? Math.max(2, Math.ceil(r.total / PAGE)) : 0 };
+    // Gmail only estimates how many results a search has (and badly), so Gmail searches show no total
+    return { ...r, next_before: r.next_cursor, total: r.estimated ? -1 : r.total, pages: r.estimated ? 0 : Math.max(1, Math.ceil(r.total / PAGE)) };
   }, [q, mode, parseError]);
   useEffect(() => setSelected(new Set()), [q, mode, results.page]);
 
@@ -167,7 +168,7 @@ export function SearchPage() {
 
         {q && results.data && (
           <>
-            <Pager page={results.page} pages={results.pages || results.page} total={results.total} noun={mode === "meaning" ? "matches" : r?.estimated ? "conversations (about)" : "conversations"} onPrev={results.onPrev} onNext={results.onNext} />
+            <Pager page={results.page} pages={results.pages || results.page} total={results.total} noun={mode === "meaning" ? "matches" : "conversations"} onPrev={results.onPrev} onNext={results.onNext} />
             {selected.size > 0 && (
               <div className="banner ok" style={{ marginBottom: 12 }}>
                 <span>{selected.size} selected</span>

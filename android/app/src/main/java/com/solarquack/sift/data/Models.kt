@@ -465,3 +465,64 @@ data class ThreadMessageDto(
 
 @Serializable
 data class ThreadDto(val subject: String = "", val account: String? = null, val images: Boolean = false, val messages: List<ThreadMessageDto> = emptyList())
+
+// ---- search (Phase 3b) ----
+
+@Serializable
+data class SearchHit(
+    val id: String? = null,
+    @SerialName("account_id") val accountId: String,
+    val account: String? = null,
+    @SerialName("account_color") val accountColor: String? = null,
+    @SerialName("thread_id") val threadId: String = "",
+    val sender: String? = null,
+    @SerialName("sender_name") val senderName: String? = null,
+    val subject: String? = null,
+    val snippet: String? = null,
+    val summary: String? = null,
+    @SerialName("received_at") val receivedAt: String? = null,
+    val priority: String? = null,
+    val category: String? = null,
+    val company: String? = null,
+    val unread: Boolean = false,
+    val score: Double? = null,
+) {
+    fun asMessage() = MessageDto(id = id ?: "g:$accountId:$threadId", accountId = accountId, account = account, accountColor = accountColor,
+        sender = sender, senderName = senderName, subject = subject, snippet = snippet, summary = summary, receivedAt = receivedAt,
+        priority = priority, category = category, company = company, unread = unread)
+}
+
+@Serializable
+data class QueryChip(val text: String, val kind: String, val label: String, val negated: Boolean = false)
+
+@Serializable
+data class SearchResult(
+    val items: List<SearchHit> = emptyList(),
+    @SerialName("next_cursor") val nextCursor: String? = null,
+    val total: Int = 0,
+    val estimated: Boolean = false,
+    @SerialName("failed_accounts") val failedAccounts: List<String> = emptyList(),
+    @SerialName("gmail_query") val gmailQuery: String = "",
+    val chips: List<QueryChip> = emptyList(),
+)
+
+@Serializable
+data class SemanticResult(val items: List<SearchHit> = emptyList(), val total: Int = 0, @SerialName("next_offset") val nextOffset: Int? = null)
+
+@Serializable
+data class SemanticStatus(@SerialName("ai_enabled") val aiEnabled: Boolean = false, val indexed: Int = 0, @SerialName("recent_total") val recentTotal: Int = 0)
+
+@Serializable
+data class ParseResult(val error: String? = null, val chips: List<QueryChip> = emptyList(), @SerialName("gmail_query") val gmailQuery: String = "")
+
+@Serializable
+data class QueryIn(val q: String)
+
+@Serializable
+data class SavedSearchDto(val id: String, val name: String, val query: String, val pinned: Boolean = false, val notify: Boolean = false, @SerialName("smart_folder_id") val smartFolderId: String? = null)
+
+@Serializable
+data class SavedSearchIn(val name: String, val query: String, val pinned: Boolean = false, val notify: Boolean = false, @SerialName("smart_folder") val smartFolder: Boolean = false)
+
+@Serializable
+data class FromTextResult(val query: String, val explanation: String = "")

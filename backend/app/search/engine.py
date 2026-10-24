@@ -26,6 +26,7 @@ from app.mail.base import AuthRevoked
 from app.mail.message import parse_metadata
 from app.models import (Folder, FolderItem, GmailAccount, GroupMember, MailNote, MailTag, Message, Notification, Opportunity,
                         OpportunityEvent, Rule, SavedSearch, Tag)
+from app.search.local import Unknown, gmail_match
 from app.search.query import Filter, Parsed, QueryError, parse
 
 GMAIL_CHUNK = 40  # ids per Gmail list call
@@ -144,6 +145,7 @@ class Hit:
     date: datetime | None
     row: Message | None = None
     meta: dict = field(default_factory=dict)
+    idx: int = 0  # position in its Gmail result page, so paging resumes exactly after it
 
     @property
     def key(self) -> str:
@@ -248,11 +250,12 @@ def gmail_search(db: Session, user_id: uuid.UUID, p: Parsed, accounts: list[Gmai
                         continue
                     ids, nxt, est = res
                     estimate += est
-                    fresh[a_id] = ids[pos[a_id]["i"]:]
+                    fresh[a_id] = [{**x, "_idx": pos[a_id]["i"] + j} for j, x in enumerate(ids[pos[a_id]["i"]:])]
                     next_token[a_id] = nxt
                     if not fresh[a_id] and not nxt:
                         pos[a_id]["done"] = True
-            for a_id, hits in _resolve(db, by_id, fresh).items():
+            # with Sift filters, mail Sift never stored can't match: don't fetch its headers at all
+            for a_id, hits in _resolve(db, by_id, fresh, need_meta=not sift_filters).items():
                 queue[a_id] = hits
         # merge newest first: Gmail lists each account newest first, so take from the newest head
         while len(out) < limit:
@@ -261,7 +264,7 @@ def gmail_search(db: Session, user_id: uuid.UUID, p: Parsed, accounts: list[Gmai
                 break
             k = max(heads, key=lambda k: queue[k][0].date or datetime.min.replace(tzinfo=UTC))
             h = queue[k].pop(0)
-            pos[k]["i"] += 1
+            pos[k]["i"] = h.idx + 1
             if h.key in seen_set or (sift_filters and not _passes(db, h, conds)):
                 continue
             seen_set.add(h.key)
@@ -281,6 +284,8 @@ def gmail_search(db: Session, user_id: uuid.UUID, p: Parsed, accounts: list[Gmai
         for a in chosen:
             if demo.is_demo(a):
                 for h in _demo_hits(db, a, p):
+                    if len(out) >= limit:
+                        break
                     if h.key not in seen_set and (not sift_filters or _passes(db, h, conds)):
                         seen_set.add(h.key)
                         out.append(h)
@@ -291,7 +296,7 @@ def gmail_search(db: Session, user_id: uuid.UUID, p: Parsed, accounts: list[Gmai
     return out, nxt, estimate, failed
 
 
-def _resolve(db: Session, by_id: dict, buffers: dict[str, list[dict]]) -> dict[str, list[Hit]]:
+def _resolve(db: Session, by_id: dict, buffers: dict[str, list[dict]], need_meta: bool = True) -> dict[str, list[Hit]]:
     out: dict[str, list[Hit]] = {}
     unknown: list[tuple[str, str]] = []
     for a_id, items in buffers.items():
@@ -301,9 +306,9 @@ def _resolve(db: Session, by_id: dict, buffers: dict[str, list[dict]]) -> dict[s
         for x in items:
             r = rows.get(x["id"])
             if r is not None and r.status in SEARCHABLE_STATUSES:
-                out[a_id].append(Hit(by_id[a_id], r.gmail_id, r.thread_id, r.received_at, r))
-            else:
-                out[a_id].append(Hit(by_id[a_id], x["id"], x.get("threadId", ""), None))
+                out[a_id].append(Hit(by_id[a_id], r.gmail_id, r.thread_id, r.received_at, r, idx=x.get("_idx", 0)))
+            elif need_meta:
+                out[a_id].append(Hit(by_id[a_id], x["id"], x.get("threadId", ""), None, idx=x.get("_idx", 0)))
                 unknown.append((a_id, x["id"]))
     if unknown:
         def meta(item):
@@ -313,7 +318,7 @@ def _resolve(db: Session, by_id: dict, buffers: dict[str, list[dict]]) -> dict[s
             except Exception:
                 return item, None
 
-        with ThreadPoolExecutor(max_workers=8) as ex:
+        with ThreadPoolExecutor(max_workers=16) as ex:
             got = dict(ex.map(meta, unknown))
         for a_id, hits in out.items():
             for h in hits:
@@ -345,6 +350,49 @@ def run(db: Session, user_id: uuid.UUID, q: str, cursor: str | None = None, limi
             raise SearchError("type something to search for")
         hits, nxt, total, _ = local_search(db, user_id, p, accounts, cursor, limit)
         return hits, nxt, total, [], p
+    if [f for f in p.filters if f.key != "account"] or p.any_of:
+        try:
+            hits, nxt, total = filtered_search(db, user_id, p, accounts, cursor, limit)
+            return hits, nxt, total, [], p
+        except Unknown:
+            pass  # Gmail syntax only Gmail can decide: search through Gmail instead
     hits, nxt, total, failed = gmail_search(db, user_id, p, accounts, cursor, limit)
     return hits, nxt, total, failed, p
 
+
+LOCAL_SCAN_LIMIT = 5000
+
+
+def filtered_search(db: Session, user_id: uuid.UUID, p: Parsed, accounts: list[GmailAccount], cursor: str | None, limit: int):
+    """Sift filters plus a Gmail part this server can decide itself: every match is mail Sift
+    stored, so it's answered from the database, exactly (no Gmail calls, exact count).
+    Raises Unknown when the Gmail part needs Gmail."""
+    state = _decode(cursor)
+    offset = int(state.get("off", 0)) if state else 0
+    chosen = selected_accounts(p, accounts)
+    base = select(Message.id, func.row_number().over(
+        partition_by=(Message.account_id, Message.thread_id), order_by=Message.received_at.desc().nulls_last()).label("rn")).where(
+        Message.user_id == user_id, Message.status.in_(SEARCHABLE_STATUSES), Message.account_id.in_([a.id for a in chosen] or [uuid.uuid4()]),
+        *conditions(db, user_id, p, accounts))
+    latest = base.subquery()
+    rows = list(db.scalars(select(Message).join(latest, and_(Message.id == latest.c.id, latest.c.rn == 1))
+                           .order_by(Message.received_at.desc().nulls_last()).limit(LOCAL_SCAN_LIMIT)))
+    now = datetime.now(UTC)
+    matched = [r for r in rows if gmail_match(p.gmail, r, now)]  # Unknown propagates on the first undecidable part
+    by_id = {a.id: a for a in accounts}
+    page = matched[offset:offset + limit]
+    hits = [Hit(by_id[r.account_id], r.gmail_id, r.thread_id, r.received_at, r) for r in page]
+    nxt = _encode({"off": offset + limit}) if offset + limit < len(matched) else None
+    return hits, nxt, len(matched)
+
+
+
+def answered_locally(p: Parsed) -> bool:
+    """Whether run() answered this from the database (exact totals) rather than Gmail."""
+    if not ([f for f in p.filters if f.key != "account"] or p.any_of):
+        return False
+    try:
+        gmail_match(p.gmail, Message(subject="", snippet="", sender="", sender_name="", labels=[], received_at=datetime.now(UTC)))
+        return True
+    except Unknown:
+        return False

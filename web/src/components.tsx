@@ -254,7 +254,10 @@ export function Pager({ page, pages, total, onPrev, onNext, noun = "mails", bott
   if (bottom && !onPrev && !onNext) return null;
   return (
     <div className={`pager ${bottom ? "bottom" : ""}`}>
-      <b>Page {page}</b><span className="dim">of {Math.max(pages, page)} · {total.toLocaleString()} {total === 1 ? noun.replace(/s$/, "") : noun}</span>
+      <b>Page {page}</b>
+      {total >= 0
+        ? <span className="dim">of {Math.max(pages, page)} · {total.toLocaleString()} {total === 1 ? noun.replace(/s$/, "") : noun}</span>
+        : <span className="dim" data-tip="Gmail doesn't give an exact count for a search">{onNext ? "· more after this page" : "· last page"}</span>}
       <span className="spacer" />
       <button className="btn btn-ghost btn-sm" disabled={!onPrev} onClick={onPrev} data-tip={onPrev ? `Back to page ${page - 1}` : "This is the first page"}>‹ Previous</button>
       <button className="btn btn-ghost btn-sm" disabled={!onNext} onClick={onNext} data-tip={onNext ? `Older mail: page ${page + 1}` : "No older mail"}>Next ›</button>

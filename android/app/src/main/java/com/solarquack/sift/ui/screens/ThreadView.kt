@@ -54,7 +54,7 @@ fun fileSize(n: Long): String = when {
 /** The whole conversation, fetched live and never stored. The newest message, the one opened and
  * unread ones start open. Remote images stay blocked until "Load images". */
 @Composable
-fun ThreadView(messageId: String) {
+fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? = null) {
     val context = LocalContext.current
     var images by remember { mutableStateOf(false) }
     var thread by remember { mutableStateOf<ThreadDto?>(null) }
@@ -63,7 +63,9 @@ fun ThreadView(messageId: String) {
 
     LaunchedEffect(messageId, images) {
         try {
-            val t = Api.get(context).thread(messageId, if (images) true else null)
+            val api = Api.get(context)
+            val t = if (messageId != null) api.thread(messageId, if (images) true else null)
+            else api.accountThread(accountId!!, threadId!!, if (images) true else null)
             thread = t
             open = open + listOfNotNull(t.messages.lastOrNull()?.gmailId, t.messages.firstOrNull { it.id == messageId }?.gmailId) +
                 t.messages.filter { it.unread }.map { it.gmailId }
