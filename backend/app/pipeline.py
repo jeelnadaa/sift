@@ -29,6 +29,7 @@ from app.mail.gmail import GmailError
 from app.mail.message import clean_body, extract_body, parse_metadata
 from app.models import Fingerprint, Folder, FolderItem, GmailAccount, MailTag, Message, Opportunity, Rule, Tag
 from app.redact import redact
+from app import snooze as snooze_service
 from app.search import alerts, semantic
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,25 @@ def _apply_extras(db: Session, msg: Message, action: dict) -> list[str]:
         if folder and folder.user_id == msg.user_id and folder.saved_search_id is None:
             db.execute(insert(FolderItem).values(folder_id=folder.id, account_id=msg.account_id, thread_id=msg.thread_id).on_conflict_do_nothing())
     return [k for k in ("mark_read", "star") if action.get(k)]
+
+
+def _run_gmail_actions(account: GmailAccount, provider: MailProvider, msg: Message, actions: list[str]) -> list[str]:
+    """Rule extras mark_read / star, done in Gmail when the user gave this account write access
+    (Phase 3c). Returns what is still pending (no write access, or Gmail refused)."""
+    from app.accounts import can_modify
+
+    if not can_modify(account) or not hasattr(provider, "modify_message"):
+        return actions
+    add = ["STARRED"] if "star" in actions else []
+    remove = ["UNREAD"] if "mark_read" in actions else []
+    try:
+        provider.modify_message(msg.gmail_id, add, remove)
+    except Exception:
+        log.warning("rule's Gmail actions failed for message %s; left pending", msg.id)
+        return actions
+    labels = [x for x in (msg.labels or []) if x not in remove]
+    msg.labels = labels + [x for x in add if x not in labels]
+    return []
 
 
 def _touch_fingerprint(db: Session, user_id: uuid.UUID, fp: str, template: str, action: str | None, source: str | None, domain: str | None = None) -> Fingerprint:
@@ -128,6 +148,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
         msg.priority, msg.category, msg.status = "normal", msg.category or "other", "processed"
         outcome = Outcome(msg.id, "normal", "error")
 
+    snooze_service.on_new_mail(db, msg)  # a reply wakes its snoozed conversation
     if msg.status == "processed":
         grouping.assign_if_enabled(db, msg)  # display only; before notify so a muted group is known
     if notify.notify_message(db, msg, account):
@@ -172,6 +193,8 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         db.execute(update(Rule).where(Rule.id == match.rule_id).values(hit_count=Rule.hit_count + 1, last_hit_at=datetime.now(UTC)))
         msg.matched_rule_id = match.rule_id
         pending = _apply_extras(db, msg, match.action)
+        if pending:
+            pending = _run_gmail_actions(account, provider, msg, pending)
         if pending:
             extras["pending_gmail_actions"] = pending
         kind = match.action["type"]

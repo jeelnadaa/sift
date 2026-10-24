@@ -87,6 +87,7 @@ async def run() -> None:
             if started - last_minute >= MINUTE or last_minute == 0.0:
                 await jobs.enqueue("resend_notifications", {}, dedupe_key="resend_notifications")
                 await jobs.enqueue("send_reminders", {}, dedupe_key="send_reminders")
+                await jobs.enqueue("wake_snoozes", {}, dedupe_key="wake_snoozes")
                 last_minute = started
             if started - last_hourly >= HOUR or last_hourly == 0.0:
                 await hourly()

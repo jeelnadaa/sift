@@ -55,6 +55,11 @@ def provider_for(account: GmailAccount) -> MailProvider:
     return provider_factory(_access_token(account))
 
 
+def can_modify(account: GmailAccount) -> bool:
+    """Whether the user gave Sift write access to this account (archive, labels, read state…)."""
+    return google_oauth.MODIFY_SCOPE in (account.scopes or [])
+
+
 def mark_auth_failure(account: GmailAccount, exc: AuthRevoked) -> None:
     _token_cache.pop(account.id, None)
     account.status = "blocked" if exc.blocked else "needs_reconnect"
@@ -84,6 +89,7 @@ def connect_account(db: Session, user_email: str, code: str) -> GmailAccount:
         account.history_id = profile.cursor  # new account: start from now, never backfill
     # Reconnect keeps the old cursor so mail that arrived while disconnected is still caught.
     account.encrypted_refresh_token = crypto.encrypt(tokens["refresh_token"])
+    account.scopes = sorted(set((tokens.get("scope") or google_oauth.READONLY_SCOPE).split()))
     account.status, account.status_detail = "active", None
     db.flush()
     _token_cache[account.id] = (tokens["access_token"], time.time() + int(tokens.get("expires_in", 3600)))

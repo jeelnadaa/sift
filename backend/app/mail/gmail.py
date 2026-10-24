@@ -111,6 +111,28 @@ class GmailProvider:
         data = self._call("GET", f"/messages/{message_id}/attachments/{attachment_id}").get("data", "")
         return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
+    # ---- changing mail (needs gmail.modify; Phase 3c) -------------------------------------------
+
+    def modify_thread(self, thread_id: str, add: list[str], remove: list[str]) -> None:
+        """Add/remove labels on a whole conversation (archive = remove INBOX, read = remove UNREAD)."""
+        self._call("POST", f"/threads/{thread_id}/modify", json={"addLabelIds": add, "removeLabelIds": remove})
+
+    def modify_message(self, message_id: str, add: list[str], remove: list[str]) -> None:
+        self._call("POST", f"/messages/{message_id}/modify", json={"addLabelIds": add, "removeLabelIds": remove})
+
+    def trash_thread(self, thread_id: str) -> None:
+        """Moves to Trash (Gmail deletes it for good after 30 days; Sift never deletes)."""
+        self._call("POST", f"/threads/{thread_id}/trash")
+
+    def untrash_thread(self, thread_id: str) -> None:
+        self._call("POST", f"/threads/{thread_id}/untrash")
+
+    def list_labels(self) -> list[dict]:
+        return self._call("GET", "/labels").get("labels", [])
+
+    def create_label(self, name: str) -> dict:
+        return self._call("POST", "/labels", json={"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"})
+
     def start_watch(self, topic: str) -> Watch:
         w = self._call("POST", "/watch", json={"topicName": topic, "labelIds": ["INBOX"], "labelFilterBehavior": "INCLUDE"})
         return Watch(cursor=int(w["historyId"]), expires_at_ms=int(w["expiration"]))

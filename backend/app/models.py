@@ -81,6 +81,9 @@ class GmailAccount(Base):
     status_detail: Mapped[str | None] = mapped_column(Text)
     label: Mapped[str | None] = mapped_column(String(60))
     color: Mapped[str | None] = mapped_column(String(9))
+    # OAuth scopes Google granted for this account. Read-only until the user first asks Sift to
+    # change mail in it (Phase 3c: write access is requested per account, on first use).
+    scopes: Mapped[list | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -351,6 +354,26 @@ class MailNote(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class Snooze(Base):
+    """A conversation hidden until a time (Phase 3c). With write access it is also archived in
+    Gmail and put back in the inbox when it wakes; without, it is hidden in Sift only."""
+    __tablename__ = "snoozes"
+    __table_args__ = (
+        Index("ix_snoozes_due", "done", "until"),
+        Index("uq_snoozes_active_thread", "account_id", "thread_id", unique=True, postgresql_where=text("NOT done")),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gmail_accounts.id", ondelete="CASCADE"), nullable=False)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+    until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    archived_in_gmail: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    woke_reason: Mapped[str | None] = mapped_column(String(20))  # time, reply, cancelled
+    created_at: Mapped[datetime] = created()
 
 
 class MessageEmbedding(Base):

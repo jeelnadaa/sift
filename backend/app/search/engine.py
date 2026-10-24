@@ -108,6 +108,9 @@ def _condition(db: Session, user_id: uuid.UUID, f: Filter, accounts: list[GmailA
         c = exists().where(GroupMember.message_id == Message.id, GroupMember.added_by != "removed")
     elif f.key == "is" and v == "notified":
         c = exists().where(Notification.message_id == Message.id, Notification.sent_at.is_not(None))
+    elif f.key == "is" and v == "snoozed":
+        from app.snooze import active_condition
+        c = active_condition()
     elif f.key == "is" and v == "acked":
         c = exists().where(Notification.message_id == Message.id, Notification.acknowledged_at.is_not(None))
     elif f.key == "has" and v == "note":

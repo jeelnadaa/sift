@@ -92,7 +92,17 @@ def handle_semantic_backfill(payload: dict) -> None:
     log.info("semantic index: %d mail(s) added", n)
 
 
+def handle_wake_snoozes(payload: dict) -> None:
+    from app.snooze import wake_due
+
+    with get_sessionmaker()() as db:
+        n = wake_due(db)
+    if n:
+        log.info("woke %d snoozed conversation(s)", n)
+
+
 HANDLERS = {
+    "wake_snoozes": handle_wake_snoozes,
     "semantic_backfill": handle_semantic_backfill,
     "grouping_backfill": handle_grouping_backfill,
     "onboarding_scan": handle_onboarding_scan,

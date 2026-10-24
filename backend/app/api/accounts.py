@@ -24,6 +24,7 @@ def account_json(a: GmailAccount) -> dict:
         "id": str(a.id), "email": a.email, "status": a.status, "status_detail": a.status_detail,
         "label": a.label, "color": a.color,
         "watch_expires_at": a.watch_expires_at.isoformat() if a.watch_expires_at else None,
+        "can_modify": account_service.can_modify(a),
     }
 
 
@@ -37,6 +38,19 @@ def list_accounts(user: User = Depends(current_user), db: Session = Depends(get_
 def connect_url(login_hint: str | None = None, user: User = Depends(current_user)) -> dict:
     try:
         return {"auth_url": google_oauth.authorization_url(user.email, login_hint)}
+    except google_oauth.OAuthError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@router.get("/{account_id}/write-access-url")
+def write_access_url(account_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Google's page asking to let Sift change mail in this one account (archive, labels, read
+    state, star, trash, snooze). Asked only when the user first wants such an action."""
+    account = db.get(GmailAccount, account_id)
+    if account is None or account.user_id != user.id:
+        raise HTTPException(404, "account not found")
+    try:
+        return {"auth_url": google_oauth.authorization_url(user.email, account.email, write=True), "email": account.email}
     except google_oauth.OAuthError as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -61,7 +75,8 @@ def remove_account(account_id: uuid.UUID, user: User = Depends(current_user), db
 def oauth_callback(state: str = "", code: str = "", error: str = "", db: Session = Depends(get_db)) -> HTMLResponse:
     """Google redirects here. Public endpoint: the signed state proves the request started in Sift."""
     try:
-        user_email = google_oauth.read_state(state)
+        st = google_oauth.read_state_data(state)
+        user_email, intent = st["u"], st["x"]
     except google_oauth.OAuthError as exc:
         return _page("Link expired", f"{exc}. Start the connection again.", ok=False, status=400)
     if error:
@@ -75,6 +90,12 @@ def oauth_callback(state: str = "", code: str = "", error: str = "", db: Session
         return _page("Not connected", msg, ok=False)
     except (ConnectError, google_oauth.OAuthError) as exc:
         return _page("Not connected", str(exc), ok=False, status=400)
+    if intent.get("intent") == "write":
+        if not account_service.can_modify(account):
+            return _page("Still read-only", f"Google didn't grant write access for {account.email}. Sift keeps reading it as before.", ok=False)
+        if intent.get("account") and intent["account"].lower() != account.email:
+            return _page("Different account", f"You signed in as {account.email}, which now has write access. {intent['account']} is unchanged.", ok=False)
+        return _page("Write access granted", f"Sift can now archive, label, mark read, star and snooze mail in {account.email}. Go back to Sift and try again.")
     return _page("Connected", f"{account.email} is connected. New mail will be picked up within seconds. You can close this tab.")
 
 
@@ -85,5 +106,6 @@ def _page(title: str, message: str, ok: bool = True, status: int = 200) -> HTMLR
 <style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0a0b;color:#f4f3ee;font:15px/1.5 system-ui,sans-serif}}
 .c{{max-width:420px;padding:28px;border:1px solid #26262b;border-radius:10px;background:#151518}}
 h1{{margin:0 0 8px;font-size:24px;color:{color}}}p{{margin:0;color:#a9a9b1}}</style></head>
-<body><div class="c"><h1>{html.escape(title)}</h1><p>{html.escape(message)}</p></div></body></html>"""
+<body><div class="c"><h1>{html.escape(title)}</h1><p>{html.escape(message)}</p>
+<p style="margin-top:16px"><a href="/app/accounts" style="color:#c8ff3d;font-weight:700;text-decoration:none">Back to Sift →</a></p></div></body></html>"""
     return HTMLResponse(body, status_code=status)

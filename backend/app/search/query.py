@@ -14,7 +14,7 @@ A query mixes Gmail's own syntax with filters only Sift can answer. Parsing spli
     company:NAME                   on that company's timeline
     account:EMAIL-OR-LABEL         only that connected account (also limits which accounts Gmail searches)
     rule:NAME                      decided by that rule
-    is:silenced  is:grouped  is:notified  is:acked  has:note  has:link
+    is:silenced  is:grouped  is:notified  is:acked  is:snoozed  has:note  has:link
     saved:NAME                     everything a saved search matches
 
 Any Sift filter can be negated with "-" and several can be OR-ed inside braces:
@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 
 SIFT_KEYS = {"folder", "tag", "priority", "type", "company", "account", "rule", "saved"}
-SIFT_IS = {"silenced", "grouped", "notified", "acked"}
+SIFT_IS = {"silenced", "grouped", "notified", "acked", "snoozed"}
 SIFT_HAS = {"note", "link"}
 PRIORITIES = {"urgent", "normal", "digest", "silent"}
 MAX_QUERY = 1000
@@ -123,7 +123,7 @@ def _sift_filter(token: str) -> Filter | None:
 LABELS = {
     "folder": "In folder", "tag": "Tag", "priority": "Priority", "type": "Category", "company": "Company",
     "account": "Account", "rule": "Rule", "saved": "Saved search",
-    "is:silenced": "Silenced", "is:grouped": "In a group", "is:notified": "Notified", "is:acked": "Notification delivered",
+    "is:silenced": "Silenced", "is:grouped": "In a group", "is:snoozed": "Snoozed", "is:notified": "Notified", "is:acked": "Notification delivered",
     "has:note": "Has a note", "has:link": "Has a link",
 }
 

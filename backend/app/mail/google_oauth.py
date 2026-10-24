@@ -1,4 +1,8 @@
-"""Google OAuth 2.0 for the web-server flow (read-only Gmail scope).
+"""Google OAuth 2.0 for the web-server flow.
+
+Scopes: every account starts read-only. Write access (gmail.modify: archive, labels, read state,
+star, trash, snooze) is asked for per account the first time the user wants it, with incremental
+authorization (include_granted_scopes), so accounts that are only read never get it.
 
 Errors (Google "Using OAuth 2.0 for Web Server Applications"):
 - admin_policy_enforced is shown on Google's own page; the user is not redirected,
@@ -21,7 +25,9 @@ from app.mail.base import AuthRevoked
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]  # minimum scope until phases 3-4
+READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
+SCOPES = [READONLY_SCOPE]  # what a new connection asks for
 CALLBACK_PATH = "/api/v1/accounts/oauth/callback"
 STATE_TTL = 15 * 60
 BLOCKED_ERRORS = ("admin_policy_enforced", "org_internal")
@@ -44,12 +50,17 @@ def _sign(raw: bytes) -> str:
     return hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
 
 
-def make_state(user_email: str) -> str:
-    raw = json.dumps({"u": user_email, "n": secrets.token_hex(8), "e": int(time.time()) + STATE_TTL}).encode()
+def make_state(user_email: str, extra: dict | None = None) -> str:
+    raw = json.dumps({"u": user_email, "n": secrets.token_hex(8), "e": int(time.time()) + STATE_TTL, "x": extra or {}}).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=") + "." + _sign(raw)
 
 
 def read_state(state: str) -> str:
+    return read_state_data(state)["u"]
+
+
+def read_state_data(state: str) -> dict:
+    """{"u": Sift user email, "x": {"intent": "write", "account": email} or {}}"""
     try:
         body, sig = state.rsplit(".", 1)
         raw = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
@@ -60,12 +71,15 @@ def read_state(state: str) -> str:
     data = json.loads(raw)
     if data["e"] < time.time():
         raise OAuthError("state expired, start again")
-    return data["u"]
+    data.setdefault("x", {})
+    return data
 
 
 # ---- flow --------------------------------------------------------------------
 
-def authorization_url(user_email: str, login_hint: str | None = None) -> str:
+def authorization_url(user_email: str, login_hint: str | None = None, write: bool = False) -> str:
+    """Google's consent page. `write` adds gmail.modify for the account in `login_hint` (on top
+    of what it already granted)."""
     s = get_settings()
     if not s.google_client_id:
         raise OAuthError("Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET")
@@ -73,11 +87,11 @@ def authorization_url(user_email: str, login_hint: str | None = None) -> str:
         "client_id": s.google_client_id,
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": " ".join(SCOPES),
+        "scope": " ".join(SCOPES + ([MODIFY_SCOPE] if write else [])),
         "access_type": "offline",
         "prompt": "consent",  # always returns a refresh token, also on reconnect
         "include_granted_scopes": "true",
-        "state": make_state(user_email),
+        "state": make_state(user_email, {"intent": "write", "account": login_hint} if write else None),
     }
     if login_hint:
         params["login_hint"] = login_hint
