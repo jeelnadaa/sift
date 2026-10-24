@@ -80,6 +80,7 @@ Rules:
 - **Confirm and input dialogs** (web `confirmDialog` / `inputDialog`): never the browser's confirm or prompt. Every delete or remove asks in the app's own modal: the title names exactly what goes ("Delete the Acme timeline?"), one sentence says what stays (mail is never deleted), Cancel is a ghost button, the action is a danger button with a specific verb ("Delete rule", "Remove account").
 - **Banner**: tinted fill + status border; always has the next action as a button on the right.
 - **Locked (AI-off)**: dimmed to 45% with the label "Add an API key to enable" in `--warn`. Keep the non-AI alternative visible beside it.
+- **Conversation (reader, Phase 3a)**: one card per message (`--surface`, `--line`, `--r-lg`), oldest first. Header row: avatar, sender in bold, an "Unread" tag, "to …" when open or the snippet when closed, 📎 when it has attachments, relative time (full date on hover). The newest, the opened and unread messages start open; others open on click. The mail's own HTML sits on a **white card** (`--r` corners) inside the dark page, because mail is designed for white paper. A warn banner above says how many remote images were blocked, with "Load images". Attachments are tiles in a grid (icon, name, size, View for images, Download).
 - **Timeline**: 2px vertical line, 12px event dots (done = signal, urgent = urgent, pending = silent), tag + time + bold title.
 
 ## 6. Layout

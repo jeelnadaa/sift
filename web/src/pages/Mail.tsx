@@ -2,15 +2,16 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, post, type Draft, type Folder, type FolderTree, type Mail, type Preview } from "../api";
 import { Top, foldersChanged } from "../App";
+import { Thread } from "./Thread";
 import { Avatar, Banner, FolderPicker, Modal, Tag, errorText, toast, useLoad } from "../components";
 import { findFolder, fullTime, safeUrl } from "../util";
 
-/** Mail detail: plain text body fetched live (never stored). The sandboxed HTML reader is Phase 3. */
+/** Mail detail: Sift's view of the mail (priority, extracted facts, filing) and the whole
+ * conversation below it, fetched live from Gmail and never stored. */
 export function MailDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const mail = useLoad(() => get<Mail>(`/messages/${id}`), [id]);
-  const body = useLoad(() => get<{ text: string; attachments: string[] }>(`/messages/${id}/body`), [id]);
   const tree = useLoad(() => get<FolderTree>("/folders"), [id]);
   const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id]);
   const [picking, setPicking] = useState(false);
@@ -96,12 +97,9 @@ export function MailDetail() {
               </div>
             )}
 
-            <div className="field" style={{ marginTop: 10 }}><label>Message</label></div>
-            {body.data ? <div className="mail-body">{body.data.text.trim() || m.snippet}</div>
-              : body.error ? <div className="mail-body">{m.snippet}{"\n\n"}<span className="dim">({body.error})</span></div>
-              : <p className="dim">Loading…</p>}
-            {body.data && body.data.attachments.length > 0 && <div className="inline">{body.data.attachments.map((a) => <Tag key={a}>{`📎 ${a}`}</Tag>)}</div>}
-            <p className="dim" style={{ fontSize: 13 }}>Decided by {m.decided_by ?? "default"}{m.delivered_at ? ` · delivered ${fullTime(m.delivered_at)}` : ""}. Shown as plain text; links and images in the mail are not loaded.</p>
+            <div className="field" style={{ marginTop: 10 }}><label>Conversation</label></div>
+            <Thread messageId={id} />
+            <p className="dim" style={{ fontSize: 13 }}>Decided by {m.decided_by ?? "default"}{m.delivered_at ? ` · delivered ${fullTime(m.delivered_at)}` : ""}. Mail is shown in a locked frame: scripts never run, and remote images load only when you ask.</p>
           </div>
         )}
       </section>

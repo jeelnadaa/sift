@@ -30,6 +30,7 @@ interface SiftApi {
     ): MessagePage
     @GET("api/v1/messages/{id}") suspend fun message(@Path("id") id: String): MessageDto
     @GET("api/v1/messages/{id}/body") suspend fun body(@Path("id") id: String): BodyDto
+    @GET("api/v1/messages/{id}/thread") suspend fun thread(@Path("id") id: String, @Query("images") images: Boolean? = null): ThreadDto
 
     @GET("api/v1/accounts") suspend fun accounts(): List<AccountDto>
     @GET("api/v1/accounts/connect-url") suspend fun connectUrl(): ConnectUrl

@@ -183,3 +183,22 @@ textarea.input.grow { resize: none; height: 42px; min-height: 42px; padding: 10p
 .select-menu li.chosen { color: var(--signal); font-weight: 700; }
 .cond .select { min-width: 210px; }
 .cond .select .select-btn { height: 34px; }
+
+/* conversation (Phase 3a reader) */
+.thread { display: flex; flex-direction: column; gap: 10px; }
+.msg { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+.msg.current { border-color: var(--line-2); }
+.msg > header { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+.msg > header:hover { background: var(--surface-2); }
+.msg > header .main { min-width: 0; flex: 1; }
+.msg > header .who { font-weight: 700; display: flex; gap: 8px; align-items: center; }
+.msg > header .subj { color: var(--text-3); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg > header .time { color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.msg-body { padding: 0 14px 14px; }
+/* mail HTML is designed for white paper: keep it on a light card so it reads as the sender made it */
+.mail-frame { display: block; width: 100%; border: 0; border-radius: var(--r); background: #fff; }
+.atts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-top: 12px; }
+.att { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg-2); }
+.att .main { min-width: 0; flex: 1; }
+.att .nm { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-ico { font-size: 18px; }

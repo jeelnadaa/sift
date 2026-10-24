@@ -40,7 +40,6 @@ import com.solarquack.sift.ui.Chip
 import com.solarquack.sift.ui.theme.Radius
 import kotlinx.coroutines.launch
 import com.solarquack.sift.data.Api
-import com.solarquack.sift.data.BodyDto
 import com.solarquack.sift.data.MessageDto
 import com.solarquack.sift.data.userMessage
 import com.solarquack.sift.ui.Avatar
@@ -54,14 +53,12 @@ import com.solarquack.sift.ui.accountColor
 import com.solarquack.sift.ui.fullTime
 import com.solarquack.sift.ui.theme.Ink
 
-/** Read-only mail detail (Phase 1). Plain text only; the sandboxed HTML reader is Phase 3. */
+/** Mail detail: Sift's view of the mail, then the whole conversation (Phase 3a reader). */
 @Composable
 fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}) {
     val context = LocalContext.current
     var m by remember { mutableStateOf<MessageDto?>(null) }
-    var body by remember { mutableStateOf<BodyDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var bodyError by remember { mutableStateOf<String?>(null) }
     var addingTodo by remember { mutableStateOf(false) }
     var likeThis by remember { mutableStateOf<DraftResponse?>(null) }
     var silencedByRule by remember { mutableStateOf<String?>(null) }
@@ -73,11 +70,6 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
         } catch (t: Throwable) {
             error = t.userMessage()
             return@LaunchedEffect
-        }
-        try {
-            body = Api.get(context).body(id)
-        } catch (t: Throwable) {
-            bodyError = t.userMessage()
         }
     }
 
@@ -127,16 +119,8 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
 
         FilingSection(msg.id) { r -> RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; onEditRule() }
 
-        SectionLabel("Message")
-        when {
-            body != null -> SelectionContainer { Text(body!!.text.ifBlank { msg.snippet ?: "" }, color = Ink.text2, style = MaterialTheme.typography.bodyLarge) }
-            bodyError != null -> Text("${msg.snippet ?: ""}\n\n($bodyError)", color = Ink.text2, style = MaterialTheme.typography.bodyLarge)
-            else -> Text("Loading…", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
-        }
-        body?.attachments?.takeIf { it.isNotEmpty() }?.let { files ->
-            SectionLabel("Attachments")
-            files.forEach { Text("📎 $it", color = Ink.text2, style = MaterialTheme.typography.bodyMedium) }
-        }
+        SectionLabel("Conversation")
+        ThreadView(id)
         Spacer(Modifier.height(18.dp))
         Text(
             "Decided by ${msg.decidedBy ?: "default"}" + (msg.deliveredAt?.let { " · delivered ${fullTime(it)}" } ?: ""),

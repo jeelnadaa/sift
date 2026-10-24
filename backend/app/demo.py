@@ -56,6 +56,48 @@ def samples() -> list[dict]:
     ]
 
 
+def is_demo(account: GmailAccount) -> bool:
+    return account.email.endswith("@" + DEMO_EMAIL_DOMAIN)
+
+
+_DEMO_HTML = """<table width="100%" bgcolor="#f4f6fb" cellpadding="24"><tr><td>
+<h2 style="color:#1d3b8b;font-family:Georgia,serif">Acme Corp campus drive</h2>
+<p>Dear students,</p><p>Acme Corp is visiting campus for <b>Software Engineer</b> roles (CTC 12 LPA).</p>
+<p><a href="https://forms.univ.edu/acme" style="background:#1d3b8b;color:#fff;padding:10px 16px;text-decoration:none">Register by Wednesday 6 PM</a></p>
+<p style="color:#666">Eligibility: CGPA 7+.</p><img src="https://tracker.example.com/open.gif?u=123" width="1" height="1">
+</td></tr></table>"""
+
+
+class DemoReader:
+    """Read-only provider for the demo account, so its mail opens in the reader without Gmail.
+    Stored demo ids look like demo-<kind>-<random>; the sample of that kind is returned. The
+    placement mail also gets an HTML version (with a tracking pixel) to show how mail renders."""
+
+    def _sample(self, gmail_id: str) -> dict:
+        kind = gmail_id.split("-")[1] if gmail_id.startswith("demo-") else ""
+        for m in samples():
+            if m["id"].split("-")[1] == kind:
+                m = {**m, "id": gmail_id}
+                if kind == "placement":
+                    plain = m["payload"]
+                    m["payload"] = {"mimeType": "multipart/alternative", "headers": plain["headers"], "parts": [
+                        {"mimeType": "text/plain", "body": plain["body"]},
+                        {"mimeType": "text/html", "body": {"data": _b64(_DEMO_HTML)}},
+                    ]}
+                return m
+        raise KeyError(gmail_id)
+
+    def get_full(self, message_id: str) -> dict:
+        return self._sample(message_id)
+
+    def get_thread(self, thread_id: str) -> dict:
+        kind = thread_id.removeprefix("demo-thread-").split("-")[0]
+        return {"id": thread_id, "messages": [self._sample(f"demo-{kind}-x")]}
+
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        raise KeyError(attachment_id)
+
+
 class DemoProvider:
     """MailProvider over in-memory samples (no network)."""
 

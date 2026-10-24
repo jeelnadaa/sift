@@ -437,3 +437,31 @@ data class PreferenceIn(@SerialName("sender_or_domain") val senderOrDomain: Stri
 
 @Serializable
 data class PreferenceDto(@SerialName("sender_or_domain") val senderOrDomain: String, val mode: String)
+
+// ---- reader (Phase 3a) ----
+
+@Serializable
+data class AddrDto(val name: String = "", val email: String = "")
+
+@Serializable
+data class ThreadAttachmentDto(val filename: String, val mime: String = "", val size: Long = 0, val url: String, @SerialName("view_url") val viewUrl: String? = null)
+
+@Serializable
+data class ThreadMessageDto(
+    @SerialName("gmail_id") val gmailId: String,
+    val id: String? = null,
+    val from: AddrDto? = null,
+    val to: List<AddrDto> = emptyList(),
+    val cc: List<AddrDto> = emptyList(),
+    val subject: String = "",
+    val date: String? = null,
+    val unread: Boolean = false,
+    val snippet: String = "",
+    val text: String = "",
+    @SerialName("html_url") val htmlUrl: String? = null,
+    @SerialName("images_blocked") val imagesBlocked: Int = 0,
+    val attachments: List<ThreadAttachmentDto> = emptyList(),
+)
+
+@Serializable
+data class ThreadDto(val subject: String = "", val account: String? = null, val images: Boolean = false, val messages: List<ThreadMessageDto> = emptyList())

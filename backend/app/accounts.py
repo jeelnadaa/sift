@@ -48,6 +48,10 @@ def _access_token(account: GmailAccount) -> str:
 
 
 def provider_for(account: GmailAccount) -> MailProvider:
+    from app import demo  # demo accounts have no Gmail token; their mail is read from the samples
+
+    if demo.is_demo(account):
+        return demo.DemoReader()
     return provider_factory(_access_token(account))
 
 
