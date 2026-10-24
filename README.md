@@ -244,7 +244,7 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 ## Known limitations (Phase 1)
 
 - Verified on the owner's laptop (native Windows, Postgres queue, poll mode) with a real Gmail account, phone and Gemini key. Docker Compose, the Redis queue, Cloudflare Tunnel and push mode are written but not yet run.
-- Poll mode: about 25 s from Gmail receiving a mail to the phone (≈17 s until it appears in Gmail's change history plus the 5 s poll, ≈7 s processing with AI, ≈1 s push). Push mode removes most of the first part.
+- About 23 s from Gmail's receive time to the phone in push mode (25 s in poll mode): Gmail itself reports new mail ~17 s after its timestamp in both modes, then ~4 s processing with AI and <1 s delivery.
 - `sift.solarquack.in` is only up while the laptop is on (and awake) with Sift and the tunnel service running.
 - If an account is offline for over a week, Gmail's history expires and Sift restarts from "now" without scanning the gap.
 - When the daily token cap is reached, mail is delivered as normal straight away rather than queued for AI later. A rate-limited (429) AI call is retried once, then the mail is delivered as normal.

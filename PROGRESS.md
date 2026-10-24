@@ -58,8 +58,11 @@ Rule: commit every change to git, never push (the owner pushes).
 - 2026-10-24 — **Auto-start on the laptop.** `scripts/install-autostart.ps1` registers a per-user "Sift" scheduled task (at sign-in + every 5 minutes as a watchdog, MultipleInstances=IgnoreNew) that runs `run-local.ps1` hidden. `run-local.ps1` now supervises its three services (restarts a crashed one after 10 s, logs to `logs/supervisor.log`, keeps the previous log as `<name>.prev.log`) and kills leftover Sift processes from an earlier run before starting. Task Scheduler's restart-on-failure did not fire for a script exit, hence the in-script supervisor plus watchdog. Verified: killed API restarted by the supervisor in ~15 s.
   - Seen once and not explained: the task ended with 0xC000013A (Ctrl+C/console close) after a test that killed child processes; the watchdog trigger covers that case.
 - 2026-10-24 — Hosting research (owner: free, no card, only the owner uses it). Findings: laptop + Cloudflare Tunnel stays the only fully free always-on option without a card; Azure for Students (full-time students, no card, $100 credit per year) is the best VM option; single-service free PaaS (e.g. Koyeb, card "sometimes" required) would need api+worker+scheduler merged into one process plus a separate no-card Postgres (e.g. Aiven free). Render free sleeps (not allowed by the brief); Fly.io and Railway are trial/credit only.
+- 2026-10-24 — **Pub/Sub push mode live** (`CHANGE_DETECTION=push`). Owner created subscription `sift-gmail-push` (push to https://sift.solarquack.in/webhooks/gmail, OIDC auth with `sift-pubsub-push@sift-quack`, audience = webhook URL). Unsigned and forged pushes rejected with 401. Watch started at boot by the scheduler (expires 2026-10-31, renewed daily), Gmail's initial notification verified and routed in 2.6 s. Safety check every 5 minutes stays on.
+  - Real mail: Gmail receive timestamp → Pub/Sub notification at Sift **17.8 s** → processed with Gemini and pushed **+4.3 s** → on phone **22.7 s** total (poll mode was ~25 s). The ~17 s is Gmail's own delay before it reports a message (same in both modes), not our polling.
 
 ## Decisions
+- **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.
 - Designs are static HTML/CSS/JS prototypes; the visual reference for the React web UI and Compose app. Keep `DESIGN.md` in sync with any design change, in the same commit.
 - Fonts: Clash Display (display), Satoshi (all UI text), self-hosted; JetBrains Mono only for code.
 - **Defaults taken for Phase 0 (owner can change):**
@@ -87,10 +90,9 @@ Rule: commit every change to git, never push (the owner pushes).
    a. Web UI: serve the React build from the same server (https://sift.solarquack.in/app, same sign-in) — proposed default.
    b. "Add to calendar": Android calendar intent (no extra Google permission) — proposed default — instead of requesting the Google Calendar scope.
    c. Build Phase 2 in three reviewable steps: 2a opportunities, timelines, deadlines/reminders, to-do (the acceptance criterion); 2b rule editor with preview, one-tap and plain-English rules, fingerprint suggestions, onboarding scan, custom categories, token usage screen; 2c folders, opt-in grouping, web UI pages.
-3. Pub/Sub push test: owner creates the push subscription (see README §7), then switch `CHANGE_DETECTION=push` and measure.
 
 ## Known limitations (Phase 1)
-- Poll mode end to end ~25 s (Gmail history lag dominates); push mode needs billing + a stable public hostname.
+- End to end ~23 s in push mode (~25 s poll): Gmail reports new mail ~17 s after its receive timestamp; processing with AI ~4 s. Not reducible on our side except by skipping the AI step.
 - `sift.solarquack.in` is only reachable while the laptop is on with Sift and the tunnel service running.
 - Docker Compose, Redis queue, Cloudflare Tunnel and push mode still not run.
 - History older than ~a week expires: Sift restarts from "now" without a catch-up scan of the gap.

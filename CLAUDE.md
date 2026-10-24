@@ -16,6 +16,7 @@ Full product spec and build phases: `Inbox_Agent_Master_Prompt.md`. That file is
 6. Tell the owner in 2–3 lines where things stand, then continue. Do not re-ask things already decided in `PROGRESS.md`.
 
 ## 3. How to work
+- **Production quality, always (owner, 2026-10-24).** Build everything as if Sift will be published for other users, even while the owner is the only user: real authentication and abuse protection, input validation, safe defaults, error handling, accessibility, tests. "Only one user today" is never a reason to cut a corner. Deployment choices come after the app is complete.
 - **Phase by phase.** Build only the current phase from the master prompt (section 14). After each phase: run it, check every acceptance criterion, report what works and what does not, list known limitations, then **stop and wait for the owner's go-ahead** before the next phase.
 - Before writing code for a phase, list the decisions you need from the owner as a short numbered list (hosting choice, package names, Firebase and Google Cloud details). Unresolved ones live in `PROGRESS.md` under Open questions.
 - Keep it simple. Do not add features that are not in the brief.
