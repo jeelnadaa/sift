@@ -84,6 +84,15 @@ class GmailProvider:
             params["pageToken"] = page["nextPageToken"]
         return ids[:limit]
 
+    def search(self, query: str, page_token: str | None, page_size: int) -> tuple[list[dict], str | None, int]:
+        """One page of Gmail search results, newest first: ([{id, threadId}], next page token,
+        Gmail's estimate of the total). Spam and trash only when the query asks (in:spam)."""
+        params = {"q": query, "maxResults": str(page_size)}
+        if page_token:
+            params["pageToken"] = page_token
+        page = self._call("GET", "/messages", params=params)
+        return page.get("messages", []), page.get("nextPageToken"), int(page.get("resultSizeEstimate") or 0)
+
     def get_metadata(self, message_id: str) -> dict:
         """Headers only (20 quota units). Never fetches the body."""
         params = [("format", "metadata")] + [("metadataHeaders", h) for h in METADATA_HEADERS]

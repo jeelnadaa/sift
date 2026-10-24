@@ -10,6 +10,7 @@ from app import accounts as account_service
 from app import grouping, reader, rule_tools
 from app.db import get_db
 from app.mail.base import AuthRevoked
+from app.mail.gmail import GmailError
 from app.mail.message import extract_body
 from app.models import GmailAccount, Message, Notification, User
 from app.security import current_user
@@ -106,23 +107,28 @@ def get_thread(message_id: uuid.UUID, images: bool = False, user: User = Depends
     unless `images`, and then only through the image proxy), plain text, and attachments as
     signed links. Not stored, not logged."""
     m = _own(db, user, message_id)
-    account = db.get(GmailAccount, m.account_id)
+    return thread_json(db, user, db.get(GmailAccount, m.account_id), m.thread_id, images, m.subject)
+
+
+def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, images: bool, fallback_subject: str | None = None) -> dict:
     if account.status != "active":
         raise HTTPException(409, f"account is {account.status}")
     try:
-        thread = account_service.provider_for(account).get_thread(m.thread_id)
+        thread = account_service.provider_for(account).get_thread(thread_id)
     except AuthRevoked as exc:
         account_service.mark_auth_failure(account, exc)
         db.commit()
         raise HTTPException(409, f"account is {account.status}") from exc
+    except GmailError as exc:
+        raise HTTPException(404 if exc.status == 404 else 502, "conversation not available") from exc
     msgs = reader.render_thread(thread, user_id=str(user.id), account_id=str(account.id), base="", images=images)
     stored = dict(db.execute(select(Message.gmail_id, Message.id).where(
         Message.account_id == account.id, Message.gmail_id.in_([x["gmail_id"] for x in msgs]))).all())
     for x in msgs:
         x["id"] = str(stored[x["gmail_id"]]) if x["gmail_id"] in stored else None
         x.pop("html")  # clients load the sandboxed document from html_url instead
-    return {"thread_id": m.thread_id, "account": account.label or account.email, "account_id": str(account.id),
-            "subject": (msgs[0]["subject"] if msgs else m.subject) or "", "images": images, "messages": msgs}
+    return {"thread_id": thread_id, "account": account.label or account.email, "account_id": str(account.id),
+            "subject": (msgs[0]["subject"] if msgs else fallback_subject) or "", "images": images, "messages": msgs}
 
 
 @router.get("/{message_id}/body")
