@@ -23,6 +23,7 @@ from app.mail.message import parse_metadata
 from app.models import GmailAccount, OnboardingScan
 from app.opportunities import GENERIC_DOMAINS
 from app.rule_tools import save_rule
+from app.rules import SECURITY_LEAF
 
 log = logging.getLogger(__name__)
 QUERY = "newer_than:30d -in:sent -in:drafts -in:chats"
@@ -30,8 +31,7 @@ MAX_MAILS = 1500
 TOP_SENDERS = 100
 PER_MINUTE = 200
 ACTIONS = ("silent", "digest", "notify_normal", "notify_urgent", "keep")
-SECURITY_WORDS = ["fraud", "blocked", "suspicious", "unauthori", "security alert", "password", "verification code", "otp", "login attempt", "sign-in"]
-SECURITY_EXCEPTION = {"any": [{"field": "subject", "op": "contains_any", "value": SECURITY_WORDS}]}
+SECURITY_EXCEPTION = {"any": [SECURITY_LEAF]}
 
 
 def suggest(hints: set[str]) -> str:

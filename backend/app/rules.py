@@ -28,6 +28,21 @@ from zoneinfo import ZoneInfo
 ACTION_TYPES = ("ignore", "silent", "digest", "notify_normal", "notify_urgent", "llm")
 FIELDS = ("sender", "sender_domain", "subject", "body", "label", "header", "has_attachment", "time", "account", "amount")
 AMOUNT_OPS = ("gt", "gte", "lt", "lte")
+# Security mail must never be quieted by a broad rule: quieting rules made by Sift (first scan,
+# plain English) always carry an exception for these subject words.
+SECURITY_WORDS = ["fraud", "scam", "blocked", "suspicious", "unauthori", "security alert", "password",
+                  "verification code", "otp", "login attempt", "sign-in"]
+SECURITY_LEAF = {"field": "subject", "op": "contains_any", "value": SECURITY_WORDS}
+
+
+def has_security_exception(exceptions: dict | None) -> bool:
+    """True when some single-condition exception already covers fraud and suspicious activity."""
+    for item in (exceptions or {}).get("any", []) if isinstance(exceptions, dict) else []:
+        if item.get("field") == "subject" and item.get("op") == "contains_any":
+            words = " ".join(str(v).lower() for v in (item.get("value") or []))
+            if "fraud" in words and ("suspicious" in words or "scam" in words):
+                return True
+    return False
 MAX_REGEX = 300
 # ₹ 1,180.50 / Rs. 240 / INR 5000 / 2,000 rupees
 _AMOUNT = re.compile(

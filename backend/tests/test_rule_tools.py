@@ -288,3 +288,20 @@ def test_custom_categories(db, setup, client, fake_llm):
 ])
 def test_scan_suggestions_never_demote_on_weak_signals(hints, expected):
     assert scan.suggest(hints) == expected
+
+
+def test_quieting_drafts_always_get_a_security_exception(db, setup, client, fake_llm):
+    user, *_ = setup
+    with_key(db, user)
+    fake_llm.rule = {"name": "Banks", "match": "all", "conditions": [{"field": "sender_domain", "op": "in", "values": ["kotak.com"]}],
+                     "exception_groups": [{"conditions": [{"field": "subject", "op": "contains_any", "values": ["urgent", "alert"]}]}],
+                     "action": "silent", "notes": []}
+    d = client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "silence bank mail unless urgent"}).json()["draft"]
+    first = d["exceptions"]["any"][0]
+    assert "fraud" in first["value"] and "scam" in first["value"] and "otp" in first["value"]
+    assert any("safety exception" in n for n in d["notes"])
+    assert d["exceptions"]["any"][1]["value"] == ["urgent", "alert"]  # the user's own exception kept
+
+    fake_llm.rule = {**fake_llm.rule, "action": "notify_urgent"}  # not quieting: nothing added
+    d = client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "kotak mail is urgent"}).json()["draft"]
+    assert d["exceptions"]["any"][0]["value"] == ["urgent", "alert"]

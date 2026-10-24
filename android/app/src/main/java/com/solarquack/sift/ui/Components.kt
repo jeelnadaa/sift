@@ -125,9 +125,13 @@ fun GhostButton(label: String, modifier: Modifier = Modifier, color: Color = Ink
 }
 
 @Composable
-fun Field(value: String, onChange: (String) -> Unit, label: String, password: Boolean = false, keyboard: KeyboardType = KeyboardType.Text, mono: Boolean = false) {
+fun Field(
+    value: String, onChange: (String) -> Unit, label: String, password: Boolean = false, keyboard: KeyboardType = KeyboardType.Text,
+    mono: Boolean = false, placeholder: String? = null, singleLine: Boolean = true,
+) {
     OutlinedTextField(
-        value = value, onValueChange = onChange, label = { Text(label) }, singleLine = true, shape = Radius.md,
+        value = value, onValueChange = onChange, label = { Text(label) }, singleLine = singleLine, maxLines = if (singleLine) 1 else 4, shape = Radius.md,
+        placeholder = placeholder?.let { { Text(it, color = Ink.text3) } },
         modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard),

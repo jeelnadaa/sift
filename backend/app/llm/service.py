@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app import crypto, user_settings
 from app.llm.base import LlmAuthError, LlmError, LlmProvider, LlmQuotaError
 from app.models import Category, LlmCredential, TokenUsage
+from app.rules import SECURITY_LEAF, has_security_exception
 
 log = logging.getLogger(__name__)
 
@@ -365,10 +366,15 @@ def rule_from_text(db: Session, user_id: uuid.UUID, text: str) -> dict:
     notes = [str(n)[:200] for n in data.get("notes") or [] if str(n).strip()][:4]
     if action in ("silent", "ignore", "digest") and all(l["field"] in BROAD_FIELDS for l in leaves):
         notes.append("Very broad: this matches a whole Gmail category, not specific senders. Check the preview before saving.")
+    exceptions = {"any": groups} if groups else None
+    if action in ("silent", "ignore", "digest") and not has_security_exception(exceptions):
+        # never rely on the model remembering this: security mail always gets through
+        exceptions = {"any": [SECURITY_LEAF, *groups]}
+        notes.append("Added a safety exception so fraud, scam, OTP and sign-in alerts from these senders still reach you. You can edit it.")
     return {
         "name": str(data.get("name") or text)[:200],
         "conditions": {("any" if data.get("match") == "any" else "all"): leaves},
-        "exceptions": {"any": groups} if groups else None,
+        "exceptions": exceptions,
         "action": {"type": action},
         "account_scope": None,
         "notes": notes,

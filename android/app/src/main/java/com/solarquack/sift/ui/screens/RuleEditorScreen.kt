@@ -3,7 +3,8 @@ package com.solarquack.sift.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -76,17 +77,17 @@ object RuleEditorSeed {
 }
 
 /** One editable condition row. `kind` maps to a field/op pair of the rule engine. */
-enum class CondKind(val label: String, val field: String, val op: String, val hint: String) {
-    SENDER_DOMAIN("Sender domain is", "sender_domain", "in", "kotak.com, slice.bank.in"),
-    SENDER("Sender address is", "sender", "in", "alerts@kotak.com"),
-    SUBJECT_ANY("Subject contains any of", "subject", "contains_any", "debited, credited, UPI"),
-    SUBJECT_REGEX("Subject matches (regex)", "subject", "matches", "\\b(debited|credited)\\b"),
-    BODY_ANY("Body contains any of", "body", "contains_any", "fraud, blocked"),
-    AMOUNT_ABOVE("Amount above ₹", "amount", "gt", "2000"),
-    AMOUNT_BELOW("Amount below ₹", "amount", "lt", "500"),
-    LABEL("Gmail label is", "label", "has", "CATEGORY_PROMOTIONS"),
-    HEADER("Header is present", "header", "present", "List-Unsubscribe"),
-    ATTACHMENT("Has an attachment", "has_attachment", "is", ""),
+enum class CondKind(val label: String, val field: String, val op: String, val inputLabel: String, val hint: String, val list: Boolean) {
+    SENDER_DOMAIN("Sender domain is", "sender_domain", "in", "Domains, comma separated", "kotak.com, slice.bank.in", true),
+    SENDER("Sender address is", "sender", "in", "Addresses, comma separated", "alerts@kotak.com", true),
+    SUBJECT_ANY("Subject contains any of", "subject", "contains_any", "Words or phrases, comma separated", "debited, credited, UPI", true),
+    SUBJECT_REGEX("Subject matches (regex)", "subject", "matches", "Regular expression", "\\b(debited|credited)\\b", false),
+    BODY_ANY("Body contains any of", "body", "contains_any", "Words or phrases, comma separated", "fraud, blocked", true),
+    AMOUNT_ABOVE("Amount above ₹", "amount", "gt", "Rupees", "2000", false),
+    AMOUNT_BELOW("Amount below ₹", "amount", "lt", "Rupees", "500", false),
+    LABEL("Gmail label is", "label", "has", "Gmail label", "CATEGORY_PROMOTIONS", false),
+    HEADER("Header is present", "header", "present", "Header name", "List-Unsubscribe", false),
+    ATTACHMENT("Has an attachment", "has_attachment", "is", "", "", false),
 }
 
 class CondRow(kind: CondKind, text: String) {
@@ -180,6 +181,7 @@ private fun describe(tree: JsonElement?): String = when {
 private val ACTIONS = listOf("notify_urgent" to "Notify urgent", "notify_normal" to "Notify normal", "digest" to "Digest", "silent" to "Store silently", "ignore" to "Ignore", "llm" to "Ask AI")
 private val QUIETING = setOf("silent", "ignore", "digest")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RuleEditorScreen(onDone: () -> Unit) {
     val context = LocalContext.current
@@ -284,7 +286,7 @@ fun RuleEditorScreen(onDone: () -> Unit) {
         }
 
         SectionLabel("Then")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ACTIONS.forEach { (key, label) -> Chip(label, action == key, dot = Ink.tier(when (key) { "notify_urgent" -> "urgent"; "notify_normal", "llm" -> "normal"; "digest" -> "digest"; else -> null })) { action = key } }
         }
 
@@ -350,7 +352,10 @@ private fun ConditionRow(row: CondRow, canRemove: Boolean, onRemove: () -> Unit)
             }
             if (canRemove) Text("✕", color = Ink.text3, modifier = Modifier.clickable(onClick = onRemove).padding(8.dp))
         }
-        if (row.kind != CondKind.ATTACHMENT) Field(row.text, { row.text = it }, row.kind.hint, mono = row.kind == CondKind.SUBJECT_REGEX,
-            keyboard = if (row.kind == CondKind.AMOUNT_ABOVE || row.kind == CondKind.AMOUNT_BELOW) KeyboardType.Number else KeyboardType.Text)
+        if (row.kind != CondKind.ATTACHMENT) Field(
+            row.text, { row.text = it }, row.kind.inputLabel, mono = row.kind == CondKind.SUBJECT_REGEX,
+            keyboard = if (row.kind == CondKind.AMOUNT_ABOVE || row.kind == CondKind.AMOUNT_BELOW) KeyboardType.Number else KeyboardType.Text,
+            placeholder = "e.g. ${row.kind.hint}", singleLine = !row.kind.list,
+        )
     }
 }
