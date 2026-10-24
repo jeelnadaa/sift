@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun App() {
         val nav = rememberNavController()
-        val start = if (Session.signedIn(this)) "feed" else "login"
+        val start = if (Session.signedIn(this)) "feed" else "welcome"
         LaunchedEffect(openMessage) {
             openMessage?.let { if (Session.signedIn(this@MainActivity)) nav.navigate("mail/$it") }
             openMessage = null
@@ -103,7 +103,14 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.fillMaxSize().background(Ink.bg).systemBarsPadding()) {
             Box(Modifier.weight(1f)) {
                 NavHost(nav, startDestination = start) {
-                    composable("login") { LoginScreen { nav.navigate("feed") { popUpTo("login") { inclusive = true } } } }
+                    composable("welcome") {
+                        com.solarquack.sift.ui.screens.LandingScreen(onGetStarted = { nav.navigate("login?register=true") }, onSignIn = { nav.navigate("login") })
+                    }
+                    composable("login?register={register}", arguments = listOf(androidx.navigation.navArgument("register") {
+                        type = androidx.navigation.NavType.BoolType; defaultValue = false
+                    })) { entry ->
+                        LoginScreen(startRegistering = entry.arguments?.getBoolean("register") == true) { nav.navigate("feed") { popUpTo(0) } }
+                    }
                     composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }) }
                     composable(
                         "compose?mode={mode}&message={message}&account={account}&gmail={gmail}&draft={draft}",
@@ -164,7 +171,7 @@ class MainActivity : ComponentActivity() {
                     route.startsWith("folder/") || route.startsWith("group/") || route.startsWith("read/"))
                 if (fab) WriteFab(Modifier.align(Alignment.BottomEnd)) { nav.navigate(compose()) }
             }
-            if (route != null && route != "login") BottomBar(nav, route)
+            if (route != null && !route.startsWith("login") && route != "welcome") BottomBar(nav, route)
         }
     }
 

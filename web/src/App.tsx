@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Logo } from "./Logo";
+import { Landing } from "./pages/Landing";
 import { ComposePage } from "./pages/Compose";
 import { OutboxPage } from "./pages/Outbox";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -40,7 +41,8 @@ export function App() {
     <>
       <Routes>
         <Route path="/login" element={signedIn ? <Navigate to="/" replace /> : <Login onSignedIn={() => setSignedIn(true)} />} />
-        <Route path="/*" element={signedIn ? <Shell onSignOut={() => { session.clear(); setSignedIn(false); }} /> : <Navigate to="/login" replace />} />
+        <Route path="/welcome" element={<Landing />} />
+        <Route path="/*" element={signedIn ? <Shell onSignOut={() => { session.clear(); setSignedIn(false); }} /> : <Navigate to="/welcome" replace />} />
       </Routes>
       <Toaster />
       <TooltipLayer />

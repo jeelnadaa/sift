@@ -160,6 +160,10 @@ data class TimelineEventDto(
     val subject: String? = null,
     @SerialName("sender_name") val senderName: String? = null,
     val account: String? = null,
+    val title: String? = null,
+    val note: String? = null,
+    val remind: Boolean = false,
+    val manual: Boolean = false,  // a section added by hand
 )
 
 @Serializable
@@ -208,6 +212,7 @@ data class TodoDto(
 data class TodoIn(
     val title: String,
     @SerialName("due_at") val dueAt: String? = null,
+    val notes: String? = null,
     @SerialName("message_id") val messageId: String? = null,
     @SerialName("opportunity_id") val opportunityId: String? = null,
 )
@@ -216,6 +221,7 @@ data class TodoIn(
 data class TodoPatch(
     val done: Boolean? = null,
     val title: String? = null,
+    val notes: String? = null,
     @SerialName("due_at") val dueAt: String? = null,
     @SerialName("clear_due") val clearDue: Boolean = false,
 )
@@ -746,3 +752,9 @@ data class AiDraftOut(val body: String)
 
 @Serializable
 data class OkResponse(val ok: Boolean = true)
+
+@Serializable
+data class SectionIn(val kind: String, val title: String, val note: String? = null, val at: String, val remind: Boolean = false)
+
+@Serializable
+data class SectionPatch(val kind: String? = null, val title: String? = null, val note: String? = null, val at: String? = null, val remind: Boolean? = null)

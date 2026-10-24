@@ -133,7 +133,11 @@ export interface Suggestion { id: string; domain: string; template: string; coun
 export interface Category { id: string | null; name: string; definition: string | null; builtin: boolean }
 
 export interface Opportunity { id: string; company: string; aliases: string[]; domains: string[]; status: string; deadline: string | null; events: number; last_kind: string | null; updated_at: string }
-export interface TimelineEvent { id: string; kind: string; matched_by: string; occurred_at: string; deadline: string | null; links: Link[]; platform: string | null; summary: string | null; message_id: string | null; subject: string | null; sender_name: string | null; account: string | null }
+export interface TimelineEvent {
+  id: string; kind: string; matched_by: string; occurred_at: string; deadline: string | null; links: Link[]; platform: string | null; summary: string | null;
+  message_id: string | null; subject: string | null; sender_name: string | null; account: string | null;
+  title: string | null; note: string | null; remind: boolean; manual: boolean;  // manual: a section added by hand
+}
 export interface OpportunityDetail extends Opportunity { timeline: TimelineEvent[] }
 
 export interface Todo { id: string; title: string; notes: string | null; due_at: string | null; done: boolean; source: string; message_id: string | null; subject: string | null; sender_name: string | null; opportunity_id: string | null; company: string | null }

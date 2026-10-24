@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Logo } from "../Logo";
 import { get, post, session } from "../api";
 import { errorText } from "../components";
@@ -9,9 +10,11 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [canRegister, setCanRegister] = useState(false);
-  const [registering, setRegistering] = useState(false);
+  const [registering, setRegistering] = useState(() => new URLSearchParams(location.search).get("register") === "1");
   const [confirm, setConfirm] = useState("");
-  useEffect(() => { get<{ registration: boolean }>("/auth/options").then((o) => setCanRegister(o.registration)).catch(() => {}); }, []);
+  useEffect(() => {
+    get<{ registration: boolean }>("/auth/options").then((o) => { setCanRegister(o.registration); if (!o.registration) setRegistering(false); }).catch(() => {});
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -53,7 +56,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
             {registering ? "I already have an account" : "Create an account"}
           </button>
         )}
-        <p className="dim" style={{ fontSize: 13 }}>Same account as the Sift app on your phone.</p>
+        <p className="dim" style={{ fontSize: 13 }}>Same account as the Sift app on your phone. <Link className="link dim" to="/welcome">What is Sift?</Link></p>
       </form>
     </div>
   );

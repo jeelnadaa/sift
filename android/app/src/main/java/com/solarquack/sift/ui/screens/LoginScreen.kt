@@ -57,7 +57,7 @@ fun Wordmark(size: Int = 30) {
 }
 
 @Composable
-fun LoginScreen(onSignedIn: () -> Unit) {
+fun LoginScreen(startRegistering: Boolean = false, onSignedIn: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var server by remember { mutableStateOf(Session.server(context)) }
@@ -65,7 +65,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var registering by remember { mutableStateOf(false) }
+    var registering by remember { mutableStateOf(startRegistering) }
     var confirm by remember { mutableStateOf("") }
     var canRegister by remember { mutableStateOf(false) }
     LaunchedEffect(server) {
@@ -75,6 +75,7 @@ fun LoginScreen(onSignedIn: () -> Unit) {
             Session.setServer(context, server)
             Api.get(context).authOptions().registration
         }.getOrDefault(false)
+        if (!canRegister) registering = false
     }
 
     Column(

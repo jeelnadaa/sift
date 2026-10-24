@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.solarquack.sift.data.Api
 import com.solarquack.sift.data.TodoDto
+import androidx.compose.foundation.verticalScroll
 import com.solarquack.sift.data.TodoIn
 import com.solarquack.sift.data.TodoPatch
 import com.solarquack.sift.data.userMessage
@@ -80,6 +81,7 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var adding by remember { mutableStateOf(false) }
+    var editingTodo by remember { mutableStateOf<TodoDto?>(null) }
 
     fun load() = scope.launch {
         loading = true
@@ -114,7 +116,7 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
                                 color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 32.dp))
                         }
                     }
-                    items(items, key = { it.id }) { t -> TodoRow(t, onToggle = { setDone(t, !t.done) }, onOpen = { t.messageId?.let(onOpenMail) }) }
+                    items(items, key = { it.id }) { t -> TodoRow(t, onToggle = { setDone(t, !t.done) }, onOpen = { t.messageId?.let(onOpenMail) }, onEdit = { editingTodo = t }) }
                 }
             }
         }
@@ -122,9 +124,18 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp))
     }
 
-    if (adding) AddTodoDialog(onDismiss = { adding = false }) { title, due ->
+    if (adding) EditTodoDialog(null, onDismiss = { adding = false }) { title, notes, due ->
         adding = false
-        scope.launch { try { Api.get(context).createTodo(TodoIn(title, due)); state = "open"; load() } catch (t: Throwable) { error = t.userMessage() } }
+        scope.launch { try { Api.get(context).createTodo(TodoIn(title, due, notes.ifBlank { null })); state = "open"; load() } catch (t: Throwable) { error = t.userMessage() } }
+    }
+    editingTodo?.let { t ->
+        EditTodoDialog(t, onDismiss = { editingTodo = null }) { title, notes, due ->
+            editingTodo = null
+            scope.launch {
+                try { Api.get(context).updateTodo(t.id, TodoPatch(title = title, notes = notes, dueAt = due, clearDue = due == null)); load() }
+                catch (e: Throwable) { error = e.userMessage() }
+            }
+        }
     }
 }
 
@@ -140,7 +151,7 @@ private fun dueLabel(iso: String?): Pair<String, androidx.compose.ui.graphics.Co
 }
 
 @Composable
-private fun TodoRow(t: TodoDto, onToggle: () -> Unit, onOpen: () -> Unit) {
+private fun TodoRow(t: TodoDto, onToggle: () -> Unit, onOpen: () -> Unit, onEdit: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(enabled = t.messageId != null, onClick = onOpen).padding(vertical = 12.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(24.dp).background(if (t.done) Ink.signal else Ink.bg, Radius.sm).border(1.5.dp, if (t.done) Ink.signal else Ink.line2, Radius.sm)
@@ -152,8 +163,10 @@ private fun TodoRow(t: TodoDto, onToggle: () -> Unit, onOpen: () -> Unit) {
                 textDecoration = if (t.done) TextDecoration.LineThrough else null)
             val meta = listOfNotNull(t.company, t.senderName?.takeIf { t.company == null }, if (t.source == "ai") "From mail" else null).joinToString(" · ")
             if (meta.isNotEmpty()) Text(meta, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            t.notes?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ink.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
         if (!t.done) dueLabel(t.dueAt)?.let { Tag(it.first, it.second) }
+        Text("Edit", color = Ink.signal, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onEdit).padding(horizontal = 8.dp, vertical = 10.dp))
     }
     HorizontalDivider(color = Ink.line)
 }
@@ -212,4 +225,32 @@ fun AddTodoDialog(initialTitle: String = "", onDismiss: () -> Unit, onAdd: (Stri
         ) { DatePicker(state = state) }
     }
     Spacer(Modifier.height(0.dp))
+}
+
+/** Add a to-do or change one: name, notes, and a deadline at any day and minute. */
+@Composable
+fun EditTodoDialog(todo: TodoDto?, onDismiss: () -> Unit, onSave: (title: String, notes: String, due: String?) -> Unit) {
+    var title by remember { mutableStateOf(todo?.title ?: "") }
+    var notes by remember { mutableStateOf(todo?.notes ?: "") }
+    var due by remember { mutableStateOf(com.solarquack.sift.ui.parseZoned(todo?.dueAt)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (todo == null) "New to-do" else "Edit to-do") },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field(title, { title = it.take(300) }, "What needs doing")
+                Text("Due", color = Ink.text3, style = MaterialTheme.typography.labelSmall)
+                com.solarquack.sift.ui.DateTimeRow(due, { due = it })
+                if (due != null) Text("Reminders 24 hours and 2 hours before.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                Field(notes, { notes = it.take(4000) }, "Notes (optional)", singleLine = false)
+            }
+        },
+        confirmButton = {
+            PrimaryButton(if (todo == null) "Add" else "Save", enabled = title.isNotBlank()) {
+                onSave(title.trim(), notes.trim(), due?.let { with(com.solarquack.sift.ui.DateTimeIso) { it.isoString() } })
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        containerColor = Ink.surface, shape = Radius.xl,
+    )
 }

@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { del, get, patch, post, type Opportunity, type OpportunityDetail } from "../api";
+import { del, get, patch, post, type Opportunity, type OpportunityDetail, type TimelineEvent } from "../api";
 import { Top } from "../App";
-import { Avatar, Banner, confirmDialog, errorText, Modal, Tag, TextField, toast, useLoad } from "../components";
-import { fullTime, humanize, safeUrl } from "../util";
+import { Avatar, Banner, confirmDialog, errorText, inputDialog, Modal, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
+import { fullTime, humanize, safeUrl, toLocalInput } from "../util";
+
+export const STAGES: { value: string; label: string }[] = [
+  { value: "announcement", label: "Announcement" }, { value: "registration", label: "Registration" }, { value: "assessment", label: "Test" },
+  { value: "interview", label: "Interview" }, { value: "result", label: "Result" }, { value: "update", label: "Update" },
+];
 
 const KIND_TONE: Record<string, string> = { assessment_link: "urgent", interview: "urgent", result: "ok", registration: "normal", placement_announcement: "normal" };
 
@@ -48,12 +53,22 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
   const o = useLoad(() => get<OpportunityDetail>(`/opportunities/${id}`), [id]);
   const [editing, setEditing] = useState(false);
   const [aliases, setAliases] = useState("");
+  const [section, setSection] = useState<TimelineEvent | "new" | null>(null);
   if (o.error) return <Banner tone="err">{o.error}</Banner>;
   const d = o.data;
   if (!d) return <div className="card dim">Loading…</div>;
 
   async function save(changes: object) {
     try { await patch(`/opportunities/${id}`, changes); o.reload(); onChanged(); } catch (e) { toast(errorText(e)); }
+  }
+  async function rename() {
+    const name = await inputDialog({ title: "Rename company", label: "Company", initial: d!.company, confirm: "Rename" });
+    if (name && name.trim() && name.trim() !== d!.company) save({ company: name.trim() });
+  }
+  async function remove(e: TimelineEvent) {
+    const what = e.manual ? `the section “${e.title}”` : "this mail from the timeline (the mail itself stays)";
+    if (!(await confirmDialog({ title: e.manual ? "Remove this section?" : "Take this mail off the timeline?", body: `Removes ${what}.`, confirm: "Remove", danger: true }))) return;
+    try { o.setData(await del<OpportunityDetail>(`/opportunities/${id}/events/${e.id}`)); onChanged(); } catch (err) { toast(errorText(err)); }
   }
   return (
     <div className="card">
@@ -66,13 +81,19 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
         {d.deadline ? <>Deadline <b style={{ color: "var(--warn)" }}>{fullTime(d.deadline)}</b></> : "No deadline"}
       </div>
       <div style={{ borderLeft: "2px solid var(--line-2)", marginLeft: 10, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 26 }}>
-        {d.timeline.length === 0 && <p className="dim">No mail on this timeline yet.</p>}
+        {d.timeline.length === 0 && <p className="dim">Nothing on this timeline yet. Mail about {d.company} lands here, or add a section.</p>}
         {d.timeline.map((e) => (
           <div key={e.id} style={{ position: "relative" }}>
             <i className={`dot ${KIND_TONE[e.kind] === "urgent" ? "urgent" : "ok"}`} style={{ position: "absolute", left: -35, top: 6, width: 12, height: 12 }} />
-            <Tag tone={KIND_TONE[e.kind]}>{e.kind}</Tag> <span className="dim mono">{fullTime(e.occurred_at)}</span>
-            {e.matched_by !== "user" && <span className="dim" style={{ fontSize: 12 }}> · matched by {humanize(e.matched_by)}</span>}
-            <div className="who" style={{ marginTop: 4, fontWeight: 700 }}>{e.summary || e.subject}</div>
+            <Tag tone={KIND_TONE[e.kind]}>{STAGES.find((s) => s.value === e.kind)?.label ?? e.kind}</Tag> <span className="dim mono">{fullTime(e.occurred_at)}</span>
+            {e.manual && <span className="dim" style={{ fontSize: 12 }}> · added by you{e.remind ? " · reminds you" : ""}</span>}
+            {!e.manual && e.matched_by !== "user" && <span className="dim" style={{ fontSize: 12 }}> · matched by {humanize(e.matched_by)}</span>}
+            <span className="tl-tools">
+              <button className="chip" onClick={() => setSection(e)} data-tip={e.manual ? "Change this section" : "Change the stage of this mail"}>Edit</button>
+              <button className="chip" onClick={() => remove(e)} data-tip={e.manual ? "Remove this section" : "Take this mail off the timeline"}>✕</button>
+            </span>
+            <div className="who" style={{ marginTop: 4, fontWeight: 700 }}>{e.manual ? e.title : e.summary || e.subject}</div>
+            {e.manual && e.note && <div className="muted" style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{e.note}</div>}
             <div className="muted" style={{ fontSize: 14 }}>
               {e.sender_name && <>From {e.sender_name}{e.account ? ` · ${e.account}` : ""}</>}
               {e.deadline && <> · Deadline {fullTime(e.deadline)}</>}
@@ -83,6 +104,8 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
         ))}
       </div>
       <div className="inline" style={{ marginTop: 28 }}>
+        <button className="btn btn-primary btn-sm" onClick={() => setSection("new")} data-tip="Add a step (test, interview, result…) with its date and time; it takes its place on the timeline">+ Add section</button>
+        <button className="btn btn-ghost btn-sm" onClick={rename} data-tip="Change the company's name">Rename</button>
         <button className="btn btn-ghost btn-sm" onClick={() => { setAliases(d.aliases.join(", ")); setEditing(true); }} data-tip="Other names this company goes by, so its mail lands here">Edit aliases</button>
         <button className="btn btn-ghost btn-sm" onClick={() => save({ status: d.status === "active" ? "closed" : "active" })}>{d.status === "active" ? "Close" : "Reopen"}</button>
         <button className="btn btn-danger btn-sm" style={{ marginLeft: "auto" }} onClick={async () => {
@@ -90,6 +113,8 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
           try { await del(`/opportunities/${id}`); onChanged(); navigate("/opportunities"); } catch (e) { toast(errorText(e)); }
         }} data-tip="Delete for good (mail itself is never deleted)">Delete</button>
       </div>
+      {section && <SectionDialog oppId={id} company={d.company} event={section === "new" ? null : section} onClose={() => setSection(null)}
+        onSaved={(r) => { setSection(null); o.setData(r); onChanged(); }} />}
       {editing && (
         <Modal title={`Aliases for ${d.company}`} onClose={() => setEditing(false)}
           foot={<><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} data-tip="Close without saving">Cancel</button><button className="btn btn-primary btn-sm" onClick={() => { setEditing(false); save({ aliases: aliases.split(",").map((s) => s.trim()).filter(Boolean) }); }} data-tip="Save changes">Save</button></>}>
@@ -109,6 +134,48 @@ function NewOpportunity({ onClose, onCreated }: { onClose: () => void; onCreated
         try { onCreated(await post<Opportunity>("/opportunities", { company: company.trim(), aliases: [] })); } catch (e) { toast(errorText(e)); }
       }}>Create</button></>}>
       <div className="field"><label htmlFor="co">Company</label><TextField id="co" value={company} onChange={setCompany} autoFocus maxLength={200} /></div>
+    </Modal>
+  );
+}
+
+/** Add or change a section by hand. For a mail on the timeline only its stage changes. */
+function SectionDialog({ oppId, company, event, onClose, onSaved }: {
+  oppId: string; company: string; event: TimelineEvent | null; onClose: () => void; onSaved: (r: OpportunityDetail) => void;
+}) {
+  const mail = !!event && !event.manual;
+  const [kind, setKind] = useState(event?.kind ?? "interview");
+  const [title, setTitle] = useState(event?.title ?? "");
+  const [note, setNote] = useState(event?.note ?? "");
+  const [when, setWhen] = useState(toLocalInput(event?.occurred_at ?? new Date(Date.now() + 86400000).toISOString()));
+  const [remind, setRemind] = useState(event?.remind ?? false);
+  const future = when && new Date(when).getTime() > Date.now();
+  const ok = mail || (title.trim() && when);
+
+  async function save() {
+    const body = mail ? { kind } : { kind, title: title.trim(), note: note.trim() || null, at: new Date(when).toISOString(), remind: remind && !!future };
+    try {
+      onSaved(event
+        ? await patch<OpportunityDetail>(`/opportunities/${oppId}/events/${event.id}`, body)
+        : await post<OpportunityDetail>(`/opportunities/${oppId}/sections`, body));
+    } catch (e) { toast(errorText(e)); }
+  }
+  return (
+    <Modal title={event ? (mail ? "Change the stage" : "Edit section") : `Add a section to ${company}`} onClose={onClose}
+      foot={<><button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button><button className="btn btn-primary btn-sm" disabled={!ok} onClick={save}>{event ? "Save" : "Add"}</button></>}>
+      <div className="stack">
+        <div className="field"><label htmlFor="sk">Stage</label><Select id="sk" value={kind} options={STAGES} onChange={setKind} ariaLabel="Stage" /></div>
+        {mail ? <p className="dim" style={{ fontSize: 13 }}>A mail keeps its own subject and time.</p> : <>
+          <div className="field"><label htmlFor="st">Title</label><TextField id="st" value={title} onChange={setTitle} autoFocus maxLength={200} placeholder="e.g. Technical interview, round 2" /></div>
+          <div className="field"><label htmlFor="sw">Date and time</label>
+            <input id="sw" className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
+          <p className="dim" style={{ fontSize: 13, marginTop: -4 }}>The section takes its place on the timeline by this date and time.</p>
+          <div className="field"><label htmlFor="sn">Note (optional)</label>
+            <textarea id="sn" className="input" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder="Venue, link, what to prepare…" /></div>
+          <span className="inline dim" style={{ fontSize: 13.5 }} data-tip={future ? "Reminders 24 h and 2 h before; it can become the company's next deadline" : "Only for a date in the future"}>
+            <Toggle on={remind && !!future} disabled={!future} onChange={setRemind} label="Remind me" /> Remind me before it
+          </span>
+        </>}
+      </div>
     </Modal>
   );
 }

@@ -19,6 +19,14 @@ export function relativeTime(iso: string | null | undefined, now: Date = new Dat
   return t.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+/** ISO time -> the value a datetime-local input wants (the browser's own time zone). */
+export function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
 export function fullTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const t = new Date(iso);

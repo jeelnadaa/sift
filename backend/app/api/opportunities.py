@@ -105,6 +105,8 @@ def get_opportunity(opportunity_id: uuid.UUID, user: User = Depends(current_user
         "deadline": (e.details or {}).get("deadline"), "links": (e.details or {}).get("links") or [],
         "platform": (e.details or {}).get("platform"), "summary": (e.details or {}).get("summary"),
         "message_id": str(m.id) if m else None, "subject": m.subject if m else None,
+        "title": (e.details or {}).get("title"), "note": (e.details or {}).get("note"), "remind": bool((e.details or {}).get("remind")),
+        "manual": e.message_id is None,
         "sender_name": (m.sender_name or m.sender) if m else None, "account": (a.label or a.email) if a else None,
     } for e, m, a in rows]
     return {**opportunity_json(o, len(events), events[-1]["kind"] if events else None), "timeline": events}
@@ -200,3 +202,129 @@ def detach(message_id: uuid.UUID, user: User = Depends(current_user), db: Sessio
     ext.pop("matched_by", None)
     msg.extraction = ext
     db.commit()
+
+
+# ---- sections added by hand (owner, 2026-10-24) -------------------------------------------------
+# A timeline is ordered by time, so a section lands in its place by its date and time. With
+# "remind", a section in the future also counts as a deadline: it can become the company's next
+# deadline and gets the usual reminders (24 h and 2 h before).
+
+class SectionIn(BaseModel):
+    kind: str = Field(default="update", pattern="^(" + "|".join(EVENT_KINDS) + ")$")
+    title: str = Field(min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
+    at: datetime
+    remind: bool = False
+
+    @field_validator("at")
+    @classmethod
+    def aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("the date and time need a time zone")
+        return v
+
+
+class SectionPatch(BaseModel):
+    kind: str | None = Field(default=None, pattern="^(" + "|".join(EVENT_KINDS) + ")$")
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
+    at: datetime | None = None
+    remind: bool | None = None
+
+    @field_validator("at")
+    @classmethod
+    def aware(cls, v: datetime | None) -> datetime | None:
+        if v is not None and v.tzinfo is None:
+            raise ValueError("the date and time need a time zone")
+        return v
+
+
+def _own_event(db: Session, opp: Opportunity, event_id: uuid.UUID) -> OpportunityEvent:
+    e = db.get(OpportunityEvent, event_id)
+    if e is None or e.opportunity_id != opp.id:
+        raise HTTPException(404, "not on this timeline")
+    return e
+
+
+def _section_reminders(db: Session, opp: Opportunity, e: OpportunityEvent) -> None:
+    from app import todos as todo_service
+    from app.models import Reminder
+
+    db.execute(delete(Reminder).where(Reminder.user_id == opp.user_id, Reminder.dedupe_key.like(f"section:{e.id}:%"),
+                                      Reminder.sent_at.is_(None)))
+    details = e.details or {}
+    if details.get("remind") and e.occurred_at > datetime.now(UTC):
+        title = f"{opp.company}: {details.get('title') or e.kind}"
+        todo_service.schedule_deadline(db, opp.user_id, f"section:{e.id}:{e.occurred_at.isoformat()}", title, e.occurred_at,
+                                       opportunity_id=opp.id)
+
+
+def _section_details(e_details: dict | None, title: str, note: str | None, at: datetime, remind: bool) -> dict:
+    d = dict(e_details or {})
+    d.update({"title": title.strip(), "note": (note or "").strip() or None, "remind": remind})
+    if remind:
+        d["deadline"] = at.isoformat()
+    else:
+        d.pop("deadline", None)
+    return d
+
+
+@router.post("/opportunities/{opportunity_id}/sections", status_code=201)
+def add_section(opportunity_id: uuid.UUID, body: SectionIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    o = _own(db, user, opportunity_id)
+    e = OpportunityEvent(opportunity_id=o.id, kind=body.kind, matched_by="user", occurred_at=body.at,
+                         details=_section_details(None, body.title, body.note, body.at, body.remind))
+    db.add(e)
+    db.flush()
+    _section_reminders(db, o, e)
+    opp_service.refresh_deadline(db, o)
+    o.updated_at = datetime.now(UTC)
+    db.commit()
+    return get_opportunity(o.id, user, db)
+
+
+@router.patch("/opportunities/{opportunity_id}/events/{event_id}")
+def edit_event(opportunity_id: uuid.UUID, event_id: uuid.UUID, body: SectionPatch, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Edit a section; for a mail on the timeline, only its kind (what stage it is) can change."""
+    o = _own(db, user, opportunity_id)
+    e = _own_event(db, o, event_id)
+    if body.kind is not None:
+        e.kind = body.kind
+    if e.message_id is None:
+        d = e.details or {}
+        if body.at is not None:
+            e.occurred_at = body.at
+        e.details = _section_details(d, body.title if body.title is not None else d.get("title") or e.kind,
+                                     body.note if body.note is not None else d.get("note"), e.occurred_at,
+                                     body.remind if body.remind is not None else bool(d.get("remind")))
+        _section_reminders(db, o, e)
+    elif body.title is not None or body.at is not None or body.note is not None:
+        raise HTTPException(422, "a mail on the timeline keeps its own subject and time; only its stage can change")
+    opp_service.refresh_deadline(db, o)
+    o.updated_at = datetime.now(UTC)
+    db.commit()
+    return get_opportunity(o.id, user, db)
+
+
+@router.delete("/opportunities/{opportunity_id}/events/{event_id}")
+def remove_event(opportunity_id: uuid.UUID, event_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Removes a section, or takes a mail off this timeline (the mail itself stays)."""
+    from app.models import Reminder
+
+    o = _own(db, user, opportunity_id)
+    e = _own_event(db, o, event_id)
+    if e.message_id is not None:
+        msg = db.get(Message, e.message_id)
+        ext = dict(msg.extraction or {})
+        ext.pop("opportunity_id", None)
+        ext.pop("matched_by", None)
+        msg.extraction = ext
+    db.execute(delete(Reminder).where(Reminder.user_id == o.user_id, Reminder.dedupe_key.like(f"section:{e.id}:%"), Reminder.sent_at.is_(None)))
+    db.delete(e)
+    db.flush()
+    if o.deadline is not None:
+        o.deadline = None
+        opp_service.refresh_deadline(db, o)
+    o.updated_at = datetime.now(UTC)
+    db.commit()
+    return get_opportunity(o.id, user, db)

@@ -74,6 +74,9 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
     var error by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    // a section to add ("new") or change; for a mail only its stage
+    var section by remember { mutableStateOf<Any?>(null) }
+    var removing by remember { mutableStateOf<TimelineEventDto?>(null) }
 
     fun load() = scope.launch { try { o = Api.get(context).opportunity(id); error = null } catch (t: Throwable) { error = t.userMessage() } }
     fun patch(p: OpportunityPatch) = scope.launch { try { Api.get(context).updateOpportunity(id, p); load() } catch (t: Throwable) { error = t.userMessage() } }
@@ -117,11 +120,17 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
 
         SectionLabel("Timeline")
         if (d.timeline.isEmpty()) {
-            Text("No mail on this timeline yet. Open a mail and choose this company to add it.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
+            Text("Nothing on this timeline yet. Mail about ${d.company} lands here, or add a section.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
         }
-        d.timeline.forEachIndexed { i, e -> TimelineItem(e, last = i == d.timeline.lastIndex, onOpenMail = onOpenMail) }
+        d.timeline.forEachIndexed { i, e ->
+            TimelineItem(e, last = i == d.timeline.lastIndex, onOpenMail = onOpenMail, onEdit = { section = e }, onRemove = { removing = e })
+        }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
+        PrimaryButton("+ Add section", Modifier.fillMaxWidth()) { section = "new" }
+        Text("A test, interview, result… with its date and time. It takes its place on the timeline by that time.",
+            color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+        Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GhostButton("Edit") { editing = true }
             GhostButton(if (d.status == "active") "Close" else "Reopen") { patch(OpportunityPatch(status = if (d.status == "active") "closed" else "active")) }
@@ -131,6 +140,27 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
     }
 
     o?.let { d ->
+        section?.let { s ->
+            SectionDialog(d.company, s as? TimelineEventDto, onDismiss = { section = null }) { body, patchBody ->
+                section = null
+                scope.launch {
+                    try {
+                        val api = Api.get(context)
+                        o = if (s is TimelineEventDto) api.editEvent(id, s.id, patchBody!!) else api.addSection(id, body!!)
+                    } catch (t: Throwable) { error = t.userMessage() }
+                }
+            }
+        }
+        removing?.let { e ->
+            AlertDialog(
+                onDismissRequest = { removing = null },
+                title = { Text(if (e.manual) "Remove this section?" else "Take this mail off the timeline?") },
+                text = { Text(if (e.manual) "“${e.title}” is removed." else "The mail itself stays in your inbox and feed.") },
+                confirmButton = { TextButton(onClick = { removing = null; scope.launch { try { o = Api.get(context).removeEvent(id, e.id) } catch (t: Throwable) { error = t.userMessage() } } }) { Text("Remove", color = Ink.urgent) } },
+                dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel", color = Ink.text2) } },
+                containerColor = Ink.surface, shape = Radius.xl,
+            )
+        }
         if (editing) EditOpportunityDialog(d, onDismiss = { editing = false }) { company, aliases ->
             editing = false
             patch(OpportunityPatch(company = company, aliases = aliases))
@@ -147,7 +177,7 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
 }
 
 @Composable
-private fun TimelineItem(e: TimelineEventDto, last: Boolean, onOpenMail: (String) -> Unit) {
+private fun TimelineItem(e: TimelineEventDto, last: Boolean, onOpenMail: (String) -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
     val context = LocalContext.current
     Row {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(22.dp)) {
@@ -158,12 +188,17 @@ private fun TimelineItem(e: TimelineEventDto, last: Boolean, onOpenMail: (String
             Modifier.weight(1f).padding(start = 10.dp, bottom = 16.dp).clickable(enabled = e.messageId != null) { e.messageId?.let(onOpenMail) },
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Tag(e.kind, kindColor(e.kind))
+                Tag(STAGE_LABELS[e.kind] ?: e.kind, kindColor(e.kind))
                 e.platform?.let { Tag(it) }
-                Text(fullTime(e.occurredAt), color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                Text(fullTime(e.occurredAt), color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Text("Edit", color = Ink.signal, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onEdit).padding(6.dp))
+                Text("✕", color = Ink.text3, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onRemove).padding(6.dp))
             }
-            Text(e.summary ?: e.subject ?: "Mail", color = Ink.text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
-            Text(listOfNotNull(e.senderName, e.account).joinToString(" · "), color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            Text((if (e.manual) e.title else null) ?: e.summary ?: e.subject ?: "Mail", color = Ink.text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+            if (e.manual) {
+                e.note?.let { Text(it, color = Ink.text2, style = MaterialTheme.typography.bodySmall) }
+                Text("Added by you" + if (e.remind) " · reminds you" else "", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            } else Text(listOfNotNull(e.senderName, e.account).joinToString(" · "), color = Ink.text3, style = MaterialTheme.typography.bodySmall)
             if (isFuture(e.deadline)) Text("Deadline ${fullTime(e.deadline)}", color = Ink.warn, style = MaterialTheme.typography.bodySmall)
             e.links.firstOrNull()?.let { link ->
                 Text("${link.label} ↗", color = Ink.signal, style = MaterialTheme.typography.labelMedium,
@@ -190,6 +225,63 @@ private fun EditOpportunityDialog(d: OpportunityDetail, onDismiss: () -> Unit, o
         confirmButton = {
             PrimaryButton("Save", enabled = company.isNotBlank()) {
                 onSave(company.trim(), aliases.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        containerColor = Ink.surface, shape = Radius.xl,
+    )
+}
+
+private val STAGE_LABELS = linkedMapOf(
+    "announcement" to "Announcement", "registration" to "Registration", "assessment" to "Test",
+    "interview" to "Interview", "result" to "Result", "update" to "Update",
+)
+
+/** Add a section (stage, title, note, date and time, reminder) or change one. For a mail on the
+ * timeline only its stage can change; it keeps its own subject and time. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SectionDialog(company: String, event: TimelineEventDto?, onDismiss: () -> Unit,
+                          onSave: (com.solarquack.sift.data.SectionIn?, com.solarquack.sift.data.SectionPatch?) -> Unit) {
+    val mail = event != null && !event.manual
+    var kind by remember { mutableStateOf(event?.kind ?: "interview") }
+    var title by remember { mutableStateOf(event?.title ?: "") }
+    var note by remember { mutableStateOf(event?.note ?: "") }
+    var at by remember { mutableStateOf(com.solarquack.sift.ui.parseZoned(event?.occurredAt) ?: java.time.ZonedDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)) }
+    var remind by remember { mutableStateOf(event?.remind ?: false) }
+    val future = at?.isAfter(java.time.ZonedDateTime.now()) == true
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (event == null) "Add a section to $company" else if (mail) "Change the stage" else "Edit section") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Stage", color = Ink.text3, style = MaterialTheme.typography.labelSmall)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    STAGE_LABELS.forEach { (k, label) -> com.solarquack.sift.ui.Chip(label, kind == k) { kind = k } }
+                }
+                if (mail) Text("A mail keeps its own subject and time.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                else {
+                    Field(title, { title = it.take(200) }, "Title", placeholder = "e.g. Technical interview, round 2")
+                    Text("Date and time", color = Ink.text3, style = MaterialTheme.typography.labelSmall)
+                    com.solarquack.sift.ui.DateTimeRow(at, { at = it }, allowNone = false)
+                    Text("The section takes its place on the timeline by this date and time.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    Field(note, { note = it.take(2000) }, "Note (optional)", singleLine = false, placeholder = "Venue, link, what to prepare…")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (future) "Remind me before it" else "Remind me (only for a future time)", color = if (future) Ink.text else Ink.text3,
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        com.solarquack.sift.ui.SiftSwitch(remind && future, { if (future) remind = it }, enabled = future)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            PrimaryButton(if (event == null) "Add" else "Save", enabled = mail || (title.isNotBlank() && at != null)) {
+                val a = at ?: return@PrimaryButton
+                when {
+                    mail -> onSave(null, com.solarquack.sift.data.SectionPatch(kind = kind))
+                    event != null -> onSave(null, com.solarquack.sift.data.SectionPatch(kind, title.trim(), note.trim(), with(com.solarquack.sift.ui.DateTimeIso) { a.isoString() }, remind && future))
+                    else -> onSave(com.solarquack.sift.data.SectionIn(kind, title.trim(), note.trim().ifEmpty { null }, with(com.solarquack.sift.ui.DateTimeIso) { a.isoString() }, remind && future), null)
+                }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },

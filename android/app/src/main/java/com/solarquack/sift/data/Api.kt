@@ -101,6 +101,9 @@ interface SiftApi {
     @POST("api/v1/opportunities") suspend fun createOpportunity(@Body body: OpportunityIn): OpportunityDto
     @PATCH("api/v1/opportunities/{id}") suspend fun updateOpportunity(@Path("id") id: String, @Body body: OpportunityPatch): OpportunityDto
     @DELETE("api/v1/opportunities/{id}") suspend fun deleteOpportunity(@Path("id") id: String)
+    @POST("api/v1/opportunities/{id}/sections") suspend fun addSection(@Path("id") id: String, @Body body: SectionIn): OpportunityDetail
+    @PATCH("api/v1/opportunities/{id}/events/{event}") suspend fun editEvent(@Path("id") id: String, @Path("event") eventId: String, @Body body: SectionPatch): OpportunityDetail
+    @DELETE("api/v1/opportunities/{id}/events/{event}") suspend fun removeEvent(@Path("id") id: String, @Path("event") eventId: String): OpportunityDetail
     @POST("api/v1/messages/{id}/opportunity") suspend fun answerCompany(@Path("id") messageId: String, @Body body: CompanyAnswer)
     @DELETE("api/v1/messages/{id}/opportunity") suspend fun detachOpportunity(@Path("id") messageId: String)
 
