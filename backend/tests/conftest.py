@@ -78,3 +78,28 @@ def override_settings(monkeypatch):
             monkeypatch.setattr(s, k, v)
         return s
     return apply
+
+
+@pytest.fixture
+def keys(override_settings):
+    """Encryption + signing keys for tests that store secrets or issue JWTs."""
+    from cryptography.fernet import Fernet
+
+    from app import crypto
+    crypto._fernet.cache_clear()
+    override_settings(encryption_keys=Fernet.generate_key().decode(), app_secret="test-app-secret")
+    yield
+    crypto._fernet.cache_clear()
+
+
+@pytest.fixture
+def fcm_sends(monkeypatch):
+    """Captures FCM sends instead of calling Firebase."""
+    from app import fcm
+    sent = []
+
+    def fake_send(token, data):
+        sent.append({"token": token, **data})
+        return fcm.SendResult(ok=True)
+    monkeypatch.setattr(fcm, "send", fake_send)
+    return sent

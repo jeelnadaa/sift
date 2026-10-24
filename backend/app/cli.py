@@ -6,6 +6,10 @@
   connect-url EMAIL       print the Google sign-in link that connects a Gmail account to user EMAIL
   accounts                list connected Gmail accounts and their status
   check                   check every active account for new mail once, now
+  set-password EMAIL      set the app sign-in password (asks for it; never shown)
+  starter-rules EMAIL     add the starter rule: bank transactions silent, fraud alerts kept
+  demo EMAIL              run the sample emails through the pipeline (real notifications)
+  demo-clear EMAIL        delete the demo account and its messages
 """
 import base64
 import json
@@ -69,8 +73,75 @@ def check() -> None:
         print(account_id, check_account(account_id), "new")
 
 
+def _user(db, email: str):
+    from app.models import User
+
+    user = db.scalar(select(User).where(User.email == email.lower()))
+    if user is None:
+        sys.exit(f"no user {email}; run create-user first")
+    return user
+
+
+def set_password(email: str) -> None:
+    import getpass
+
+    from app.db import get_sessionmaker
+    from app.security import hash_password
+
+    pw = getpass.getpass("New password: ")
+    if len(pw) < 8 or pw != getpass.getpass("Repeat: "):
+        sys.exit("passwords differ or are shorter than 8 characters")
+    with get_sessionmaker()() as db:
+        _user(db, email).password_hash = hash_password(pw)
+        db.commit()
+    print("password set")
+
+
+def starter_rules(email: str) -> None:
+    from app.db import get_sessionmaker
+    from app.demo import ensure_starter_rules
+
+    with get_sessionmaker()() as db:
+        added = ensure_starter_rules(db, _user(db, email))
+        db.commit()
+    print(f"added {len(added)} rule(s)" if added else "starter rule already present")
+
+
+def demo(email: str) -> None:
+    from app.db import get_sessionmaker
+    from app.demo import DemoProvider, demo_account, ensure_starter_rules, samples
+    from app.llm.service import ai_enabled
+    from app.pipeline import process_message
+
+    msgs = samples()
+    provider = DemoProvider(msgs)
+    with get_sessionmaker()() as db:
+        user = _user(db, email)
+        ensure_starter_rules(db, user)
+        account = demo_account(db, user)
+        db.commit()
+        print(f"AI is {'on' if ai_enabled(db, user.id) else 'off (no valid key)'}")
+        print()
+        for m in msgs:
+            subject = next(h["value"] for h in m["payload"]["headers"] if h["name"] == "Subject")
+            out = process_message(db, db.get(type(account), account.id), provider, m["id"])
+            flags = ", ".join(x for x in ("notified" if out.notified else "", "LLM called" if out.llm_called else "") if x)
+            print(f"{out.priority or '-':7} by {out.decided_by:10} {flags:22} {subject}")
+
+
+def demo_clear(email: str) -> None:
+    from app.db import get_sessionmaker
+    from app.demo import clear
+
+    with get_sessionmaker()() as db:
+        n = clear(db, _user(db, email))
+        db.commit()
+    print(f"removed demo account and {n} message(s)")
+
+
 def main(argv: list[str]) -> None:
-    commands = {"create-user": create_user, "gen-key": gen_key, "fake-push": fake_push, "connect-url": connect_url, "accounts": accounts, "check": check}
+    commands = {"create-user": create_user, "gen-key": gen_key, "fake-push": fake_push, "connect-url": connect_url, "accounts": accounts, "check": check,
+                "set-password": set_password, "starter-rules": starter_rules, "demo": demo, "demo-clear": demo_clear}
     if len(argv) < 1 or argv[0] not in commands:
         print(__doc__)
         sys.exit(1)

@@ -107,7 +107,7 @@ def connected(db, user, fake):
 
 def test_check_hands_new_mail_on_and_advances_cursor(db, connected, fake, monkeypatch):
     seen = []
-    monkeypatch.setattr(accounts, "on_new_messages", lambda db, a, ids: seen.append(ids))
+    monkeypatch.setattr(accounts, "on_new_messages", lambda db, a, p, ids: seen.append(ids))
     fake.changes = Changes(["m1", "m2"], 520)
     assert accounts.check_account(connected.id) == 2
     assert fake.since == 500 and seen == [["m1", "m2"]]
@@ -115,7 +115,7 @@ def test_check_hands_new_mail_on_and_advances_cursor(db, connected, fake, monkey
 
 
 def test_cursor_not_saved_when_processing_fails(db, connected, fake, monkeypatch):
-    def boom(db, a, ids):
+    def boom(db, a, p, ids):
         raise RuntimeError("pipeline failed")
     monkeypatch.setattr(accounts, "on_new_messages", boom)
     fake.changes = Changes(["m1"], 520)

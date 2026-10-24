@@ -3,7 +3,8 @@
 - Poll mode: every POLL_INTERVAL_SECONDS, queue a check of each active account.
 - Push mode: Pub/Sub triggers checks; we still queue a safety check every 5 minutes
   (covers a push that arrived mid-check, and downtime) and renew Gmail watches daily.
-- Both: catch up all accounts at startup; prune finished jobs hourly (Postgres queue).
+- Both: catch up all accounts at startup; re-send unacknowledged urgent notifications (checked
+  every minute); prune finished jobs hourly (Postgres queue).
 Checks are deduped per account, so a slow check never piles up duplicates.
 """
 import asyncio
@@ -18,6 +19,7 @@ from app.db import get_sessionmaker
 log = logging.getLogger("app.scheduler")
 PUSH_SAFETY_INTERVAL = 300
 HOUR = 3600
+MINUTE = 60
 
 
 def check_interval() -> int:
@@ -45,17 +47,20 @@ async def hourly() -> None:
 async def run() -> None:
     s = get_settings()
     log.info("scheduler started: mode=%s interval=%ss queue=%s", s.change_detection, check_interval(), s.queue_backend)
-    last_hourly = 0.0
+    last_hourly = last_minute = 0.0
     while True:
         started = time.monotonic()
         try:
             await queue_checks()
+            if started - last_minute >= MINUTE or last_minute == 0.0:
+                await jobs.enqueue("resend_notifications", {}, dedupe_key="resend_notifications")
+                last_minute = started
             if started - last_hourly >= HOUR or last_hourly == 0.0:
                 await hourly()
                 last_hourly = started
         except Exception:
             log.exception("scheduler tick failed")  # keep ticking; the next tick retries
-        await asyncio.sleep(max(0.0, check_interval() - (time.monotonic() - started)))
+        await asyncio.sleep(max(0.0, min(check_interval(), MINUTE) - (time.monotonic() - started)))
 
 
 def main() -> None:

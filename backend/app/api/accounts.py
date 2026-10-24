@@ -1,38 +1,60 @@
 import html
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import accounts as account_service
 from app.accounts import ConnectError, connect_account
-from app.api.deps import require_admin
 from app.db import get_db
 from app.mail import google_oauth
 from app.mail.base import AuthRevoked
 from app.models import GmailAccount, User
+from app.security import current_user
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/accounts")
 
 
-@router.get("/connect-url", dependencies=[Depends(require_admin)])
-def connect_url(user_email: str, login_hint: str | None = None) -> dict:
+def account_json(a: GmailAccount) -> dict:
+    return {
+        "id": str(a.id), "email": a.email, "status": a.status, "status_detail": a.status_detail,
+        "label": a.label, "color": a.color,
+        "watch_expires_at": a.watch_expires_at.isoformat() if a.watch_expires_at else None,
+    }
+
+
+@router.get("")
+def list_accounts(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id).order_by(GmailAccount.created_at))
+    return [account_json(a) for a in rows]
+
+
+@router.get("/connect-url")
+def connect_url(login_hint: str | None = None, user: User = Depends(current_user)) -> dict:
     try:
-        return {"auth_url": google_oauth.authorization_url(user_email.lower(), login_hint)}
+        return {"auth_url": google_oauth.authorization_url(user.email, login_hint)}
     except google_oauth.OAuthError as exc:
         raise HTTPException(503, str(exc)) from exc
 
 
-@router.get("", dependencies=[Depends(require_admin)])
-def list_accounts(user_email: str, db: Session = Depends(get_db)) -> list[dict]:
-    rows = db.scalars(select(GmailAccount).join(User).where(User.email == user_email.lower()).order_by(GmailAccount.created_at))
-    return [
-        {"id": str(a.id), "email": a.email, "status": a.status, "status_detail": a.status_detail, "label": a.label,
-         "watch_expires_at": a.watch_expires_at.isoformat() if a.watch_expires_at else None}
-        for a in rows
-    ]
+@router.delete("/{account_id}", status_code=204)
+def remove_account(account_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
+    """Stops the Gmail watch (push mode), deletes the tokens and all stored mail of the account."""
+    account = db.get(GmailAccount, account_id)
+    if account is None or account.user_id != user.id:
+        raise HTTPException(404, "account not found")
+    if account.watch_expires_at and account.encrypted_refresh_token:
+        try:
+            account_service.provider_for(account).stop_watch()
+        except Exception:
+            log.warning("could not stop watch for account %s; it lapses within 7 days", account.id)
+    account_service._token_cache.pop(account.id, None)
+    db.delete(account)  # cascades to messages, notifications, folder items, group members
+    db.commit()
 
 
 @router.get("/oauth/callback", response_class=HTMLResponse)

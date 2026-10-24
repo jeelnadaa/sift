@@ -92,9 +92,18 @@ def connect_account(db: Session, user_email: str, code: str) -> GmailAccount:
 
 # ---- change detection ----------------------------------------------------------
 
-def on_new_messages(db: Session, account: GmailAccount, message_ids: list[str]) -> None:
-    """Phase 0: record that new mail was seen. Phase 1 runs the processing pipeline here."""
+def on_new_messages(db: Session, account: GmailAccount, provider: MailProvider, message_ids: list[str]) -> None:
+    """Run the pipeline for each new message, oldest first. A transient error stops here and the
+    check is retried from the same cursor; already processed messages are skipped then."""
+    from app.pipeline import process_message
+
     log.info("account %s: %d new message(s)", account.id, len(message_ids))
+    for gmail_id in message_ids:
+        with get_sessionmaker()() as mdb:
+            acc = mdb.get(GmailAccount, account.id)
+            outcome = process_message(mdb, acc, provider, gmail_id)
+            if outcome.decided_by != "existing":
+                log.info("message %s: %s by %s%s", outcome.message_id, outcome.priority, outcome.decided_by, ", notified" if outcome.notified else "")
 
 
 def check_account(account_id: uuid.UUID | str) -> int:
@@ -120,7 +129,7 @@ def check_account(account_id: uuid.UUID | str) -> int:
                 db.commit()
                 return 0
             if changes.message_ids:
-                on_new_messages(db, account, changes.message_ids)
+                on_new_messages(db, account, provider, changes.message_ids)
             account.history_id = changes.cursor  # only after successful processing
             db.commit()
             return len(changes.message_ids)

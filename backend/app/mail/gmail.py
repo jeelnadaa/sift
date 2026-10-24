@@ -1,11 +1,12 @@
 """Gmail implementation of MailProvider, over the Gmail REST API with httpx.
 
-Quota (per user, per minute: 6,000 units): history.list = 2 units, watch = 100.
-Polling every 10 s costs 12 units per account per minute.
+Quota (per user, per minute: 6,000 units): history.list = 2, messages.get = 20 (metadata) or 60 (full),
+watch = 100. Polling every 5 s costs 24 units per account per minute.
 """
 import httpx
 
 from app.mail.base import AuthRevoked, Changes, CursorExpired, Profile, Watch
+from app.mail.message import METADATA_HEADERS
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 SKIP_LABELS = {"DRAFT", "SENT"}  # mail I wrote is not "new mail"
@@ -63,6 +64,15 @@ class GmailProvider:
             if not token:
                 return Changes(message_ids=ids, cursor=cursor)
             params["pageToken"] = token
+
+    def get_metadata(self, message_id: str) -> dict:
+        """Headers only (20 quota units). Never fetches the body."""
+        params = [("format", "metadata")] + [("metadataHeaders", h) for h in METADATA_HEADERS]
+        return self._call("GET", f"/messages/{message_id}", params=params)
+
+    def get_full(self, message_id: str) -> dict:
+        """Full message incl. body parts (60 units). Only when a rule or the LLM needs the body."""
+        return self._call("GET", f"/messages/{message_id}", params={"format": "full"})
 
     def start_watch(self, topic: str) -> Watch:
         w = self._call("POST", "/watch", json={"topicName": topic, "labelIds": ["INBOX"], "labelFilterBehavior": "INCLUDE"})

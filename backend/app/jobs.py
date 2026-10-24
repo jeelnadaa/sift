@@ -47,7 +47,17 @@ def handle_renew_watches(payload: dict) -> None:
     log.info("renewed %d gmail watch(es)", renew_watches())
 
 
+def handle_resend_notifications(payload: dict) -> None:
+    from app.notify import resend_unacknowledged
+
+    with get_sessionmaker()() as db:
+        n = resend_unacknowledged(db)
+    if n:
+        log.info("re-sent %d unacknowledged urgent notification(s)", n)
+
+
 HANDLERS = {
+    "resend_notifications": handle_resend_notifications,
     "gmail_push": handle_gmail_push,
     "check_account": handle_check_account,
     "renew_watches": handle_renew_watches,

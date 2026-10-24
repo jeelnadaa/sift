@@ -1,0 +1,30 @@
+"""LLM provider interface. Providers only talk HTTP; gating, caps, caching and usage
+accounting live in app.llm.service so every provider gets them."""
+from dataclasses import dataclass
+from typing import Protocol
+
+
+class LlmError(Exception):
+    pass
+
+
+class LlmAuthError(LlmError):
+    """Key invalid, revoked or not allowed. The key is marked invalid."""
+
+
+class LlmQuotaError(LlmError):
+    """429 / quota exhausted on the user's own provider account."""
+
+
+@dataclass
+class LlmResult:
+    text: str
+    input_tokens: int
+    output_tokens: int
+
+
+class LlmProvider(Protocol):
+    name: str
+
+    def generate_json(self, system: str, prompt: str, schema: dict, max_output_tokens: int = 600) -> LlmResult: ...
+    def ping(self) -> None: ...  # minimal call to validate the key; raises LlmAuthError / LlmQuotaError

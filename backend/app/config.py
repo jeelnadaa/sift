@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     #   poll: the scheduler asks Gmail for changes every POLL_INTERVAL_SECONDS (no billing, no public webhook)
     #   push: Gmail watch + Cloud Pub/Sub push to /webhooks/gmail (needs a billed GCP project and public HTTPS)
     change_detection: Literal["poll", "push"] = "poll"
-    poll_interval_seconds: int = 10
+    poll_interval_seconds: int = 5
 
     # Google OAuth client (Web application). Redirect URI = PUBLIC_BASE_URL + /api/v1/accounts/oauth/callback
     google_client_id: str = ""
@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     pubsub_verify: bool = True
     pubsub_audience: str = ""
     pubsub_service_account: str = ""
+
+    # App sign-in tokens (JWT, HS256 with APP_SECRET).
+    jwt_days: int = 30
+
+    # LLM: every user brings their own key. This only pre-fills the model field in Settings.
+    llm_default_provider: str = "gemini"
+    llm_default_model: str = "gemini-3.5-flash-lite"
 
     google_project_id: str = ""
     pubsub_topic: str = ""  # projects/<id>/topics/<name>

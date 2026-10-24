@@ -69,17 +69,6 @@ def test_health(client):
     assert r.json() == {"status": "ok", "queue": "postgres", "database": "ok"}
 
 
-def test_device_registration_requires_admin_and_upserts(client, db):
-    db.add(User(email="me@gmail.com"))
-    db.commit()
-    payload = {"user_email": "me@gmail.com", "fcm_token": "token-1234567890", "label": "Pixel"}
-    assert client.post("/api/v1/devices", json=payload).status_code == 401
-    assert client.post("/api/v1/devices", json=payload, headers={"X-Admin-Token": "wrong"}).status_code == 401
-    assert client.post("/api/v1/devices", json=payload, headers=ADMIN).status_code == 201
-    assert client.post("/api/v1/devices", json={**payload, "label": "Pixel 9"}, headers=ADMIN).status_code == 201
-    assert list(db.scalars(select(Device.label))) == ["Pixel 9"]
-
-
 def test_test_push_sends_and_prunes_unregistered_tokens(client, db, monkeypatch):
     user = User(email="me@gmail.com")
     db.add(user)
