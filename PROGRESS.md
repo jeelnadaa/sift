@@ -95,7 +95,7 @@ Rule: commit every change to git, never push (the owner pushes).
 ## Dev environment notes (this Windows machine)
 - No Docker. Local Postgres 18 on :5432 needs the owner's password, so sessions use a throwaway cluster: `initdb -U sift -A trust` in the session scratchpad, started on **port 5433**, databases `sift` and `sift_test`. Recreate it if missing.
 - Run tests: `cd backend && TEST_DATABASE_URL=postgresql+psycopg://sift@localhost:5433/sift_test .venv/Scripts/python -m pytest -q`.
-- Sift runs on the laptop in the Terminal tab "Sift server": `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-local.ps1 -Lan`. Restart it after backend changes.
+- Sift runs on the laptop in the Terminal tab "Sift server": `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-local.ps1` (public through the `sift-laptop` Cloudflare Tunnel Windows service; `-Lan` only for Wi-Fi access without the tunnel). Restart it after backend changes.
 - Demo: `cd backend && .venv\Scripts\python -m app.cli demo jeelnadaa@gmail.com` (real notifications; uses the owner's Gemini tokens when AI is on); `demo-clear` removes it.
 - `scripts/run-local.ps1` must be started as its own process (`powershell -File ...`); it does not work inside a PowerShell background job (Start-Job).
 - Gradle on Windows here fails with "Unable to establish loopback connection" unless `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\gtmp` is set (and it must run outside the tool sandbox).
