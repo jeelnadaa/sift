@@ -13,7 +13,7 @@ Rule: commit every change to git, never push (the owner pushes).
 | Design (landing, web UI, mobile) | Approved by owner (v2 + font fix). See `DESIGN.md`, `design/README.md` |
 | Phase 0 (setup) | **Accepted 2026-10-24** on the owner's laptop (native Windows, Postgres queue, poll mode). Both checks passed |
 | Phase 1 (notification pipeline) | **Built and verified on the owner's laptop and phone 2026-10-24.** All three acceptance criteria met (see log); the "within seconds" criterion is ~25 s in poll mode. Waiting for owner sign-off |
-| Phase 2 (rules and opportunities) | Not started. Wait for the owner's go-ahead |
+| Phase 2 (rules and opportunities) | **2a done and accepted on real Gemini 2026-10-24** (opportunities, timelines, to-dos, reminders). 2b and 2c next |
 | Phases 3–5 | Not started |
 
 ## Log (newest last)
@@ -62,6 +62,13 @@ Rule: commit every change to git, never push (the owner pushes).
   - Real mail: Gmail receive timestamp → Pub/Sub notification at Sift **17.8 s** → processed with Gemini and pushed **+4.3 s** → on phone **22.7 s** total (poll mode was ~25 s). The ~17 s is Gmail's own delay before it reports a message (same in both modes), not our polling.
 - 2026-10-24 — Google Cloud project is on the **free trial** ($300 / 90 days, no card). When it ends, Pub/Sub stops unless the owner upgrades; Gmail API, OAuth and FCM keep working. Added an **automatic push → poll fallback**: the scheduler ticks every POLL_INTERVAL_SECONDS and polls any account without a working watch (none, expired, or cleared); a safety check (every 5 min per healthy account) that finds unannounced mail older than 90 s clears the watch; hourly renewal re-establishes push. 150 tests pass; verified live (push mode, safety-only checks, healthy).
   - Owner to do: budget alert (Billing → Budgets, ₹100); make sure the Gemini key lives in a project **without billing** (a key in a billed/trial project is charged at paid rates).
+- 2026-10-24 — **Phase 2a: opportunities, timelines, to-dos, reminders.**
+  - Migration 0003 (todos; opportunities.domains + status check; events unique per message, matched_by, kind check; reminders todo_id/kind/dedupe_key).
+  - Matching (`app/opportunities.py`): name/alias (fuzzy, legal suffixes ignored) → the model's pick from the active list (added to the same single extraction call as `opportunity`: oN / new / unsure / none; keys stored on the message so a resumed run maps the same) → new → thread → learned sender domain → link host → timing. Unresolved → `company_question` with up to 3 candidates; the notification shows them as one-tap buttons; the answer is learned as an alias or sender domain.
+  - To-dos (`app/todos.py`): one AI to-do per action-needed mail; manual to-dos with due dates; 24 h / 2 h reminders with dedupe keys, sent by the scheduler every minute; finished, stale (>1 h late) or past-due reminders dropped.
+  - API: opportunities CRUD + timeline + manual attach (AI-off friendly), which-company answer/detach, to-dos CRUD with reminder rescheduling.
+  - Android: bottom bar Feed · Deals · To-do · More (as in the mobile design); Deals list (deadline tags), company timeline (stage strip, events, links, add to calendar, edit names, close/reopen, delete), To-do (check off with undo, add with due date), Mail detail company section (timeline link, which-company chips, manual picker, add to to-do, add to calendar), notification buttons (which-company answers and Done via a broadcast receiver, Add to calendar, Open link). Calendar uses the phone's calendar app (no Google Calendar scope).
+  - 166 tests. **Acceptance (real Gemini, demo):** placement announcement + HirePro mail → one "Acme Corp" timeline (announcement:new, assessment:name), deadline tonight 23:59; Globex separate; bank debit silent with no AI call; 4 to-dos; reminders 24 h/2 h scheduled (past ones skipped).
 
 ## Decisions
 - **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.
@@ -81,7 +88,7 @@ Rule: commit every change to git, never push (the owner pushes).
 - Weak heuristics never change priority; only Gmail Promotions/Social go to digest (and skip the LLM). The LLM may choose digest only for mail with bulk signals.
 - Rule actions mark_read/star are stored as pending (need the modify scope, phases 3–4); category, tag and folder are applied.
 - Pipeline order and guarantees are documented at the top of `app/pipeline.py`. Messages are committed as `processing` first, so a crash resumes instead of skipping; LLM results are cached on the message before notifying.
-- Opportunity matching (brief §7 step 10) is Phase 2.
+- Opportunity matching runs only with AI on (brief §10); with AI off, timelines are built by hand. Name match is checked before the model's pick.
 - Laptop serving: `run-local.ps1 -Lan` binds 0.0.0.0 so the phone reaches `http://<laptop IP>:8000` (debug builds allow cleartext; release builds need HTTPS).
 - `accounts.email` is globally unique because pushes carry only the address.
 - `notifications.message_id` is unique so a message can never notify twice.

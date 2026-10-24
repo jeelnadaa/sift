@@ -42,6 +42,9 @@ data class MessageDto(
     @SerialName("decided_by") val decidedBy: String? = null,
     @SerialName("notified_at") val notifiedAt: String? = null,
     @SerialName("delivered_at") val deliveredAt: String? = null,
+    @SerialName("opportunity_id") val opportunityId: String? = null,
+    @SerialName("todo_id") val todoId: String? = null,
+    @SerialName("company_question") val companyQuestion: List<CompanyChoice>? = null,
 )
 
 @Serializable
@@ -114,3 +117,93 @@ data class SettingsDto(
 
 @Serializable
 data class DeviceIn(@SerialName("fcm_token") val fcmToken: String, val platform: String = "android", val label: String? = null)
+
+@Serializable
+data class CompanyChoice(val id: String, val name: String)
+
+@Serializable
+data class OpportunityDto(
+    val id: String,
+    val company: String,
+    val aliases: List<String> = emptyList(),
+    val domains: List<String> = emptyList(),
+    val status: String = "active",
+    val deadline: String? = null,
+    val events: Int = 0,
+    @SerialName("last_kind") val lastKind: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+@Serializable
+data class TimelineEventDto(
+    val id: String,
+    val kind: String,
+    @SerialName("matched_by") val matchedBy: String? = null,
+    @SerialName("occurred_at") val occurredAt: String? = null,
+    val deadline: String? = null,
+    val links: List<LinkDto> = emptyList(),
+    val platform: String? = null,
+    val summary: String? = null,
+    @SerialName("message_id") val messageId: String? = null,
+    val subject: String? = null,
+    @SerialName("sender_name") val senderName: String? = null,
+    val account: String? = null,
+)
+
+@Serializable
+data class OpportunityDetail(
+    val id: String,
+    val company: String,
+    val aliases: List<String> = emptyList(),
+    val domains: List<String> = emptyList(),
+    val status: String = "active",
+    val deadline: String? = null,
+    val timeline: List<TimelineEventDto> = emptyList(),
+)
+
+@Serializable
+data class OpportunityIn(val company: String, val aliases: List<String> = emptyList())
+
+@Serializable
+data class OpportunityPatch(
+    val company: String? = null,
+    val aliases: List<String>? = null,
+    val status: String? = null,
+)
+
+@Serializable
+data class CompanyAnswer(
+    @SerialName("opportunity_id") val opportunityId: String? = null,
+    @SerialName("new_company") val newCompany: String? = null,
+)
+
+@Serializable
+data class TodoDto(
+    val id: String,
+    val title: String,
+    val notes: String? = null,
+    @SerialName("due_at") val dueAt: String? = null,
+    val done: Boolean = false,
+    val source: String = "manual",
+    @SerialName("message_id") val messageId: String? = null,
+    val subject: String? = null,
+    @SerialName("sender_name") val senderName: String? = null,
+    @SerialName("opportunity_id") val opportunityId: String? = null,
+    val company: String? = null,
+)
+
+@Serializable
+data class TodoIn(
+    val title: String,
+    @SerialName("due_at") val dueAt: String? = null,
+    @SerialName("message_id") val messageId: String? = null,
+    @SerialName("opportunity_id") val opportunityId: String? = null,
+)
+
+@Serializable
+data class TodoPatch(
+    val done: Boolean? = null,
+    val title: String? = null,
+    @SerialName("due_at") val dueAt: String? = null,
+    @SerialName("clear_due") val clearDue: Boolean = false,
+)

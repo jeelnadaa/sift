@@ -1,0 +1,44 @@
+package com.solarquack.sift.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.solarquack.sift.ui.SectionLabel
+import com.solarquack.sift.ui.theme.Ink
+
+/** Everything that is not a daily view (mobile design: Feed, Deals, To-do, More). */
+@Composable
+fun MoreScreen(onNavigate: (String) -> Unit) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).padding(18.dp)) {
+        Text("More", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
+        SectionLabel("Control")
+        Item("Rules", "What gets silenced, digested or marked urgent") { onNavigate("rules") }
+        Item("Silenced mail", "Stored and searchable, never notified") { onNavigate("silenced") }
+        SectionLabel("Account")
+        Item("Accounts", "Connected Gmail accounts and their status") { onNavigate("accounts") }
+        Item("Settings", "AI key, notifications, this phone") { onNavigate("settings") }
+    }
+}
+
+@Composable
+private fun Item(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Ink.text, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+        }
+        Text("›", color = Ink.text3, style = MaterialTheme.typography.titleMedium)
+    }
+    HorizontalDivider(color = Ink.line)
+}

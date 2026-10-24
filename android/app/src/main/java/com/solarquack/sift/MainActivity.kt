@@ -33,6 +33,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.solarquack.sift.data.Session
 import com.solarquack.sift.ui.screens.AccountsScreen
+import com.solarquack.sift.ui.screens.DealsScreen
+import com.solarquack.sift.ui.screens.MoreScreen
+import com.solarquack.sift.ui.screens.OpportunityScreen
+import com.solarquack.sift.ui.screens.TodoScreen
 import com.solarquack.sift.ui.screens.FeedScreen
 import com.solarquack.sift.ui.screens.LoginScreen
 import com.solarquack.sift.ui.screens.MailScreen
@@ -76,7 +80,15 @@ class MainActivity : ComponentActivity() {
                     composable("login") { LoginScreen { nav.navigate("feed") { popUpTo("login") { inclusive = true } } } }
                     composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
                     composable("silenced") { FeedScreen(silenced = true, onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
-                    composable("mail/{id}") { entry -> MailScreen(entry.arguments?.getString("id") ?: "") { nav.popBackStack() } }
+                    composable("mail/{id}") { entry ->
+                        MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") })
+                    }
+                    composable("deals") { DealsScreen(onOpen = { nav.navigate("deal/$it") }) }
+                    composable("deal/{id}") { entry ->
+                        OpportunityScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") })
+                    }
+                    composable("todo") { TodoScreen(onOpenMail = { nav.navigate("mail/$it") }) }
+                    composable("more") { MoreScreen(onNavigate = { nav.navigate(it) }) }
                     composable("accounts") { AccountsScreen() }
                     composable("rules") { RulesScreen() }
                     composable("settings") {
@@ -94,8 +106,13 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun BottomBar(nav: NavHostController, route: String) {
         NavigationBar(containerColor = Ink.bg2, tonalElevation = androidx.compose.ui.unit.Dp(0f)) {
-            listOf("feed" to "Feed", "rules" to "Rules", "accounts" to "Accounts", "settings" to "Settings").forEach { (dest, label) ->
-                val selected = route == dest || (dest == "feed" && (route.startsWith("mail") || route == "silenced"))
+            listOf("feed" to "Feed", "deals" to "Deals", "todo" to "To-do", "more" to "More").forEach { (dest, label) ->
+                val selected = when (dest) {
+                    "feed" -> route == "feed" || route.startsWith("mail")
+                    "deals" -> route == "deals" || route.startsWith("deal/")
+                    "more" -> route in setOf("more", "rules", "accounts", "settings", "silenced")
+                    else -> route == dest
+                }
                 NavigationBarItem(
                     selected = selected,
                     onClick = { nav.go(dest) },
@@ -118,6 +135,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_MESSAGE_ID = "message_id"
-        private val ICONS = mapOf("feed" to "◉", "rules" to "⚙", "accounts" to "✉", "settings" to "☰")
+        private val ICONS = mapOf("feed" to "◉", "deals" to "◈", "todo" to "☑", "more" to "☰")
     }
 }

@@ -172,6 +172,8 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 5. **AI (optional, your own key):** in the app, Settings → AI provider → paste a Gemini API key from [aistudio.google.com](https://aistudio.google.com) → Save and test. Without a valid key Sift makes no AI calls and delivers unhandled mail as normal priority. The daily token cap (default 50,000) is in settings.
 6. **Demo:** `python -m app.cli demo you@gmail.com` runs five sample mails (placement drive, HirePro link, bank debit, fraud alert, recruiter) through the real pipeline and notifies your phone; `demo-clear` removes them.
 
+**Company timelines (Phase 2a):** with AI on, placement mail (announcements, registrations, assessment links, interviews, results, recruiters) is put on one timeline per company across all accounts (app → Deals). When Sift cannot tell which company a mail is about, the notification asks with one-tap buttons and remembers your answer. Mail that needs action becomes a to-do (app → To-do); deadlines get reminders 24 h and 2 h before, and "Add to calendar" opens your phone's calendar. Without AI, create timelines and to-dos by hand from any mail.
+
 What decides priority, in order: your rules (first match wins) → Gmail Promotions/Social tab → digest → a template you silenced before → the LLM (if your key is valid) → otherwise normal. Mail from a real person is never put in digest by the LLM, and anything that fails is delivered as normal, never hidden. Urgent notifications are re-sent every 5 minutes (up to 3 times) until the phone confirms it received them.
 
 ## 6. Move to Oracle Cloud later
@@ -248,4 +250,4 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 - `sift.solarquack.in` is only up while the laptop is on (and awake) with Sift and the tunnel service running.
 - If an account is offline for over a week, Gmail's history expires and Sift restarts from "now" without scanning the gap.
 - When the daily token cap is reached, mail is delivered as normal straight away rather than queued for AI later. A rate-limited (429) AI call is retried once, then the mail is delivered as normal.
-- Not yet: quiet hours, focus mode, rule editor with preview, plain-English rules, onboarding scan, opportunities, folders, grouping (Phase 2); HTML reader and search (Phase 3); offline cache in the app.
+- Not yet: quiet hours, focus mode, rule editor with preview, plain-English rules, onboarding scan, fingerprint suggestions, folders, grouping, web UI (Phase 2b/2c); HTML reader, snooze and search (Phase 3); offline cache in the app.

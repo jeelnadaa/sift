@@ -46,6 +46,19 @@ interface SiftApi {
     @POST("api/v1/ai/test") suspend fun testKey(): AiStatus
     @DELETE("api/v1/ai/key") suspend fun removeKey()
 
+    @GET("api/v1/opportunities") suspend fun opportunities(@Query("status") status: String = "active"): List<OpportunityDto>
+    @GET("api/v1/opportunities/{id}") suspend fun opportunity(@Path("id") id: String): OpportunityDetail
+    @POST("api/v1/opportunities") suspend fun createOpportunity(@Body body: OpportunityIn): OpportunityDto
+    @PATCH("api/v1/opportunities/{id}") suspend fun updateOpportunity(@Path("id") id: String, @Body body: OpportunityPatch): OpportunityDto
+    @DELETE("api/v1/opportunities/{id}") suspend fun deleteOpportunity(@Path("id") id: String)
+    @POST("api/v1/messages/{id}/opportunity") suspend fun answerCompany(@Path("id") messageId: String, @Body body: CompanyAnswer)
+    @DELETE("api/v1/messages/{id}/opportunity") suspend fun detachOpportunity(@Path("id") messageId: String)
+
+    @GET("api/v1/todos") suspend fun todos(@Query("state") state: String = "open"): List<TodoDto>
+    @POST("api/v1/todos") suspend fun createTodo(@Body body: TodoIn): TodoDto
+    @PATCH("api/v1/todos/{id}") suspend fun updateTodo(@Path("id") id: String, @Body body: TodoPatch): TodoDto
+    @DELETE("api/v1/todos/{id}") suspend fun deleteTodo(@Path("id") id: String)
+
     @POST("api/v1/devices") suspend fun registerDevice(@Body body: DeviceIn)
     @POST("api/v1/notifications/{id}/ack") suspend fun ack(@Path("id") id: String)
 }
@@ -85,8 +98,8 @@ fun Throwable.userMessage(): String = when (this) {
     is HttpException -> when (code()) {
         401 -> "Signed out. Sign in again."
         404 -> "Not found."
-        409 -> "This account needs attention in Accounts."
-        422 -> response()?.errorBody()?.string()?.let { Regex("\"detail\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) } ?: "Invalid input."
+        409 -> response()?.errorBody()?.string()?.let { Regex("\"detail\":\"([^\"]+)\"").find(it)?.groupValues?.get(1)?.replaceFirstChar { c -> c.uppercase() } } ?: "Conflict."
+        422 -> "Please check what you entered."
         503 -> "Server is not configured for this yet."
         else -> "Server error (${code()})."
     }

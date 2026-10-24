@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.solarquack.sift.data.Api
+import com.solarquack.sift.data.CalendarIntent
 import com.solarquack.sift.data.Push
 import com.solarquack.sift.data.Session
 import kotlinx.coroutines.runBlocking
@@ -69,11 +70,51 @@ class SiftMessagingService : FirebaseMessagingService() {
             .setContentIntent(open)
             .setAutoCancel(true)
             .setOnlyAlertOnce(data["resend"] == null)
-        data["link"]?.takeIf { it.startsWith("http") }?.let { url ->
-            val link = PendingIntent.getActivity(this, id + 1, Intent(Intent.ACTION_VIEW, Uri.parse(url)), PendingIntent.FLAG_IMMUTABLE)
-            builder.addAction(0, data["link_label"]?.takeIf { it.isNotBlank() } ?: "Open link", link)
-        }
+        addActions(builder, data, id, messageId, open)
         NotificationManagerCompat.from(this).notify(id, builder.build())
+    }
+
+    /** Up to three buttons (Android's limit), most useful first. */
+    private fun addActions(builder: NotificationCompat.Builder, data: Map<String, String>, id: Int, messageId: String?, open: PendingIntent) {
+        var slots = 3
+        val choices = data["company_choices"].orEmpty().lines().mapNotNull { line ->
+            line.split("|", limit = 2).takeIf { it.size == 2 && it[0].isNotBlank() }?.let { it[0] to it[1] }
+        }
+        if (choices.isNotEmpty() && messageId != null) {
+            // "Which company?": two most likely drives as one-tap answers, then "Other" opens the mail
+            choices.take(2).forEachIndexed { i, (oppId, name) ->
+                builder.addAction(0, name, broadcast(id * 10 + i, NotificationActionReceiver.ACTION_COMPANY, id) {
+                    putExtra(NotificationActionReceiver.EXTRA_MESSAGE_ID, messageId)
+                    putExtra(NotificationActionReceiver.EXTRA_OPPORTUNITY_ID, oppId)
+                    putExtra(NotificationActionReceiver.EXTRA_LABEL, name)
+                })
+                slots--
+            }
+            builder.addAction(0, "Other…", open)
+            return
+        }
+        data["link"]?.takeIf { it.startsWith("http") && slots > 0 }?.let { url ->
+            builder.addAction(0, data["link_label"]?.takeIf { it.isNotBlank() } ?: "Open link",
+                PendingIntent.getActivity(this, id + 1, Intent(Intent.ACTION_VIEW, Uri.parse(url)), PendingIntent.FLAG_IMMUTABLE))
+            slots--
+        }
+        data["deadline"]?.takeIf { it.isNotBlank() && slots > 0 }?.let { deadline ->
+            CalendarIntent.build(data["title"].orEmpty() + ": " + data["body"].orEmpty(), deadline)?.let { cal ->
+                builder.addAction(0, "Add to calendar", PendingIntent.getActivity(this, id + 2, cal, PendingIntent.FLAG_IMMUTABLE))
+                slots--
+            }
+        }
+        data["todo_id"]?.takeIf { it.isNotBlank() && slots > 0 }?.let { todoId ->
+            builder.addAction(0, "Done", broadcast(id + 3, NotificationActionReceiver.ACTION_TODO_DONE, id) {
+                putExtra(NotificationActionReceiver.EXTRA_TODO_ID, todoId)
+            })
+        }
+    }
+
+    private fun broadcast(requestCode: Int, action: String, notificationId: Int, extras: Intent.() -> Unit): PendingIntent {
+        val intent = Intent(this, NotificationActionReceiver::class.java).setAction(action)
+            .putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId).apply(extras)
+        return PendingIntent.getBroadcast(this, requestCode, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
     companion object {

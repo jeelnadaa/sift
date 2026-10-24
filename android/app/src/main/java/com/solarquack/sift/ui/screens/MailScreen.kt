@@ -26,6 +26,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import com.solarquack.sift.data.CalendarIntent
+import com.solarquack.sift.data.CompanyAnswer
+import com.solarquack.sift.data.OpportunityDto
+import com.solarquack.sift.data.TodoIn
+import com.solarquack.sift.ui.Chip
+import com.solarquack.sift.ui.theme.Radius
+import kotlinx.coroutines.launch
 import com.solarquack.sift.data.Api
 import com.solarquack.sift.data.BodyDto
 import com.solarquack.sift.data.MessageDto
@@ -43,12 +54,14 @@ import com.solarquack.sift.ui.theme.Ink
 
 /** Read-only mail detail (Phase 1). Plain text only; the sandboxed HTML reader is Phase 3. */
 @Composable
-fun MailScreen(id: String, onBack: () -> Unit) {
+fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}) {
     val context = LocalContext.current
     var m by remember { mutableStateOf<MessageDto?>(null) }
     var body by remember { mutableStateOf<BodyDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var bodyError by remember { mutableStateOf<String?>(null) }
+    var addingTodo by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(id) {
         try {
@@ -98,6 +111,16 @@ fun MailScreen(id: String, onBack: () -> Unit) {
             }
         }
 
+        CompanySection(msg, onOpenOpportunity, onChanged = { scope.launch { m = Api.get(context).message(id) } })
+
+        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (msg.todoId == null) GhostButton("Add to to-do") { addingTodo = true }
+            else Tag("On your to-do list", Ink.signal)
+            if (msg.deadline != null && runCatching { java.time.OffsetDateTime.parse(msg.deadline).isAfter(java.time.OffsetDateTime.now()) }.getOrDefault(false)) {
+                GhostButton("Add to calendar") { CalendarIntent.open(context, listOfNotNull(msg.company, msg.summary ?: msg.subject).joinToString(": "), msg.deadline) }
+            }
+        }
+
         SectionLabel("Message")
         when {
             body != null -> SelectionContainer { Text(body!!.text.ifBlank { msg.snippet ?: "" }, color = Ink.text2, style = MaterialTheme.typography.bodyLarge) }
@@ -118,4 +141,80 @@ fun MailScreen(id: String, onBack: () -> Unit) {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mail.google.com/mail/u/0/#all")))
         }
     }
+
+    if (addingTodo) m?.let { msg ->
+        AddTodoDialog(initialTitle = msg.summary ?: msg.subject ?: "", onDismiss = { addingTodo = false }) { title, due ->
+            addingTodo = false
+            scope.launch {
+                try {
+                    Api.get(context).createTodo(TodoIn(title, due ?: msg.deadline, messageId = msg.id, opportunityId = msg.opportunityId))
+                    m = Api.get(context).message(id).let { it.copy(todoId = it.todoId ?: "manual") }
+                } catch (t: Throwable) { error = t.userMessage() }
+            }
+        }
+    }
+}
+
+/** Which company drive this mail belongs to: link, "which company?" question, or a manual picker. */
+@Composable
+private fun CompanySection(msg: MessageDto, onOpenOpportunity: (String) -> Unit, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var picking by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun answer(body: CompanyAnswer) = scope.launch {
+        try { Api.get(context).answerCompany(msg.id, body); onChanged() } catch (t: Throwable) { error = t.userMessage() }
+    }
+
+    Spacer(Modifier.height(14.dp))
+    when {
+        msg.opportunityId != null -> Banner("On the ${msg.company ?: "company"} timeline", Ink.signal, "Open") { onOpenOpportunity(msg.opportunityId) }
+        msg.companyQuestion != null -> SiftCard(border = Ink.warn.copy(alpha = 0.4f)) {
+            Text("Which company is this?", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+            Text("Your answer teaches Sift, so the next mail like this is sorted by itself.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                msg.companyQuestion.take(3).forEach { c -> Chip(c.name, false) { answer(CompanyAnswer(opportunityId = c.id)) } }
+                Chip("other…", false) { picking = true }
+            }
+        }
+        else -> GhostButton("Add to a company") { picking = true }
+    }
+    error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall) }
+
+    if (picking) CompanyPicker(onDismiss = { picking = false }, onNew = { picking = false; naming = true }) { id ->
+        picking = false
+        answer(CompanyAnswer(opportunityId = id))
+    }
+    if (naming) NewOpportunityDialog(onDismiss = { naming = false }) { name ->
+        naming = false
+        answer(CompanyAnswer(newCompany = name))
+    }
+}
+
+@Composable
+private fun CompanyPicker(onDismiss: () -> Unit, onNew: () -> Unit, onPick: (String) -> Unit) {
+    val context = LocalContext.current
+    var opps by remember { mutableStateOf<List<OpportunityDto>?>(null) }
+    LaunchedEffect(Unit) { opps = runCatching { Api.get(context).opportunities() }.getOrDefault(emptyList()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to a company") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when {
+                    opps == null -> Text("Loading…", color = Ink.text3)
+                    opps!!.isEmpty() -> Text("No company drives yet.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
+                    else -> opps!!.forEach { o ->
+                        Text(o.company, color = Ink.text, style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.fillMaxWidth().clickable { onPick(o.id) }.padding(vertical = 12.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = { PrimaryButton("+ New company", onClick = onNew) },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        containerColor = Ink.surface, shape = Radius.xl,
+    )
 }
