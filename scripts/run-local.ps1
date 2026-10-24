@@ -11,6 +11,9 @@ $backend = Join-Path $root "backend"
 $py = Join-Path $backend ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { throw "Create the venv first: cd backend; python -m venv .venv; .venv\Scripts\pip install -r requirements.txt" }
 New-Item -ItemType Directory -Force (Join-Path $root "logs") | Out-Null
+if (-not (Test-Path (Join-Path $root "web\dist\index.html"))) {
+    Write-Warning "Web UI not built, so /app shows a notice. Build it once: cd web; npm ci; npm run build"
+}
 
 # Stop leftovers from a previous run (e.g. the scheduled task was killed and its children survived).
 Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |

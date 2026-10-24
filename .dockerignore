@@ -1,0 +1,13 @@
+# Build context is the repo root (see backend/Dockerfile). Keep secrets and bulky folders out.
+.env
+secrets
+backups
+logs
+.git
+android
+**/node_modules
+web/dist
+backend/.venv
+**/__pycache__
+**/.pytest_cache
+backend/tests

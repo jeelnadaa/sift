@@ -93,6 +93,7 @@ Rules:
 - The sidebar shows no AI status. AI state lives in Settings and on locked features only.
 - Top bar: sticky, page title left, global search right.
 - Icons: 18px, 1.6 stroke, rounded caps, `currentColor` (inline SVG sprite in the page).
+- **Built app (`web/`, Phase 2c):** React implementation of this layout. It imports `design/shared/tokens.css` and `components.css` directly (one source of truth) and adds `web/src/styles.css` for layout. Differences from the prototype: Search and Senders are not in the sidebar yet (Phase 3); under **Organize** the top-level folders are listed (8 at most, indented, color square + unread count) as **drop targets**: drag any mail row onto one to file it (it highlights with a 12% signal tint). Folder tree rows are draggable onto each other to nest; the tree ends with a dashed "Drop a folder here to move it to the top level" target. Group rows use `.group-row` with a ▤ avatar, "N mails", unread and urgent tags. `.split` (list + detail) stacks to one column below 1180px. Dialogs use a 60% scrim and `--r-xl` corners; a short toast (inverted colors) confirms actions.
 
 ### Mobile (Android, Compose)
 - 300×620 reference frame, status bar, app bar (title + icon buttons), content, bottom tab bar (Feed, Deals, To-do, Folders, More).
@@ -135,7 +136,7 @@ Easing: `--ease` `cubic-bezier(.2,.8,.2,1)`, `--ease-out` `cubic-bezier(.16,1,.3
 
 Web routes (`design/web/index.html`): `#feed #todo #opps #groups #folders #search #senders #rules #silenced #scan #accounts #usage #settings`. Mobile (`design/mobile/index.html`): welcome, battery exemption, grouping prompt, onboarding scan, feed, mail detail, notification shade, to-do, opportunities, company timeline, groups, group detail, folders, search, rules list, rule editor, silenced, accounts, usage, settings. Landing: `design/landing/index.html`.
 
-Not designed yet: web mail detail, mobile senders, compose/reply, snooze, light theme.
+Not designed yet: mobile senders, compose/reply, snooze, light theme. The built web app has a plain-text mail detail (`/app/mail/:id`: tags, sender, extracted card, filing chips, body as text) until the Phase 3 reader is designed.
 
 ## 11. Changing the design
 

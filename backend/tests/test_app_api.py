@@ -214,3 +214,27 @@ def test_gemini_error_mapping(status, error, exc):
     client, _ = gemini_client([(status, {"error": error})])
     with pytest.raises(exc):
         gemini.GeminiProvider("k", "m", client).ping()
+
+
+# ---- web UI ------------------------------------------------------------------------------
+
+def test_web_ui_is_served_with_strict_headers(client, override_settings, tmp_path):
+    from app import main, webui
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>Sift</title>")
+    (tmp_path / "assets" / "app-1.js").write_text("console.log(1)")
+    (tmp_path.parent / "secret.txt").write_text("nope")
+    override_settings(web_dist=str(tmp_path))
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+    webui.mount(app)
+    c = TestClient(app)
+    r = c.get("/app/folders/123")  # a client-side route gets the page
+    assert r.status_code == 200 and "<title>Sift</title>" in r.text
+    assert "script-src 'self'" in r.headers["content-security-policy"] and r.headers["x-frame-options"] == "DENY"
+    r = c.get("/app/assets/app-1.js")
+    assert r.text == "console.log(1)" and "immutable" in r.headers["cache-control"]
+    assert "nope" not in c.get("/app/../secret.txt").text and "nope" not in c.get("/app/%2e%2e/secret.txt").text
+    assert c.get("/", follow_redirects=False).headers["location"] == "/app/"
+    assert main.app  # the real app mounts it too

@@ -7,7 +7,9 @@
 name: sift
 
 x-backend: &backend
-  build: ./backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile  # also builds the web UI (web/) into the image
   restart: unless-stopped
   env_file: .env
   environment:

@@ -23,6 +23,7 @@ Two independent choices, both set in `.env`, no code changes:
 |---|---|
 | `backend/` | FastAPI API, worker, scheduler, Gmail client, models, Alembic migrations, tests |
 | `android/` | Kotlin + Compose app (Phase 0: FCM token, priority channels, battery exemption) |
+| `web/` | React + TypeScript web UI (Vite), served by the API at `/app` |
 | `design/` | HTML design prototypes (landing, web UI, mobile) |
 | `docker-compose.yml` | postgres, redis, api, worker, scheduler, cloudflared, caddy |
 | `deploy/Caddyfile` | HTTPS reverse proxy for a VM |
@@ -92,6 +93,12 @@ psql -U postgres -c "CREATE USER sift WITH PASSWORD 'pick-a-password';" -c "CREA
 cd backend
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
+cd ..
+
+# one-time (and after web UI changes): build the web UI (Node 20+), served at /app
+cd web
+npm ci
+npm run build
 cd ..
 ```
 
@@ -176,6 +183,12 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 
 **Rules (Phase 2b):** More → Rules. Create rules in the editor (live "N of your last 500 mails would match" preview), describe one in plain English (needs your AI key; you review the draft before saving), accept suggestions for templates that keep repeating, or tap "Ignore mails like this" on any mail or notification. When you connect a new account, Sift reads the last 30 days of headers (no bodies, no AI) and lists top senders so you can set their actions in bulk (Accounts → First scan). Your own categories live under More → Categories, and token usage under More → Token usage.
 
+**Folders, grouping and the web UI (Phase 2c):**
+- **Web UI:** open `https://<your server>/app/` (here https://sift.solarquack.in/app/) and sign in with the same email and password as the phone. It covers the feed (grouped or not), mail detail, to-do, company timelines, groups, folders, rules (editor with live preview, plain English, suggestions, categories), silenced mail, the first scan, accounts, token usage and settings. Collapse the sidebar with `[`.
+- **Folders:** your own nested folders in Sift (up to 10 levels); Gmail is never changed. File a conversation from mail detail (or "Move to <last used>"), from the notification's "File in …" button, by dragging mail onto a folder in the web sidebar or folder tree, or automatically with a rule ("Also file in a folder" in the rule editor, or "File mail like this here"). Each folder can notify as usual, always (digest mail rings too) or be muted (urgent mail still notifies). Drag folders onto each other in the web UI to nest them.
+- **Grouping:** the app asks once (up to three times if you close the question) whether to group similar mail. Yes groups the last 30 days, then new mail as it arrives: same thread, same company, same mailing list, same sender + subject template, or similar subjects from one domain. A group shows from 3 mails; urgent mail always keeps its own row, and every mail still notifies unless you mute the group. Change it any time in Settings.
+- **Backup:** Settings → Export downloads folders, rules, tags, categories and settings as one JSON file (no mail, tokens or keys); Import adds them back (rules for accounts not connected come in switched off).
+
 What decides priority, in order: your rules (first match wins) → Gmail Promotions/Social tab → digest → a template you silenced before → the LLM (if your key is valid) → otherwise normal. Mail from a real person is never put in digest by the LLM, and anything that fails is delivered as normal, never hidden. Urgent notifications are re-sent every 5 minutes (up to 3 times) until the phone confirms it received them.
 
 ## 6. Move to Oracle Cloud later
@@ -235,6 +248,8 @@ python -m app.cli check          # run one check of every account now
 python -m app.cli fake-push you@gmail.com 123   # simulated Pub/Sub push (PUBSUB_VERIFY=false)
 ```
 
+Web UI: `cd web && npm ci`, then `npm run dev` (http://localhost:5173/app/, proxies `/api` to the API on :8000), `npm test` (Vitest), `npm run build` (type-check + production build into `web/dist`, which the API serves at `/app`; `WEB_DIST` in `.env` overrides the path). The Docker image builds it itself (`backend/Dockerfile` is built from the repository root).
+
 Design prototypes: `cd design && python -m http.server 8765`, then open `http://localhost:8765/web/`.
 
 ## 9. Operations
@@ -252,5 +267,7 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 - `sift.solarquack.in` is only up while the laptop is on (and awake) with Sift and the tunnel service running.
 - If an account is offline for over a week, Gmail's history expires and Sift restarts from "now" without scanning the gap.
 - When the daily token cap is reached, mail is delivered as normal straight away rather than queued for AI later. A rate-limited (429) AI call is retried once, then the mail is delivered as normal.
-- Not yet: quiet hours, focus mode, folders, grouping, web UI (Phase 2c); HTML reader, snooze and search (Phase 3); offline cache in the app.
+- Not yet: quiet hours, focus mode (later); HTML reader, snooze and search, smart folders, "mark all read" and "archive all" for groups (Phase 3, need search or the modify scope); offline cache in the app.
+- Grouping's optional AI layer (daily topic suggestions from subject lines) is not built; grouping works on rules only.
+- The web UI keeps its sign-in token in the browser's localStorage (the page runs under a strict Content-Security-Policy with no third-party scripts). Sign out from the sidebar on shared computers.
 - Mail stored before the mailing-list (ARC) fix keeps its old "unverified" sender status; only new mail benefits. Rule previews therefore under-count older list mail.

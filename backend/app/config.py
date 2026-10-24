@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Interactive API docs at /docs. Off by default because the API is reachable from the internet.
     api_docs: bool = False
 
+    # The built web UI (web/dist, `npm run build`), served at /app. Empty = next to the backend
+    # folder in a checkout (../web/dist), or /app/web in the Docker image.
+    web_dist: str = ""
+
     # LLM: every user brings their own key. This only pre-fills the model field in Settings.
     llm_default_provider: str = "gemini"
     llm_default_model: str = "gemini-3.5-flash-lite"

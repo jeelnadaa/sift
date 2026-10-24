@@ -80,7 +80,7 @@ Backend Python 3.12, FastAPI, SQLAlchemy + Alembic, Postgres, arq + Redis or the
 | `android/` | Kotlin + Compose app, package `com.solarquack.sift`: `data/` (Retrofit API, session, push), `ui/theme` (DESIGN.md tokens, bundled fonts), `ui/screens`, `SiftMessagingService` |
 | `docker-compose.yml`, `deploy/`, `scripts/` | Deployment (profiles: redis, tunnel, https), Caddy, `run-local.ps1` (native Windows), backup/restore |
 
-Add new top-level folders (e.g. the React web app) to this table when they are created.
+Add new top-level folders to this table when they are created.
 
 ## 9a. Running and testing locally
 See "Dev environment notes" at the bottom of `PROGRESS.md` (throwaway Postgres on port 5433, test command, Gradle loopback workaround). Every phase must end with the full test suite passing and, where possible, a real end-to-end run.

@@ -42,4 +42,4 @@ The rules behind these screens are in [`../DESIGN.md`](../DESIGN.md).
 ## Known gaps
 - Mail detail on web, Senders on mobile, compose/reply and snooze screens (phases 3 and 4) are not designed yet.
 - Light theme not designed.
-- Prototypes use static sample data and are not wired to any backend.
+- Prototypes use static sample data and are not wired to any backend. The real web UI is in `../web/` (React), built from these tokens and components.
