@@ -21,8 +21,8 @@ class GeminiProvider:
         self._key = api_key
         self._client = client or httpx.Client(timeout=30)
 
-    def _post(self, body: dict) -> dict:
-        r = self._client.post(f"{BASE}/{self.model}:generateContent", json=body, headers={"x-goog-api-key": self._key})
+    def _post(self, body: dict, path: str | None = None) -> dict:
+        r = self._client.post(path or f"{BASE}/{self.model}:generateContent", json=body, headers={"x-goog-api-key": self._key})
         if r.status_code == 200:
             return r.json()
         try:
@@ -72,6 +72,17 @@ class GeminiProvider:
             input_tokens=int(usage.get("promptTokenCount", 0)),
             output_tokens=int(usage.get("candidatesTokenCount", 0)) + int(usage.get("thoughtsTokenCount", 0)),
         )
+
+    def embed(self, texts: list[str], task: str, model: str, dims: int) -> list[list[float]]:
+        """Embeddings with batchEmbedContents (ai.google.dev/gemini-api/docs/embeddings).
+        task: RETRIEVAL_DOCUMENT for mail, RETRIEVAL_QUERY for searches."""
+        body = {"requests": [{"model": f"models/{model}", "content": {"parts": [{"text": t}]}, "taskType": task,
+                              "outputDimensionality": dims} for t in texts]}
+        data = self._post(body, f"{BASE}/{model}:batchEmbedContents")
+        out = [e.get("values") or [] for e in data.get("embeddings", [])]
+        if len(out) != len(texts) or any(len(v) != dims for v in out):
+            raise LlmError("embedding response did not match the request")
+        return out
 
     def ping(self) -> None:
         body = {"contents": [{"role": "user", "parts": [{"text": "Reply with OK."}]}], "generationConfig": {"maxOutputTokens": 5}}

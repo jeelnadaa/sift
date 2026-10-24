@@ -13,6 +13,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    LargeBinary,
     Boolean,
     CheckConstraint,
     Date,
@@ -350,6 +351,18 @@ class MailNote(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = created()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class MessageEmbedding(Base):
+    """Semantic-search vector of one message (Phase 3b): float32 values, normalized, from the
+    user's own key. Made from sender, subject, preview and Sift's summary; never the body."""
+    __tablename__ = "message_embeddings"
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    dims: Mapped[int] = mapped_column(Integer, nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = created()
 
 
 class SavedSearch(Base):

@@ -25,6 +25,26 @@ class FakeLlm:
         self.raw = None
         self.override = {}
 
+    # words that mean the same thing land on the same axis, so "job offer" finds "offer letter"
+    SYNONYMS = {"offer": "job", "hiring": "job", "role": "job", "recruiter": "job", "interview": "job", "position": "job",
+                "debited": "money", "credited": "money", "upi": "money", "bank": "money", "payment": "money", "rs": "money",
+                "test": "exam", "assessment": "exam", "quiz": "exam"}
+
+    def embed(self, texts, task, model, dims):
+        import hashlib
+        import re as _re
+        self.embed_calls = getattr(self, "embed_calls", []) + [{"texts": list(texts), "task": task}]
+        if self.fail_with:
+            raise self.fail_with
+        out = []
+        for t in texts:
+            v = [0.0] * dims
+            for w in _re.findall(r"[a-z]+", t.lower()):
+                w = self.SYNONYMS.get(w, w)
+                v[int(hashlib.md5(w.encode()).hexdigest(), 16) % dims] += 1.0
+            out.append(v)
+        return out
+
     def generate_json(self, system, prompt, schema, max_output_tokens=600):
         self.calls.append({"system": system, "prompt": prompt})
         if self.fail_with:
@@ -137,8 +157,11 @@ def test_ai_on_classifies_priority_mail_and_never_spends_on_silenced_mail(db, se
     fraud = run(db, account, provider, msgs["fraud"])  # bank rule exception lets it through to the LLM
     assert (fraud.priority, fraud.notified) == ("urgent", True)
     assert db.scalar(select(Rule.hit_count)) == 1  # only the silenced debit hit the rule
-    usage = list(db.scalars(select(TokenUsage)))
+    usage = list(db.scalars(select(TokenUsage).where(TokenUsage.purpose == "extract")))
     assert len(usage) == 2 and usage[0].input_tokens == 300
+    # the semantic index embeds the two delivered mails, never the silenced debit
+    embedded = [t for c in fake_llm.embed_calls for t in c["texts"]]
+    assert len(embedded) == 2 and not any("240" in t for t in embedded)
 
 
 def test_prompt_wraps_email_as_untrusted_and_redacts(db, setup, fake_llm):

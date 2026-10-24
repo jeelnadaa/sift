@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import backup, user_settings
+from app import backup, jobs, user_settings
 from app.config import get_settings
 from app.db import get_db
 from app.llm import service as llm
@@ -72,6 +72,9 @@ def save_key(body: KeyIn, user: User = Depends(current_user), db: Session = Depe
     except LlmError as exc:
         raise HTTPException(422, str(exc)) from exc
     db.commit()
+    if llm.ai_enabled(db, user.id):
+        # a working key: build the semantic index of the last 90 days in the background (owner's choice)
+        jobs.enqueue_sync("semantic_backfill", {"user_id": str(user.id)}, dedupe_key=f"semantic:{user.id}")
     return llm.status(db, user.id)
 
 

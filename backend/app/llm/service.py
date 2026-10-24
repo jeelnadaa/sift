@@ -431,3 +431,35 @@ def status(db: Session, user_id: uuid.UUID) -> dict:
         return {**base, "provider": None, "model": None, "key_last4": None, "status": "missing"}
     return {**base, "provider": cred.provider, "model": cred.model, "key_last4": cred.key_last4, "status": cred.status,
             "last_validated_at": cred.last_validated_at.isoformat() if cred.last_validated_at else None}
+
+
+# ---- embeddings (semantic search, Phase 3b) ----------------------------------------------------
+
+EMBED_MODEL = "gemini-embedding-001"
+EMBED_DIMS = 768
+EMBED_BATCH = 50
+
+
+def embed(db: Session, user_id: uuid.UUID, texts: list[str], task: str, purpose: str = "embed") -> list[list[float]] | None:
+    """Embeddings with the user's own key, behind the same gate and daily cap as every other
+    token-spending call. Returns None when AI is off or the cap is reached (callers fall back).
+    The embeddings API reports no token counts, so usage is estimated at 4 characters a token."""
+    if not texts or not ai_enabled(db, user_id) or not under_cap(db, user_id):
+        return None
+    cred = credential(db, user_id)
+    provider = _provider(cred)
+    out: list[list[float]] = []
+    try:
+        for i in range(0, len(texts), EMBED_BATCH):
+            chunk = texts[i:i + EMBED_BATCH]
+            out += provider.embed(chunk, task, EMBED_MODEL, EMBED_DIMS)
+            estimate = sum(len(t) for t in chunk) // 4 + 1
+            db.add(TokenUsage(user_id=user_id, account_id=None, day=_today(db, user_id), provider=cred.provider,
+                              model=EMBED_MODEL, purpose=purpose, input_tokens=estimate, output_tokens=0))
+    except LlmAuthError as exc:
+        _mark_invalid(db, cred, str(exc))
+        return None
+    except LlmQuotaError:
+        log.info("embedding quota reached for user %s", user_id)
+        return None
+    return out

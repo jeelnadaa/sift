@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from app.api.messages import message_json, thread_json
 from app.db import get_db
 from app.models import Folder, GmailAccount, Message, SavedSearch, Setting, Tag, User
-from app.search import engine
+from app import jobs
+from app.search import engine, semantic
 from app.search.query import QueryError, parse
 from app.security import current_user
 
@@ -134,3 +135,44 @@ def account_thread(account_id: uuid.UUID, thread_id: str, images: bool = False,
     if not thread_id.isalnum() or len(thread_id) > 64:
         raise HTTPException(422, "bad conversation id")
     return thread_json(db, user, account, thread_id, images)
+
+
+@router.get("/search/semantic")
+def semantic_search(q: str = Query(min_length=1, max_length=1000), offset: int = Query(default=0, ge=0, le=1000),
+                    limit: int = Query(default=30, ge=1, le=100), user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Search by meaning over indexed mail (needs the user's AI key). Sift filters in the
+    query still apply; Gmail operators are treated as words."""
+    try:
+        p = parse(engine.expand_saved(db, user.id, q))
+        accounts = engine._accounts(db, user.id)
+        conds = engine.conditions(db, user.id, p, accounts)
+    except (QueryError, engine.SearchError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    text = " ".join(c.text for c in p.chips if c.kind == "gmail").strip()
+    if not text:
+        raise HTTPException(422, "type what you're looking for")
+    chosen = [a.id for a in engine.selected_accounts(p, accounts)]
+    res = semantic.search(db, user.id, text, conds, chosen, offset, limit)
+    db.commit()  # token usage
+    if res is None:
+        raise HTTPException(409, "Search by meaning needs a working AI key (Settings), and today's token cap not reached")
+    hits, total = res
+    by_id = {a.id: a for a in accounts}
+    items = [{**message_json(m, by_id.get(m.account_id)), "source": "sift", "score": round(score, 3)} for m, score in hits]
+    nxt = offset + limit if offset + limit < total else None
+    return {"items": items, "total": total, "next_offset": nxt, "status": semantic.status(db, user.id)}
+
+
+@router.get("/search/semantic/status")
+def semantic_status(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    return semantic.status(db, user.id)
+
+
+@router.post("/search/semantic/index", status_code=202)
+def semantic_index(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Index stored mail from the last 90 days (once; already-indexed mail is skipped)."""
+    from app.llm import service as llm
+    if not llm.ai_enabled(db, user.id):
+        raise HTTPException(409, "Add a working AI key in Settings first")
+    jobs.enqueue_sync("semantic_backfill", {"user_id": str(user.id)}, dedupe_key=f"semantic:{user.id}")
+    return semantic.status(db, user.id)

@@ -29,6 +29,7 @@ from app.mail.gmail import GmailError
 from app.mail.message import clean_body, extract_body, parse_metadata
 from app.models import Fingerprint, Folder, FolderItem, GmailAccount, MailTag, Message, Opportunity, Rule, Tag
 from app.redact import redact
+from app.search import semantic
 
 log = logging.getLogger(__name__)
 SILENT_ACTIONS = {"ignore": "ignored", "silent": "silenced"}
@@ -132,6 +133,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
     if notify.notify_message(db, msg, account):
         outcome.notified = True
     db.commit()
+    semantic.index_new(db, msg)  # after the notification is out; uses the user's key, never raises
     return outcome
 
 

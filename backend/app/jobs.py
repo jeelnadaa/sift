@@ -82,7 +82,18 @@ def handle_grouping_backfill(payload: dict) -> None:
     log.info("grouping backfill grouped %d mail(s)", n)
 
 
+def handle_semantic_backfill(payload: dict) -> None:
+    import uuid
+
+    from app.search.semantic import backfill
+
+    with get_sessionmaker()() as db:
+        n = backfill(db, uuid.UUID(payload["user_id"]))
+    log.info("semantic index: %d mail(s) added", n)
+
+
 HANDLERS = {
+    "semantic_backfill": handle_semantic_backfill,
     "grouping_backfill": handle_grouping_backfill,
     "onboarding_scan": handle_onboarding_scan,
     "send_reminders": handle_send_reminders,

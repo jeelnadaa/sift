@@ -13,3 +13,4 @@ cryptography
 PyJWT
 tzdata
 nh3
+numpy
