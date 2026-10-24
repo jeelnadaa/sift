@@ -31,7 +31,7 @@ def context_for(msg: Message, tz: str) -> engine.MailContext:
     return engine.MailContext(
         account_id=str(msg.account_id), sender=msg.sender or "", authenticated_domain=msg.authenticated_domain,
         subject=msg.subject or "", labels=list(msg.labels or []), headers={h: "" for h in (msg.header_names or [])},
-        has_attachment=msg.has_attachment, received_at=msg.received_at or msg.created_at, timezone=tz, body_loader=lambda: "",
+        has_attachment=msg.has_attachment, received_at=msg.received_at or msg.created_at, timezone=tz, snippet=msg.snippet or "", body_loader=lambda: "",
     )
 
 
@@ -46,13 +46,29 @@ def preview(db: Session, user_id: uuid.UUID, conditions: dict, exceptions: dict 
         .order_by(Message.received_at.desc().nulls_last()).limit(PREVIEW_LIMIT)
     ))
     hits = [m for m in rows if engine.evaluate([view], context_for(m, tz))]
+    important = [m for m in hits if is_important(m)]
+    # important matches first, so the user sees what a quieting rule would hide
+    ordered = important + [m for m in hits if m not in important]
     return {
         "checked": len(rows),
         "matches": len(hits),
+        "important_matches": len(important),
         "samples": [{"id": str(m.id), "sender": m.sender_name or m.sender, "subject": m.subject,
-                     "received_at": m.received_at.isoformat() if m.received_at else None, "priority": m.priority} for m in hits[:10]],
+                     "received_at": m.received_at.isoformat() if m.received_at else None, "priority": m.priority,
+                     "important": m in important} for m in ordered[:10]],
         "body_not_previewed": engine.needs_body(conditions) or engine.needs_body(exceptions),
     }
+
+
+IMPORTANT_CATEGORIES = {"placement_announcement", "registration", "assessment_link", "interview", "result", "recruiter", "action_needed"}
+
+
+def is_important(m: Message) -> bool:
+    """Mail a quieting rule should not hide without the user noticing: urgent, needs action,
+    hiring-related, or on a company timeline."""
+    ext = m.extraction or {}
+    return (m.priority == "urgent" or bool(ext.get("action_needed")) or bool(ext.get("opportunity_id"))
+            or (m.category or "") in IMPORTANT_CATEGORIES)
 
 
 # ---- "ignore mails like this" ----------------------------------------------------------------

@@ -150,7 +150,7 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
     ctx = rules.MailContext(
         account_id=str(account.id), sender=meta.sender, authenticated_domain=meta.authenticated_domain,
         subject=meta.subject, labels=meta.labels, headers=meta.headers, has_attachment=meta.has_attachment,
-        received_at=meta.received_at or datetime.now(UTC), timezone=settings["timezone"], body_loader=load_body,
+        received_at=meta.received_at or datetime.now(UTC), timezone=settings["timezone"], snippet=meta.snippet, body_loader=load_body,
     )
     extras: dict = {}
 
@@ -185,10 +185,13 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
     # 6. heuristics (suggest only)
     suggestion = None if match else heuristics.suggest(meta)
 
-    # 7. fingerprint: a template a rule or the user silenced before is silenced again
+    # 7. fingerprint: a template the USER silenced before is silenced again. Templates learned from
+    #    a rule are not applied on their own: the rule (with its exceptions) already decided above,
+    #    and a learned copy would override its exceptions (e.g. "unless debit over 2000") and keep
+    #    silencing after the user disables the rule. They still feed suggestions and stats.
     if fp and not match:
         row = _touch_fingerprint(db, user_id, fp, template, None, None, meta.authenticated_domain)
-        if row.last_action in SILENT_ACTIONS and row.last_action_source in ("rule", "user"):
+        if row.last_action in SILENT_ACTIONS and row.last_action_source == "user":
             msg.status, msg.priority, msg.category = SILENT_ACTIONS[row.last_action], "silent", "other"
             return Outcome(msg.id, "silent", "fingerprint")
 

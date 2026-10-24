@@ -76,6 +76,13 @@ Rule: commit every change to git, never push (the owner pushes).
   - **Found by the live first scan:** the placement cell (`pesuplacements@pes.edu`, 177 mails in 30 days) was "unverified" because it reaches the owner through a Google Groups list: top-level DKIM/SPF pass for googlegroups.com, the author's pes.edu results only appear in Gmail's `arc=pass (...)` summary. Fixed: forwarded ARC results are trusted only when Gmail reports arc=pass AND the summarised ARC set was sealed by a trusted sealer (`TRUSTED_ARC_SEALERS = {"google.com"}`, checked via the `ARC-Seal` header now fetched with metadata). Forged ARC sets from other sealers stay unverified (tests). Live: both PES placement senders now verify as pes.edu.
   - First live scan: 1,188 mails in 454 s, headers only, no AI. Re-scan after the ARC fix: 0 unverified senders (pes.edu 263 mails).
   - Scan suggestions changed after the live run: it suggested "digest" for the placement cell (list headers). Now only Gmail's tabs drive suggestions (Promotions → silent, Social → digest, everything else → keep); the latest scan's suggestions were recomputed. 190 tests pass.
+- 2026-10-24 — **Plain-English rule went wrong for the owner; fixed.** Sentence: "ignore any banking email unless scam, debit above 2000, credit above 10000, urgent". The model had no idea which senders are banks and the engine had no amounts, so it produced "silence everything in the Updates tab unless the subject literally says 'debit above 2000'", which matched placement and HirePro mail. The owner saved it; it was disabled before it silenced any real mail.
+  - Engine: new `amount` condition (gt/gte/lt/lte; first ₹/Rs/INR amount in subject, else Gmail snippet; no amount → no match).
+  - Plain English: the prompt now carries the user's verified senders (domain, name, count from stored mail and the first scan) as trusted context; the schema has exception GROUPS (any group; all conditions inside) and `notes` for parts it can't express; a quieting rule built only from broad fields (label/header/attachment) gets a "very broad" note. Gemini rejects `maxItems` on nested arrays (HTTP 400) — limits enforced in code.
+  - Preview reports `important_matches` (urgent, action needed, hiring categories, on a timeline); the editor shows them first in red and asks "Save anyway?" before saving a quieting rule that hides any.
+  - Editor: amount rows, exception groups, AI notes banner, readable summary + save for shapes the form can't edit.
+  - **Pipeline change:** templates learned from a rule no longer silence on their own (only templates the user silenced do). Found by a test: a ₹18,500 debit excluded by the rule's exception was silenced anyway by the template the ₹240 debit had taught. Also disabling a rule now really brings its mail back.
+  - Live re-try with real Gemini: sender_domain in [slice.bank.in, kotak.com, kotak.bank.in, ubi.bank.in], exceptions fraud/scam/blocked/suspicious/urgent, debit>2000, credit>10000; preview 3 of 13, 0 important. 204 tests.
 
 ## Decisions
 - **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.
@@ -99,6 +106,7 @@ Rule: commit every change to git, never push (the owner pushes).
 - Laptop serving: `run-local.ps1 -Lan` binds 0.0.0.0 so the phone reaches `http://<laptop IP>:8000` (debug builds allow cleartext; release builds need HTTPS).
 - `accounts.email` is globally unique because pushes carry only the address.
 - Sender verification accepts mailing-list mail via ARC only from trusted sealers (google.com). Extend `TRUSTED_ARC_SEALERS` deliberately (e.g. Microsoft) when needed; never trust arbitrary sealers.
+- Fingerprints silence by themselves only when the user taught them (one-tap / accepted suggestion). Rule-learned templates are informational; the brief's "by a rule or by the user" is narrowed on purpose so rule exceptions always win and disabling a rule restores its mail.
 - Quieting rules made in bulk (first scan) always carry a security exception so fraud/OTP/sign-in mail from the same sender is never silenced.
 - `notifications.message_id` is unique so a message can never notify twice.
 

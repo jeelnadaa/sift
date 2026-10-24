@@ -148,20 +148,52 @@ def test_plain_english_rule_becomes_a_reviewable_draft(db, setup, client, fake_l
     user, account, provider, msgs = setup
     with_key(db, user)
     run(db, account, provider, msgs["bank"])
-    fake_llm.rule = {"name": "Kotak debits silent, keep fraud", "match": "all",
-                     "conditions": [{"field": "sender_domain", "op": "is", "values": ["kotak.com"]}, {"field": "subject", "op": "contains_any", "values": ["debited", "UPI"]}],
-                     "exceptions": [{"field": "subject", "op": "contains_any", "values": ["fraud", "blocked"]}], "action": "silent"}
-    r = client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "Silence Kotak debit alerts but not fraud"}).json()
+    fake_llm.rule = {"name": "Bank mail silent unless it matters", "match": "all",
+                     "conditions": [{"field": "sender_domain", "op": "in", "values": ["kotak.com", "slice.bank.in"]}],
+                     "exception_groups": [
+                         {"conditions": [{"field": "subject", "op": "contains_any", "values": ["fraud", "scam", "blocked", "suspicious"]}]},
+                         {"conditions": [{"field": "subject", "op": "contains_any", "values": ["debited", "spent"]}, {"field": "amount", "op": "gt", "values": ["2,000"]}]},
+                         {"conditions": [{"field": "subject", "op": "contains_any", "values": ["credited"]}, {"field": "amount", "op": "gt", "values": ["10000"]}]},
+                     ], "action": "silent", "notes": []}
+    r = client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "ignore bank mail unless scam, debit above 2000 or credit above 10000"}).json()
     d = r["draft"]
-    assert d["conditions"]["all"][0] == {"field": "sender_domain", "op": "is", "value": "kotak.com"}
-    assert d["exceptions"]["any"][0]["value"] == ["fraud", "blocked"]
-    assert r["preview"]["matches"] == 1
-    assert db.scalar(select(Rule).where(Rule.name.like("Kotak debits%"))) is None  # not saved until confirmed
+    assert d["conditions"]["all"][0] == {"field": "sender_domain", "op": "in", "value": ["kotak.com", "slice.bank.in"]}
+    groups = d["exceptions"]["any"]
+    assert groups[1] == {"all": [{"field": "subject", "op": "contains_any", "value": ["debited", "spent"]}, {"field": "amount", "op": "gt", "value": 2000}]}
+    assert "kotak.com (Kotak Mahindra Bank" in fake_llm.calls[-1]["prompt"]  # the model sees the user's real senders
+    assert db.scalar(select(Rule).where(Rule.name.like("Bank mail%"))) is None  # not saved until confirmed
     saved = client.post("/api/v1/rules", headers=H(user), json={**d, "origin": "english", "enabled": True}).json()
     assert saved["origin"] == "english"
 
+    # the saved rule behaves as the sentence says
+    db.execute(Rule.__table__.delete().where(Rule.origin == "starter"))
+    db.commit()
+    small = process(db, account, bank_mail("240.00", "24-10-2026"))
+    big = process(db, account, bank_mail("18,500.00", "24-10-2026"))
+    fraud = process(db, account, bank_mail("", "", subject="Card blocked due to suspicious activity"))
+    assert (small.priority, big.notified, fraud.notified) == ("silent", True, True)
+
     fake_llm.rule = None  # model says it is not a rule
     assert client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "what's the weather"}).status_code == 422
+
+
+def test_broad_plain_english_rule_is_flagged(db, setup, client, fake_llm):
+    user, *_ = setup
+    with_key(db, user)
+    fake_llm.rule = {"name": "banking_rules", "match": "all", "conditions": [{"field": "label", "op": "has", "values": ["CATEGORY_UPDATES"]}],
+                     "exception_groups": [], "action": "silent", "notes": []}
+    r = client.post("/api/v1/rules/from-text", headers=H(user), json={"text": "ignore banking emails"}).json()
+    assert any("Very broad" in n for n in r["draft"]["notes"])
+
+
+def test_preview_flags_important_mail_a_rule_would_quiet(db, setup, client, fake_llm):
+    user, account, provider, msgs = setup
+    with_key(db, user)
+    for m in msgs.values():
+        run(db, account, provider, m)
+    r = client.post("/api/v1/rules/preview", headers=H(user), json={"conditions": {"field": "label", "op": "has", "value": "CATEGORY_UPDATES"}}).json()
+    assert r["matches"] == 4 and r["important_matches"] == 3  # placement, HirePro, fraud alert
+    assert r["samples"][0]["important"] is True
 
 
 # ---- onboarding scan -------------------------------------------------------------------------------

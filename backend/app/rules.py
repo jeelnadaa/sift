@@ -12,6 +12,7 @@ Condition tree (JSON):
   {"field": "has_attachment", "op": "is", "value": true}
   {"field": "time",           "op": "between", "value": ["22:00", "07:00"]}  # user's local time
   {"field": "account",        "op": "in", "value": ["<account id>", ...]}
+  {"field": "amount",         "op": "gt"|"gte"|"lt"|"lte", "value": 2000}  # first ₹ amount in subject, else snippet
 
 Action (JSON): {"type": "ignore"|"silent"|"digest"|"notify_normal"|"notify_urgent"|"llm",
                 "category"?: str, "folder_id"?: str, "tag"?: str, "mark_read"?: bool, "star"?: bool}
@@ -25,8 +26,24 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 ACTION_TYPES = ("ignore", "silent", "digest", "notify_normal", "notify_urgent", "llm")
-FIELDS = ("sender", "sender_domain", "subject", "body", "label", "header", "has_attachment", "time", "account")
+FIELDS = ("sender", "sender_domain", "subject", "body", "label", "header", "has_attachment", "time", "account", "amount")
+AMOUNT_OPS = ("gt", "gte", "lt", "lte")
 MAX_REGEX = 300
+# ₹ 1,180.50 / Rs. 240 / INR 5000 / 2,000 rupees
+_AMOUNT = re.compile(
+    r"(?:₹|\brs\.?|\binr)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)|([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:rupees|rs\b|inr\b)", re.I)
+
+
+def find_amount(*texts: str) -> float | None:
+    """First rupee amount in the first text that has one (subject before snippet)."""
+    for text in texts:
+        m = _AMOUNT.search(text or "")
+        if m:
+            try:
+                return float((m.group(1) or m.group(2)).replace(",", ""))
+            except ValueError:
+                continue
+    return None
 
 
 class RuleError(ValueError):
@@ -44,6 +61,7 @@ class MailContext:
     has_attachment: bool
     received_at: datetime
     timezone: str = "Asia/Kolkata"
+    snippet: str = ""  # Gmail's short preview text (stored), used for amounts
     body_loader: Callable[[], str] | None = None
     _body: str | None = field(default=None, repr=False)
 
@@ -104,6 +122,12 @@ def validate_condition(c: Any, depth: int = 0) -> None:
         v = c.get("value")
         if not (isinstance(v, list) and len(v) == 2 and all(re.fullmatch(r"\d{2}:\d{2}", x or "") for x in v)):
             raise RuleError('time needs ["HH:MM", "HH:MM"]')
+    if c["field"] == "amount":
+        if c.get("op") not in AMOUNT_OPS:
+            raise RuleError(f"amount op must be one of {', '.join(AMOUNT_OPS)}")
+        v = c.get("value")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            raise RuleError("amount needs a number of rupees")
 
 
 def validate_action(a: Any) -> None:
@@ -162,6 +186,11 @@ def _leaf(c: dict, ctx: MailContext) -> bool:
         return start <= now < end if start <= end else (now >= start or now < end)  # overnight windows
     if f == "account":
         return ctx.account_id in [str(x) for x in _as_list(v)]
+    if f == "amount":
+        amount = find_amount(ctx.subject, ctx.snippet)
+        if amount is None:
+            return False  # no amount found: never "above" or "below" anything
+        return {"gt": amount > v, "gte": amount >= v, "lt": amount < v, "lte": amount <= v}[op]
     return False
 
 

@@ -247,15 +247,28 @@ def test_spoofed_bank_mail_is_not_silenced_by_the_bank_rule(db, setup, fake_llm)
     assert (out.priority, out.notified) == ("normal", True)
 
 
-def test_fingerprint_remembers_what_a_rule_silenced(db, setup, fake_llm):
+def test_fingerprint_silences_templates_the_user_silenced(db, setup, fake_llm):
     user, account, provider, msgs = setup
-    run(db, account, provider, msgs["bank"])
-    assert db.scalar(select(Fingerprint.last_action)) == "silent"
+    out = run(db, account, provider, msgs["bank"])
+    from app import rule_tools
+    rule_tools.remember_template(db, db.get(Message, out.message_id), "silent")  # e.g. "ignore mails like this"
     db.scalar(select(Rule)).enabled = False
     db.commit()
     again = demo.samples()[2]  # another debit alert: new id, new Message-ID, same template
     out = process_message(db, db.get(GmailAccount, account.id), demo.DemoProvider([again]), again["id"])
     assert (out.priority, out.decided_by, out.notified) == ("silent", "fingerprint", False)
+
+
+def test_templates_learned_from_rules_never_override_the_rule(db, setup, fake_llm):
+    """Disabling a rule brings its mail back; a rule's exceptions are never undone by memory."""
+    user, account, provider, msgs = setup
+    run(db, account, provider, msgs["bank"])
+    assert db.scalar(select(Fingerprint.last_action_source)) == "rule"
+    db.scalar(select(Rule)).enabled = False
+    db.commit()
+    again = demo.samples()[2]
+    out = process_message(db, db.get(GmailAccount, account.id), demo.DemoProvider([again]), again["id"])
+    assert out.notified and out.decided_by != "fingerprint"
 
 
 def test_same_mail_in_two_accounts_notifies_once(db, setup, fcm_sends):

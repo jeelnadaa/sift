@@ -108,3 +108,28 @@ def test_validation_of_actions():
     r.validate_action({"type": "notify_urgent", "tag": "Bank"})
     with pytest.raises(r.RuleError):
         r.validate_action({"type": "delete"})
+
+
+# ---- amounts ---------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,amount", [
+    ("Rs 240.00 debited from A/c XX1234", 240.0), ("INR 18,500.00 spent at Amazon", 18500.0), ("₹1,180.50 debited", 1180.5),
+    ("You received 12000 rupees", 12000.0), ("Rs.2,000 credited", 2000.0), ("Order #40213 shipped", None), ("Version 2.0 released", None),
+])
+def test_find_amount(text, amount):
+    assert r.find_amount(text) == amount
+
+
+def test_amount_condition_reads_subject_then_snippet():
+    above = {"field": "amount", "op": "gt", "value": 2000}
+    assert r.matches(above, ctx(subject="Rs 18,500.00 debited via UPI"))
+    assert not r.matches(above, ctx(subject="Rs 240.00 debited via UPI"))
+    assert r.matches(above, ctx(subject="Transaction alert", snippet="Rs 5,000 spent on your card"))
+    assert not r.matches(above, ctx(subject="Transaction alert", snippet="no amount here"))  # unknown amount never matches
+    assert r.matches({"field": "amount", "op": "lte", "value": 240}, ctx(subject="Rs 240 debited"))
+
+
+@pytest.mark.parametrize("bad", [{"field": "amount", "op": "gt", "value": "2000"}, {"field": "amount", "op": "eq", "value": 1}, {"field": "amount", "op": "gt", "value": -5}])
+def test_amount_validation(bad):
+    with pytest.raises(r.RuleError):
+        r.validate_condition(bad)

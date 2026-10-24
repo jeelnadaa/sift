@@ -210,12 +210,13 @@ data class TodoPatch(
 )
 
 @Serializable
-data class PreviewSample(val id: String, val sender: String? = null, val subject: String? = null, @SerialName("received_at") val receivedAt: String? = null, val priority: String? = null)
+data class PreviewSample(val id: String, val sender: String? = null, val subject: String? = null, @SerialName("received_at") val receivedAt: String? = null, val priority: String? = null, val important: Boolean = false)
 
 @Serializable
 data class PreviewResult(
     val checked: Int = 0,
     val matches: Int = 0,
+    @SerialName("important_matches") val importantMatches: Int = 0,
     val samples: List<PreviewSample> = emptyList(),
     @SerialName("body_not_previewed") val bodyNotPreviewed: Boolean = false,
 )
@@ -230,6 +231,7 @@ data class RuleDraft(
     val action: JsonObject,
     val exceptions: JsonElement? = null,
     @SerialName("account_scope") val accountScope: List<String>? = null,
+    val notes: List<String> = emptyList(),
 )
 
 @Serializable
