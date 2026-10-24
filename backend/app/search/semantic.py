@@ -29,7 +29,11 @@ BACKFILL_DAYS = 90
 # Silenced and ignored mail is never sent anywhere: quieting a sender must not cost tokens
 # (brief section 9). It stays findable by keyword search.
 INDEXED_STATUSES = ("processed",)
-MIN_SCORE = 0.45  # cosine floor; below it matches are mostly noise (gemini-embedding-001, 768 dims). Tune with real use.
+# Calibrated on real mail (2026-10-24, gemini-embedding-001 at 768 dims): unrelated mail scores up to
+# ~0.52, relevant mail 0.58-0.68 with a clear drop after it. Keep matches above the floor and
+# close to the best one.
+MIN_SCORE = 0.56
+RELATIVE_WINDOW = 0.08
 MAX_RESULTS = 200
 
 
@@ -121,7 +125,9 @@ def search(db: Session, user_id: uuid.UUID, text: str, conds: list, account_ids:
     ids = [r[0] for r in rows]
     matrix = np.frombuffer(b"".join(r[1] for r in rows), dtype=np.float32).reshape(len(rows), llm.EMBED_DIMS)
     scores = matrix @ qv
-    order = [i for i in np.argsort(-scores) if scores[i] >= MIN_SCORE][:MAX_RESULTS]
+    best = float(scores.max())
+    cutoff = max(MIN_SCORE, best - RELATIVE_WINDOW)
+    order = [i for i in np.argsort(-scores) if scores[i] >= cutoff][:MAX_RESULTS]
     page = order[offset:offset + limit]
     by_id = {m.id: m for m in db.scalars(select(Message).where(Message.id.in_([ids[i] for i in page])))}
     return [(by_id[ids[i]], float(scores[i])) for i in page if ids[i] in by_id], len(order)

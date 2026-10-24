@@ -55,9 +55,9 @@ def test_personal_details_are_redacted_before_embedding(db, setup, fake_llm):
 def test_search_by_meaning_ranks_and_applies_filters(client, db, setup, fake_llm):
     user, account, provider, msgs = setup
     with_key(db, user)
-    offer = add(db, user, account, "a", "Offer letter: Software Engineer", "We are happy to extend an offer", priority="urgent")
+    offer = add(db, user, account, "a", "Offer letter: Software Engineer role", "Job offer for the position, interview done", priority="urgent")
     add(db, user, account, "b", "Your UPI payment receipt", "Rs 240 debited")
-    add(db, user, account, "c", "Hiring: backend position open", "Recruiter here, role in Pune")
+    add(db, user, account, "c", "Hiring: backend position open", "Recruiter here, role and interview")
     add(db, user, account, "d", "Weekend sale on shoes", "Up to 50% off")
     db.commit()
     semantic.index(db, user.id, list(db.scalars(select(Message))))
@@ -65,7 +65,7 @@ def test_search_by_meaning_ranks_and_applies_filters(client, db, setup, fake_llm
 
     r = client.get("/api/v1/search/semantic", headers=H(user), params={"q": "job offer"}).json()
     subjects = [i["subject"] for i in r["items"]]
-    assert set(subjects[:2]) == {"Offer letter: Software Engineer", "Hiring: backend position open"}
+    assert set(subjects[:2]) == {"Offer letter: Software Engineer role", "Hiring: backend position open"}
     assert "Weekend sale on shoes" not in subjects and all(i["score"] >= semantic.MIN_SCORE for i in r["items"])
     assert fake_llm.embed_calls[-1]["task"] == "RETRIEVAL_QUERY"
 
