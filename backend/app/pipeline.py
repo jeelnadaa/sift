@@ -41,7 +41,7 @@ PRIORITY_ACTIONS = {"digest": "digest", "notify_normal": "normal", "notify_urgen
 class Outcome:
     message_id: uuid.UUID | None
     priority: str | None
-    decided_by: str  # rule | fingerprint | heuristic | llm | default | duplicate | existing | error
+    decided_by: str  # rule | fingerprint | heuristic | llm | default | duplicate | existing | gone | error
     notified: bool = False
     llm_called: bool = False
 
@@ -110,7 +110,18 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
     if existing is not None and existing.status != "processing":
         return Outcome(existing.id, existing.priority, "existing")
 
-    meta = parse_metadata(provider.get_metadata(gmail_id))  # transient Gmail errors propagate -> check retried
+    try:
+        meta = parse_metadata(provider.get_metadata(gmail_id))  # transient Gmail errors propagate -> check retried
+    except GmailError as exc:
+        if exc.status != 404:
+            raise
+        # Gone from Gmail before we got to it (deleted, or a draft that was sent). Skip it: retrying
+        # can never succeed, and it would hold up every mail after it.
+        log.info("message %s no longer exists in Gmail; skipped", gmail_id)
+        if existing is not None:
+            existing.status, existing.priority = "processed", existing.priority or "normal"
+            db.commit()
+        return Outcome(existing.id if existing else None, None, "gone")
     user_id = account.user_id
 
     if existing is None:

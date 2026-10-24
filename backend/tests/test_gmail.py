@@ -75,3 +75,18 @@ def test_start_watch_sends_inbox_filter():
     assert (w.cursor, w.expires_at_ms) == (9, 1767225600000)
     import json
     assert json.loads(calls[0].content) == {"topicName": "projects/p/topics/t", "labelIds": ["INBOX"], "labelFilterBehavior": "INCLUDE"}
+
+
+
+def test_new_mail_and_label_edits_in_the_same_history_page():
+    """Regression (2026-10-24): a page with both new mail and label edits crashed every check,
+    so no new mail was picked up until fixed (a variable name was reused)."""
+    p, _ = provider({("GET", "/history", None): (200, {"historyId": "130", "history": [
+        added("n1", "INBOX", "UNREAD"),
+        {"labelsRemoved": [{"message": {"id": "old"}, "labelIds": ["UNREAD"]}]},
+        added("n2", "INBOX"),
+        {"labelsAdded": [{"message": {"id": "n1"}, "labelIds": ["STARRED"]}]},
+    ]})})
+    changes = p.list_changes(100)
+    assert changes.message_ids == ["n1", "n2"]
+    assert changes.label_changes == [("old", [], ["UNREAD"]), ("n1", ["STARRED"], [])]

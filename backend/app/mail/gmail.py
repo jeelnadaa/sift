@@ -44,7 +44,7 @@ class GmailProvider:
     def list_changes(self, since: int) -> Changes:
         ids: list[str] = []
         seen: set[str] = set()
-        labels: list[tuple[str, list[str], list[str]]] = []
+        label_changes: list[tuple[str, list[str], list[str]]] = []
         params = {"startHistoryId": str(since), "historyTypes": ["messageAdded", "labelAdded", "labelRemoved"], "maxResults": "500"}
         cursor = since
         while True:
@@ -58,18 +58,18 @@ class GmailProvider:
             for h in page.get("history", []):
                 for added in h.get("messagesAdded", []):
                     m = added["message"]
-                    labels = set(m.get("labelIds", []))
-                    if m["id"] in seen or (labels & SKIP_LABELS and "INBOX" not in labels):
+                    msg_labels = set(m.get("labelIds", []))
+                    if m["id"] in seen or (msg_labels & SKIP_LABELS and "INBOX" not in msg_labels):
                         continue
                     seen.add(m["id"])
                     ids.append(m["id"])
                 for change in h.get("labelsAdded", []):
-                    labels.append((change["message"]["id"], change.get("labelIds", []), []))
+                    label_changes.append((change["message"]["id"], change.get("labelIds", []), []))
                 for change in h.get("labelsRemoved", []):
-                    labels.append((change["message"]["id"], [], change.get("labelIds", [])))
+                    label_changes.append((change["message"]["id"], [], change.get("labelIds", [])))
             token = page.get("nextPageToken")
             if not token:
-                return Changes(message_ids=ids, cursor=cursor, label_changes=labels)
+                return Changes(message_ids=ids, cursor=cursor, label_changes=label_changes)
             params["pageToken"] = token
 
     def list_message_ids(self, query: str, limit: int) -> list[str]:

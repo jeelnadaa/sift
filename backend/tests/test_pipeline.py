@@ -411,3 +411,18 @@ def test_acknowledged_notifications_are_not_resent(db, setup, fake_llm, fcm_send
     n.sent_at = datetime.now(UTC) - timedelta(minutes=30)
     db.commit()
     assert notify.resend_unacknowledged(db) == 0
+
+
+def test_mail_deleted_from_gmail_before_processing_is_skipped(db, setup):
+    """Regression (2026-10-24): a mail gone from Gmail (404) made every check fail and retry
+    forever, so mail after it was never processed."""
+    from app.mail.gmail import GmailError
+    user, account, provider, msgs = setup
+
+    class Gone(demo.DemoProvider):
+        def get_metadata(self, message_id):
+            raise GmailError(404, "Requested entity was not found.")
+
+    out = run(db, account, Gone([]), {"id": "deleted-1"})
+    assert out.decided_by == "gone" and out.message_id is None
+    assert run(db, account, provider, msgs["recruiter"]).notified  # the next mail goes through
