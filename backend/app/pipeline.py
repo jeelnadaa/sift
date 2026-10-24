@@ -204,7 +204,7 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         extraction = msg.extraction  # cached from an interrupted earlier run: never pay twice
     elif llm.ai_enabled(db, user_id) and llm.under_cap(db, user_id):
         body = redact(clean_body(load_body()))
-        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body)
+        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at)
         llm_called = extraction is not None and extraction.get("source") == "llm"
         if llm_called:
             msg.extraction = extraction
@@ -218,8 +218,10 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
     # 11. decide priority
     if extraction and extraction.get("source") == "llm":
         priority = extraction["priority"]
-        if priority == "digest" and extraction["confidence"] < 0.4:
-            priority = "normal"  # uncertain -> normal
+        if priority == "digest" and (extraction["confidence"] < 0.4 or suggestion is None):
+            # Uncertain -> normal. Mail from a real person (no bulk headers, no no-reply sender,
+            # not Promotions/Social) is never demoted to digest by the model either.
+            priority = "normal"
         msg.category = extraction["category"]
         decided = "llm"
     else:

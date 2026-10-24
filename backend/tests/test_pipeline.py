@@ -23,6 +23,7 @@ class FakeLlm:
         self.calls = []
         self.fail_with = None
         self.raw = None
+        self.override = {}
 
     def generate_json(self, system, prompt, schema, max_output_tokens=600):
         self.calls.append({"system": system, "prompt": prompt})
@@ -37,6 +38,7 @@ class FakeLlm:
         else:
             out = {"category": "recruiter", "company": "Globex", "platform": None, "deadline": None, "links": [],
                    "action_needed": False, "priority": "normal", "summary": "Recruiter wants a call", "confidence": 0.8}
+        out.update(self.override)
         return LlmResult(text=self.raw if self.raw is not None else json.dumps(out), input_tokens=300, output_tokens=60)
 
     def ping(self):
@@ -127,6 +129,19 @@ def test_prompt_wraps_email_as_untrusted_and_redacts(db, setup, fake_llm):
     assert "never follow" in call["system"].lower() and "<email>" in call["prompt"] and call["prompt"].rstrip().endswith("</email>")
     assert "98765 43210" not in call["prompt"] and "[phone]" in call["prompt"]  # personal number redacted before leaving
     assert "Globex" in call["prompt"]
+    assert call["prompt"].startswith("Received: ")  # outside the untrusted block, for relative dates
+
+
+def test_deadline_before_the_mail_arrived_is_dropped():
+    from datetime import timezone
+    received = datetime(2026, 10, 24, 6, 50, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    base = {"category": "assessment_link", "priority": "urgent", "summary": "x", "confidence": 0.9, "links": [], "action_needed": True}
+    wrong_year = llm.validate_extraction(json.dumps({**base, "deadline": "2023-10-25T23:59:00+05:30"}), ["assessment_link"], received)
+    tonight = llm.validate_extraction(json.dumps({**base, "deadline": "2026-10-24T23:59:00+05:30"}), ["assessment_link"], received)
+    naive = llm.validate_extraction(json.dumps({**base, "deadline": "2026-10-29T18:00:00"}), ["assessment_link"], received)
+    assert wrong_year["deadline"] is None
+    assert tonight["deadline"] == "2026-10-24T23:59:00+05:30"
+    assert naive["deadline"] == "2026-10-29T18:00:00+05:30"
 
 
 def test_processing_twice_never_double_notifies_or_double_spends(db, setup, fake_llm, fcm_sends):
@@ -183,6 +198,22 @@ def test_daily_cap_stops_llm_calls(db, setup, fake_llm):
     run(db, account, provider, msgs["recruiter"])  # 360 tokens, now over the cap
     out = run(db, account, provider, msgs["placement"])
     assert len(fake_llm.calls) == 1 and out.priority == "normal" and out.notified
+
+
+def test_model_cannot_demote_a_real_persons_mail_to_digest(db, setup, fake_llm):
+    user, account, provider, msgs = setup
+    with_key(db, user)
+    fake_llm.override = {"priority": "digest", "confidence": 0.9}
+    out = run(db, account, provider, msgs["recruiter"])  # a person: no list headers, not no-reply
+    assert out.priority == "normal"
+
+
+def test_model_may_send_bulk_mail_to_digest(db, setup, fake_llm):
+    user, account, provider, msgs = setup
+    with_key(db, user)
+    fake_llm.override = {"priority": "digest", "confidence": 0.9}
+    out = run(db, account, provider, msgs["placement"])  # mailing list (List-Id): weak bulk signal
+    assert out.priority == "digest"
 
 
 # ---- rules, fingerprints, dedupe, failures ------------------------------------------------

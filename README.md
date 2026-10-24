@@ -2,7 +2,7 @@
 
 Personal email assistant: watches your Gmail accounts, runs your rules first, uses a small LLM (your own key) only for what rules don't settle, and pushes priority mail to your Android phone in seconds. Full spec: [`Inbox_Agent_Master_Prompt.md`](Inbox_Agent_Master_Prompt.md). Status: [`PROGRESS.md`](PROGRESS.md). Design: [`DESIGN.md`](DESIGN.md).
 
-**Current phase: 0 (setup).** Connect Gmail accounts (read-only), detect new mail within seconds, and send a test push to the Android app. The processing pipeline (rules, notifications for real mail) is Phase 1.
+**Current phase: 1 (instant notification pipeline).** New mail on any connected Gmail account runs through your rules, free heuristics and, only if you added your own key, a small LLM, then notifies your phone by priority (urgent, normal, digest). Bank noise can be silenced without ever spending tokens. See section 5A for the app.
 
 ```
                  ┌── poll (default): scheduler asks Gmail "what changed?" every 10 s ──┐
@@ -154,6 +154,17 @@ curl -X POST http://localhost:8000/api/v1/dev/test-push \
 
 The phone shows an urgent "Sift test push", and the app shows the server-to-phone delay. Register the device so later pushes need no token: `POST /api/v1/devices` with `{"user_email":"you@gmail.com","fcm_token":"..."}` and the same header.
 
+## 5A. Using Sift (Phase 1)
+
+1. **App password** (once): `cd backend` then `.venv\Scripts\python -m app.cli set-password you@gmail.com` (asks twice, never shown).
+2. **Run so the phone can reach it:** `powershell -ExecutionPolicy Bypass -File scripts\run-local.ps1 -Lan`. It prints `Phone app server address: http://192.168.x.x:8000`. Allow Python on private networks if Windows asks.
+3. **Install the app** (`android/app/build/outputs/apk/debug/app-debug.apk`) and sign in with that address, your email and the password. The app registers itself for notifications.
+4. **Rules:** `python -m app.cli starter-rules you@gmail.com` adds "Bank transactions: silent (except fraud alerts)" (Kotak and Slice; edit the domains in `app/demo.py` or via the API). Rules are created through `POST /api/v1/rules`; the in-app editor comes in Phase 2. Rules match the authenticated sender domain, so spoofed mail never matches.
+5. **AI (optional, your own key):** in the app, Settings → AI provider → paste a Gemini API key from [aistudio.google.com](https://aistudio.google.com) → Save and test. Without a valid key Sift makes no AI calls and delivers unhandled mail as normal priority. The daily token cap (default 50,000) is in settings.
+6. **Demo:** `python -m app.cli demo you@gmail.com` runs five sample mails (placement drive, HirePro link, bank debit, fraud alert, recruiter) through the real pipeline and notifies your phone; `demo-clear` removes them.
+
+What decides priority, in order: your rules (first match wins) → Gmail Promotions/Social tab → digest → a template you silenced before → the LLM (if your key is valid) → otherwise normal. Mail from a real person is never put in digest by the LLM, and anything that fails is delivered as normal, never hidden. Urgent notifications are re-sent every 5 minutes (up to 3 times) until the phone confirms it received them.
+
 ## 6. Move to Oracle Cloud later
 
 Nothing in the code is tied to the laptop. To move:
@@ -221,10 +232,11 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 - **Cost safety:** everything in the default setup is free (Gmail API, OAuth, FCM Spark plan, Cloudflare Tunnel free plan, Oracle Always Free). If you enable billing for Pub/Sub, set a budget alert of ₹100 in Google Cloud (Billing → Budgets & alerts), and on Oracle in Billing → Budgets. Check usage in Google Cloud Billing → Reports and Oracle Cost Analysis.
 - **Logs** never contain email bodies, subjects, tokens or API keys.
 
-## Known limitations (Phase 0)
+## Known limitations (Phase 1)
 
-- Accepted on the owner's laptop (native Windows, Postgres queue, poll mode) with a real Gmail account and phone. Docker Compose, the Redis queue, Cloudflare Tunnel and push mode are written but not yet run.
-- Poll mode: measured about 18 s from Gmail receiving a mail to detection at the default 10 s interval (Gmail's history lags a few seconds). Lower `POLL_INTERVAL_SECONDS` or use push mode (~1–3 s) for faster alerts.
-- `/api/v1/accounts`, `/api/v1/devices` and `/api/v1/dev/*` use a shared admin token; per-user JWT auth arrives in Phase 1.
-- If an account is offline for over a week, Gmail's history expires and Sift restarts from "now"; a catch-up scan of recent mail comes with the Phase 1 pipeline.
-- The Android app is a setup screen only and does not yet use the Satoshi and Clash Display fonts.
+- Verified on the owner's laptop (native Windows, Postgres queue, poll mode) with a real Gmail account, phone and Gemini key. Docker Compose, the Redis queue, Cloudflare Tunnel and push mode are written but not yet run.
+- Poll mode: about 25 s from Gmail receiving a mail to the phone (≈17 s until it appears in Gmail's change history plus the 5 s poll, ≈7 s processing with AI, ≈1 s push). Push mode removes most of the first part.
+- Without a tunnel the phone reaches the laptop only on the same Wi-Fi, and new Gmail accounts must be connected from the laptop's browser.
+- If an account is offline for over a week, Gmail's history expires and Sift restarts from "now" without scanning the gap.
+- When the daily token cap is reached, mail is delivered as normal straight away rather than queued for AI later. A rate-limited (429) AI call is retried once, then the mail is delivered as normal.
+- Not yet: quiet hours, focus mode, rule editor with preview, plain-English rules, onboarding scan, opportunities, folders, grouping (Phase 2); HTML reader and search (Phase 3); offline cache in the app.
