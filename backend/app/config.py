@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     # App sign-in tokens (JWT, HS256 with APP_SECRET).
     jwt_days: int = 30
+    # Failed sign-ins allowed per email (and per client address) in a 15-minute window.
+    login_attempts: int = 8
+
+    # Interactive API docs at /docs. Off by default because the API is reachable from the internet.
+    api_docs: bool = False
 
     # LLM: every user brings their own key. This only pre-fills the model field in Settings.
     llm_default_provider: str = "gemini"

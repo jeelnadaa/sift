@@ -43,6 +43,25 @@ def test_endpoints_require_a_valid_token(client, auth):
         assert client.get(path, headers={"Authorization": "Bearer forged.token.value"}).status_code == 401
 
 
+def test_failed_sign_ins_are_throttled_per_email_and_address(client, owner, override_settings):
+    from app import throttle
+    throttle._failures.clear()
+    override_settings(login_attempts=3)
+    for _ in range(3):
+        assert client.post("/api/v1/auth/login", json={"email": "owner@gmail.com", "password": "guess"}).status_code == 401
+    r = client.post("/api/v1/auth/login", json={"email": "owner@gmail.com", "password": "correct horse"})
+    assert r.status_code == 429 and "Retry-After" in r.headers  # even the right password waits
+    # another visitor address is not blocked by the email lock... but the email is
+    other = client.post("/api/v1/auth/login", json={"email": "owner@gmail.com", "password": "correct horse"}, headers={"CF-Connecting-IP": "203.0.113.9"})
+    assert other.status_code == 429
+    throttle._failures.clear()
+    assert client.post("/api/v1/auth/login", json={"email": "owner@gmail.com", "password": "correct horse"}).status_code == 200
+
+
+def test_api_docs_are_off_by_default(client):
+    assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404
+
+
 def test_user_without_password_cannot_sign_in(client, db, keys):
     db.add(User(email="nopw@gmail.com"))
     db.commit()

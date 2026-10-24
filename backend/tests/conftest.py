@@ -42,6 +42,8 @@ def schema():
 
 @pytest.fixture(autouse=True)
 def clean_tables():
+    from app import throttle
+    throttle._failures.clear()
     yield
     names = ", ".join(t.name for t in Base.metadata.sorted_tables)
     with get_engine().begin() as conn:

@@ -114,14 +114,21 @@ docker compose up -d --build
 docker compose exec api python -m app.cli create-user you@gmail.com
 ```
 
-### 4C. Public HTTPS with Cloudflare Tunnel (optional in Phase 0)
+### 4C. Public HTTPS with Cloudflare Tunnel (how sift.solarquack.in is set up)
 
-Phase 0 works without it: OAuth redirects to `localhost`, polling and FCM only make outgoing connections. You need a public URL once the phone app talks to the API (Phase 1) or if you switch to push mode.
+A tunnel only works for a domain whose DNS Cloudflare manages. GoDaddy stays the registrar and Vercel keeps hosting the portfolio; Cloudflare only answers DNS.
 
-- **Stable hostname (recommended):** move `solarquack.in`'s DNS to Cloudflare (free plan). Zero Trust → Networks → Tunnels → Create tunnel (cloudflared) → copy the token → Public hostname `sift.solarquack.in` → service `http://api:8000` (Docker) or `http://localhost:8000` (native). Then either put the token in `.env` as `TUNNEL_TOKEN` and use the `tunnel` profile, or on native Windows `winget install Cloudflare.cloudflared` and run `cloudflared tunnel run --token <token>`.
-- **Quick test without a domain:** `cloudflared tunnel --url http://localhost:8000` prints a random `https://….trycloudflare.com` URL that changes every run.
+1. **Cloudflare DNS (free):** dash.cloudflare.com → Add a domain → `solarquack.in` → Free. Keep exactly the existing records and set the Vercel ones to **DNS only (grey cloud)**, otherwise Vercel's certificates and redirects break:
+   `A @ 216.198.79.1` (Vercel), `CNAME www → solarquack.in`, `TXT @ google-site-verification=…`, `TXT _dmarc …`. Delete GoDaddy's `_domainconnect` CNAME.
+2. **Check before switching:** query Cloudflare's assigned nameservers directly (e.g. `nslookup solarquack.in keyla.ns.cloudflare.com`) and compare with what GoDaddy serves.
+3. **Switch:** GoDaddy → domain → DNS → Nameservers → "I'll use my own" → the two Cloudflare nameservers. Propagation to the `.in` registry took about an hour; the site stays up because both sides serve the same records. Undo by restoring `ns11/ns12.domaincontrol.com`.
+4. **Vercel:** add `www.solarquack.in` to the project as a redirect to `solarquack.in` so `www` gets a certificate.
+5. **Tunnel:** Zero Trust (Free) → Networks → Tunnels → Create → Cloudflared → `sift-laptop`. On the laptop (admin PowerShell): `winget install --id Cloudflare.cloudflared`, then the `cloudflared.exe service install <token>` command shown (runs as a Windows service). Public hostname: `sift` . `solarquack.in` → HTTP `localhost:8000`.
+6. **Sift:** `PUBLIC_BASE_URL=https://sift.solarquack.in` in `.env`, add `https://sift.solarquack.in/api/v1/accounts/oauth/callback` to the OAuth client's redirect URIs, and run `run-local.ps1` **without** `-Lan` (the tunnel reaches localhost; nothing listens on Wi-Fi). The app signs in with `https://sift.solarquack.in` and works on mobile data.
 
-Set `PUBLIC_BASE_URL` to the public URL and add its callback to the OAuth client's redirect URIs.
+With Docker instead of a Windows service: put the token in `TUNNEL_TOKEN`, add `tunnel` to `COMPOSE_PROFILES`, and route the hostname to `http://api:8000`.
+
+Exposed to the internet, Sift keeps `/docs` off (`API_DOCS=false`), throttles failed sign-ins (`LOGIN_ATTEMPTS` per email and per visitor in 15 minutes), requires sign-in on every app endpoint, and verifies Google's signature on the Pub/Sub webhook.
 
 **Laptop as a server:** set Windows to never sleep while plugged in (Settings → System → Power). While the laptop sleeps nothing is detected; on wake, Sift resumes from its saved position and processes everything that arrived (Gmail keeps about a week of history).
 
@@ -236,7 +243,7 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 
 - Verified on the owner's laptop (native Windows, Postgres queue, poll mode) with a real Gmail account, phone and Gemini key. Docker Compose, the Redis queue, Cloudflare Tunnel and push mode are written but not yet run.
 - Poll mode: about 25 s from Gmail receiving a mail to the phone (≈17 s until it appears in Gmail's change history plus the 5 s poll, ≈7 s processing with AI, ≈1 s push). Push mode removes most of the first part.
-- Without a tunnel the phone reaches the laptop only on the same Wi-Fi, and new Gmail accounts must be connected from the laptop's browser.
+- `sift.solarquack.in` is only up while the laptop is on (and awake) with Sift and the tunnel service running.
 - If an account is offline for over a week, Gmail's history expires and Sift restarts from "now" without scanning the gap.
 - When the daily token cap is reached, mail is delivered as normal straight away rather than queued for AI later. A rate-limited (429) AI call is retried once, then the mail is delivered as normal.
 - Not yet: quiet hours, focus mode, rule editor with preview, plain-English rules, onboarding scan, opportunities, folders, grouping (Phase 2); HTML reader and search (Phase 3); offline cache in the app.
