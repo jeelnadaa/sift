@@ -115,3 +115,41 @@ def test_heuristics():
     assert suggest(meta(**{"List-Unsubscribe": "<mailto:u@x>"})).strength == "weak"
     assert suggest(meta(From="noreply@hirepro.in")).strength == "weak"
     assert suggest(meta(From="priya@globex.com")) is None
+
+
+# ---- mailing lists (ARC) ----------------------------------------------------------------------
+# Real-world shape: a placement cell mails through a Google Groups list. Top-level DKIM/SPF pass
+# for googlegroups.com; the author's own pes.edu results arrive inside Gmail's arc=pass summary.
+GROUPS_RESULT = ("mx.google.com;       dkim=pass header.i=@googlegroups.com header.s=20251104 header.b=q/hi+jOu;       "
+                 "arc=pass (i=3 spf=pass spfdomain=pes.edu dkim=pass dkdomain=pes.edu dmarc=pass fromdomain=pes.edu);       "
+                 "spf=pass (google.com: domain of placement_cse_2027+bnc@googlegroups.com designates 209.85.220.55 as permitted sender) "
+                 "smtp.mailfrom=placement_cse_2027+bnc@googlegroups.com")
+
+
+def seal(i, d):
+    return f"i={i}; a=rsa-sha256; t=1761300000; cv=pass; d={d}; s=arc-20240605; b=abc"
+
+
+def test_mailing_list_mail_is_verified_through_a_google_sealed_arc_set():
+    assert authenticated_domain([GROUPS_RESULT], "pes.edu", [seal(4, "google.com"), seal(3, "google.com"), seal(2, "google.com")]) == "pes.edu"
+
+
+@pytest.mark.parametrize("seals", [
+    [seal(3, "evil.example")],  # anyone can seal fabricated results with their own domain
+    [seal(2, "google.com")],    # the summarised set (i=3) is not Google's
+    [],                          # no ARC-Seal at all
+])
+def test_arc_results_from_untrusted_sealers_are_ignored(seals):
+    assert authenticated_domain([GROUPS_RESULT], "pes.edu", seals) is None
+
+
+def test_arc_fail_or_misaligned_author_is_not_verified():
+    failed = GROUPS_RESULT.replace("arc=pass", "arc=fail")
+    assert authenticated_domain([failed], "pes.edu", [seal(3, "google.com")]) is None
+    assert authenticated_domain([GROUPS_RESULT], "kotak.com", [seal(3, "google.com")]) is None
+
+
+def test_parse_metadata_reads_arc_seals():
+    m = parse_metadata(gmail_msg({"From": "PESU placements <pesuplacements@pes.edu>", "Subject": "Drive",
+                                   "ARC-Seal": seal(3, "google.com")}, auth=[GROUPS_RESULT]))
+    assert m.authenticated_domain == "pes.edu"

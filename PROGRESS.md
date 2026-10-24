@@ -13,7 +13,7 @@ Rule: commit every change to git, never push (the owner pushes).
 | Design (landing, web UI, mobile) | Approved by owner (v2 + font fix). See `DESIGN.md`, `design/README.md` |
 | Phase 0 (setup) | **Accepted 2026-10-24** on the owner's laptop (native Windows, Postgres queue, poll mode). Both checks passed |
 | Phase 1 (notification pipeline) | **Built and verified on the owner's laptop and phone 2026-10-24.** All three acceptance criteria met (see log); the "within seconds" criterion is ~25 s in poll mode. Waiting for owner sign-off |
-| Phase 2 (rules and opportunities) | **2a done and accepted on real Gemini 2026-10-24** (opportunities, timelines, to-dos, reminders). 2b and 2c next |
+| Phase 2 (rules and opportunities) | 2a accepted (opportunities, timelines, to-dos, reminders). **2b built and verified live** (rule editor + preview, one-tap / plain-English rules, suggestions, first scan, categories, usage). 2c next (folders, grouping, web UI) |
 | Phases 3–5 | Not started |
 
 ## Log (newest last)
@@ -69,6 +69,12 @@ Rule: commit every change to git, never push (the owner pushes).
   - API: opportunities CRUD + timeline + manual attach (AI-off friendly), which-company answer/detach, to-dos CRUD with reminder rescheduling.
   - Android: bottom bar Feed · Deals · To-do · More (as in the mobile design); Deals list (deadline tags), company timeline (stage strip, events, links, add to calendar, edit names, close/reopen, delete), To-do (check off with undo, add with due date), Mail detail company section (timeline link, which-company chips, manual picker, add to to-do, add to calendar), notification buttons (which-company answers and Done via a broadcast receiver, Add to calendar, Open link). Calendar uses the phone's calendar app (no Google Calendar scope).
   - 166 tests. **Acceptance (real Gemini, demo):** placement announcement + HirePro mail → one "Acme Corp" timeline (announcement:new, assessment:name), deadline tonight 23:59; Globex separate; bank debit silent with no AI call; 4 to-dos; reminders 24 h/2 h scheduled (past ones skipped).
+- 2026-10-24 — **Phase 2b: rules and onboarding.**
+  - Migration 0004: `messages.header_names` (header presence only, for previews), `fingerprints.domain/created_at`, `onboarding_scans`.
+  - Backend (`app/rule_tools.py`, `app/scan.py`, `app/api/scans.py`, `app/api/categories.py`): rule preview over the last 500 stored mails (body conditions flagged as not previewable); "ignore mails like this" (verified sender + subject-template regex, refused for unverified senders, teaches fingerprints); "not like this" from Silenced (stops the template; reports the responsible rule, never edits it silently); repeat-template suggestions (≥5 in 30 days, never if any was urgent; accept as silent/digest or keep); plain-English rules (one LLM call → validated draft + preview, saved only on confirm, gated by `ai_enabled`); first scan (last 30 days, headers only, ≤1,500 mails, ~200/min pacing with 429 backoff, auto-started for new accounts, bulk apply → one rule per action, quieting rules always get a security exception for fraud/OTP/sign-in mail); custom categories CRUD (validated, no clash with built-ins, fed to the prompt).
+  - Android: rule editor with live preview, Rules screen (plain-English box greyed out without a key, suggestions, reorder, on/off), Ignore mails like this (preview first, or adjust in the editor) and Not like this in mail detail, "Ignore like this" notification button (normal/digest only), First scan, Categories and Token usage screens.
+  - **Found by the live first scan:** the placement cell (`pesuplacements@pes.edu`, 177 mails in 30 days) was "unverified" because it reaches the owner through a Google Groups list: top-level DKIM/SPF pass for googlegroups.com, the author's pes.edu results only appear in Gmail's `arc=pass (...)` summary. Fixed: forwarded ARC results are trusted only when Gmail reports arc=pass AND the summarised ARC set was sealed by a trusted sealer (`TRUSTED_ARC_SEALERS = {"google.com"}`, checked via the `ARC-Seal` header now fetched with metadata). Forged ARC sets from other sealers stay unverified (tests). Live: both PES placement senders now verify as pes.edu.
+  - First live scan: 1,188 mails in 454 s, headers only, no AI. 185 tests pass.
 
 ## Decisions
 - **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.
@@ -91,6 +97,8 @@ Rule: commit every change to git, never push (the owner pushes).
 - Opportunity matching runs only with AI on (brief §10); with AI off, timelines are built by hand. Name match is checked before the model's pick.
 - Laptop serving: `run-local.ps1 -Lan` binds 0.0.0.0 so the phone reaches `http://<laptop IP>:8000` (debug builds allow cleartext; release builds need HTTPS).
 - `accounts.email` is globally unique because pushes carry only the address.
+- Sender verification accepts mailing-list mail via ARC only from trusted sealers (google.com). Extend `TRUSTED_ARC_SEALERS` deliberately (e.g. Microsoft) when needed; never trust arbitrary sealers.
+- Quieting rules made in bulk (first scan) always carry a security exception so fraud/OTP/sign-in mail from the same sender is never silenced.
 - `notifications.message_id` is unique so a message can never notify twice.
 
 ## Open questions (for the owner)

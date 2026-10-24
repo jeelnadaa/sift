@@ -174,6 +174,8 @@ The phone shows an urgent "Sift test push", and the app shows the server-to-phon
 
 **Company timelines (Phase 2a):** with AI on, placement mail (announcements, registrations, assessment links, interviews, results, recruiters) is put on one timeline per company across all accounts (app → Deals). When Sift cannot tell which company a mail is about, the notification asks with one-tap buttons and remembers your answer. Mail that needs action becomes a to-do (app → To-do); deadlines get reminders 24 h and 2 h before, and "Add to calendar" opens your phone's calendar. Without AI, create timelines and to-dos by hand from any mail.
 
+**Rules (Phase 2b):** More → Rules. Create rules in the editor (live "N of your last 500 mails would match" preview), describe one in plain English (needs your AI key; you review the draft before saving), accept suggestions for templates that keep repeating, or tap "Ignore mails like this" on any mail or notification. When you connect a new account, Sift reads the last 30 days of headers (no bodies, no AI) and lists top senders so you can set their actions in bulk (Accounts → First scan). Your own categories live under More → Categories, and token usage under More → Token usage.
+
 What decides priority, in order: your rules (first match wins) → Gmail Promotions/Social tab → digest → a template you silenced before → the LLM (if your key is valid) → otherwise normal. Mail from a real person is never put in digest by the LLM, and anything that fails is delivered as normal, never hidden. Urgent notifications are re-sent every 5 minutes (up to 3 times) until the phone confirms it received them.
 
 ## 6. Move to Oracle Cloud later
@@ -250,4 +252,5 @@ Design prototypes: `cd design && python -m http.server 8765`, then open `http://
 - `sift.solarquack.in` is only up while the laptop is on (and awake) with Sift and the tunnel service running.
 - If an account is offline for over a week, Gmail's history expires and Sift restarts from "now" without scanning the gap.
 - When the daily token cap is reached, mail is delivered as normal straight away rather than queued for AI later. A rate-limited (429) AI call is retried once, then the mail is delivered as normal.
-- Not yet: quiet hours, focus mode, rule editor with preview, plain-English rules, onboarding scan, fingerprint suggestions, folders, grouping, web UI (Phase 2b/2c); HTML reader, snooze and search (Phase 3); offline cache in the app.
+- Not yet: quiet hours, focus mode, folders, grouping, web UI (Phase 2c); HTML reader, snooze and search (Phase 3); offline cache in the app.
+- Mail stored before the mailing-list (ARC) fix keeps its old "unverified" sender status; only new mail benefits. Rule previews therefore under-count older list mail.

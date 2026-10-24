@@ -12,8 +12,11 @@ from html.parser import HTMLParser
 
 METADATA_HEADERS = [
     "From", "To", "Cc", "Subject", "Date", "Message-ID", "List-Id", "List-Unsubscribe",
-    "Precedence", "Auto-Submitted", "Authentication-Results", "Content-Type",
+    "Precedence", "Auto-Submitted", "Authentication-Results", "ARC-Seal", "Content-Type",
 ]
+# ARC sealers whose forwarded authentication results we accept. Google Groups and Gmail
+# forwarding seal with d=google.com; anyone else could seal fabricated results.
+TRUSTED_ARC_SEALERS = {"google.com"}
 BODY_LIMIT = 1500
 
 
@@ -49,18 +52,33 @@ def _aligned(a: str, b: str) -> bool:
     return bool(a and b) and (a == b or a.endswith("." + b) or b.endswith("." + a))
 
 
-def authenticated_domain(auth_results: list[str], from_domain: str) -> str | None:
+def _arc_sealers(arc_seals: list[str]) -> dict[int, str]:
+    """ARC-Seal headers -> {instance: sealing domain}."""
+    out = {}
+    for seal in arc_seals:
+        i = re.search(r"\bi=(\d+)", seal)
+        d = re.search(r"\bd=([^\s;]+)", seal)
+        if i and d:
+            out[int(i.group(1))] = d.group(1).lower()
+    return out
+
+
+def authenticated_domain(auth_results: list[str], from_domain: str, arc_seals: list[str] | None = None) -> str | None:
     """Trust only the Authentication-Results header Gmail itself added (authserv-id mx.google.com).
-    Returns the From domain when DMARC passed, or DKIM/SPF passed for an aligned domain."""
+    Returns the From domain when DMARC passed, or DKIM/SPF passed for an aligned domain.
+
+    Mailing lists (e.g. Google Groups) re-send mail under their own domain, so DKIM/SPF pass for
+    the list, not the author. Gmail then reports the author's original results inside
+    `arc=pass (i=N ...)`. Those are used only when Gmail verified the ARC chain AND the ARC set
+    they come from (instance N) was sealed by a trusted sealer, because anyone can seal
+    fabricated results with their own domain."""
     if not from_domain:
         return None
     for value in auth_results:
         if not value.strip().lower().startswith("mx.google.com"):
             continue  # added by an earlier hop; could be forged
         v = value.lower()
-        if re.search(r"\bdmarc=pass\b[^;]*header\.from=([^\s;]+)", v) and any(
-            _aligned(d, from_domain) for d in re.findall(r"\bdmarc=pass\b[^;]*header\.from=([^\s;]+)", v)
-        ):
+        if any(_aligned(d, from_domain) for d in re.findall(r"\bdmarc=pass\b[^;]*header\.from=([^\s;]+)", v)):
             return from_domain
         for d in re.findall(r"\bdkim=pass\b[^;]*header\.(?:i=@?|d=)([^\s;]+)", v):
             if _aligned(_domain("x@" + d.lstrip("@")), from_domain):
@@ -68,6 +86,14 @@ def authenticated_domain(auth_results: list[str], from_domain: str) -> str | Non
         for d in re.findall(r"\bspf=pass\b[^;]*smtp\.mailfrom=([^\s;]+)", v):
             if _aligned(_domain(d) or d, from_domain):
                 return from_domain
+        arc = re.search(r"\barc=pass\s*\(i=(\d+)([^)]*)\)", v)
+        if arc and _arc_sealers(arc_seals or []).get(int(arc.group(1))) in TRUSTED_ARC_SEALERS:
+            inner = arc.group(2)
+            for key in ("fromdomain", "dkdomain", "spfdomain"):
+                result = {"fromdomain": "dmarc", "dkdomain": "dkim", "spfdomain": "spf"}[key]
+                for d in re.findall(rf"\b{result}=pass\b\s+(?:\S+\s+)*?{key}=([^\s;)]+)", inner):
+                    if _aligned(d, from_domain):
+                        return from_domain
         return None
     return None
 
@@ -76,10 +102,13 @@ def parse_metadata(msg: dict) -> MailMeta:
     payload = msg.get("payload", {})
     headers: dict[str, str] = {}
     auth_results: list[str] = []
+    arc_seals: list[str] = []
     for h in payload.get("headers", []):
         name = h.get("name", "").lower()
         if name == "authentication-results":
             auth_results.append(h.get("value", ""))
+        elif name == "arc-seal":
+            arc_seals.append(h.get("value", ""))
         headers.setdefault(name, h.get("value", ""))
     name, address = parseaddr(headers.get("from", ""))
     address = address.lower()
@@ -96,7 +125,7 @@ def parse_metadata(msg: dict) -> MailMeta:
         sender=address,
         sender_name=name.strip(),
         sender_domain=domain,
-        authenticated_domain=authenticated_domain(auth_results, domain),
+        authenticated_domain=authenticated_domain(auth_results, domain, arc_seals),
         subject=headers.get("subject", "").strip(),
         message_id=(headers.get("message-id") or "").strip() or None,
         list_id=(headers.get("list-id") or "").strip() or None,
