@@ -245,3 +245,14 @@ def test_custom_categories(db, setup, client, fake_llm):
     run(db, account, provider, msgs["recruiter"])
     assert "- Hackathons: Hackathon invites" in fake_llm.calls[-1]["system"]  # the model is told about it
     assert client.delete(f"/api/v1/categories/{created['id']}", headers=H(user)).status_code == 204
+
+
+@pytest.mark.parametrize("hints,expected", [
+    ({"promotions", "bulk"}, "silent"),
+    ({"social", "bulk"}, "digest"),
+    ({"bulk"}, "keep"),          # a placement cell mailing through a list
+    ({"no_reply"}, "keep"),      # an assessment platform's no-reply address
+    (set(), "keep"),
+])
+def test_scan_suggestions_never_demote_on_weak_signals(hints, expected):
+    assert scan.suggest(hints) == expected

@@ -35,9 +35,12 @@ SECURITY_EXCEPTION = {"any": [{"field": "subject", "op": "contains_any", "value"
 
 
 def suggest(hints: set[str]) -> str:
+    """Only Gmail's own tabs drive a suggestion. Mailing-list headers and no-reply senders say
+    nothing about importance (placement cells use lists, assessment platforms use no-reply),
+    so those senders are suggested "keep" and the user decides."""
     if "promotions" in hints:
         return "silent"
-    if hints & {"social", "bulk", "no_reply"}:
+    if "social" in hints:
         return "digest"
     return "keep"
 
