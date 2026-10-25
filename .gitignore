@@ -14,4 +14,3 @@ web/dist/
 android/app/src/test/snapshots/
 
 # launch video output (renders, narration, throwaway credentials)
-brag-output/

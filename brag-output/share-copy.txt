@@ -1,0 +1,1 @@
+Sift reads every Gmail account you own, lets your own rules settle the noise for free, and buzzes your phone only when a mail actually matters. Placement mail lands on one timeline per company and files itself into folders. Your own AI key, your own server. Stop digging. Start sifting.
