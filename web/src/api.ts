@@ -170,7 +170,8 @@ export interface ScanSender { key: string; kind: string; name: string | null; co
 export interface Scan { id: string; account_id: string; status: string; scanned: number; senders: ScanSender[]; error: string | null; applied_at: string | null }
 
 export interface Settings { timezone: string; daily_token_cap: number; resend_urgent: boolean; resend_after_minutes: number; resend_limit: number; grouping_enabled: string; load_remote_images: boolean;
-  sender_name: string; signature: string; undo_send_seconds: number }
+  sender_name: string; signature: string; undo_send_seconds: number;
+  quiet_hours_enabled: boolean; quiet_hours_start: string; quiet_hours_end: string; muted_categories: string[] }
 
 // ---- writing mail (Phase 4) ----
 export interface DraftAttachment { index: number; filename: string; mime: string; size: number }

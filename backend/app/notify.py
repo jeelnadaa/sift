@@ -84,6 +84,15 @@ def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notifica
     mode = folders.notify_mode_for(db, msg)
     if msg.priority != "urgent" and mode != "always" and (mode == "mute" or grouping.is_muted(db, msg)):
         return None
+
+    if msg.priority != "urgent":
+        user_s = user_settings.get(db, msg.user_id)
+        if user_settings.is_in_quiet_hours(user_s):
+            return None
+        muted_cats = user_s.get("muted_categories") or []
+        if msg.category and msg.category in muted_cats:
+            return None
+
     priority = "normal" if mode == "always" and msg.priority == "digest" else msg.priority
     stmt = insert(Notification).values(
         user_id=msg.user_id, message_id=msg.id, priority=priority, mail_received_at=msg.received_at,
@@ -102,6 +111,12 @@ def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notifica
 def notify_match(db: Session, msg: Message, account: GmailAccount, search_name: str) -> Notification | None:
     """A new mail matched a saved search set to notify (even mail a rule quieted: the user asked
     for these). Normal priority; one notification per message, like every other."""
+    user_s = user_settings.get(db, msg.user_id)
+    if user_settings.is_in_quiet_hours(user_s):
+        return None
+    muted_cats = user_s.get("muted_categories") or []
+    if msg.category and msg.category in muted_cats:
+        return None
     stmt = insert(Notification).values(
         user_id=msg.user_id, message_id=msg.id, priority="normal", mail_received_at=msg.received_at,
     ).on_conflict_do_nothing(index_elements=["message_id"]).returning(Notification.id)

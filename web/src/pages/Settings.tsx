@@ -3,6 +3,7 @@ import { clearSaved, savedSize } from "../offline";
 import { del, get, patch, post, put, type Account, type AiStatus, type GroupingStatus, type Settings } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Banner, confirmDialog, errorText, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
+import { CATEGORY_LABELS } from "./FolderAi";
 
 export function SettingsPage() {
   const ai = useLoad(() => get<AiStatus>("/ai"));
@@ -88,6 +89,34 @@ export function SettingsPage() {
               <Toggle on={s.resend_urgent} label="Re-send urgent" onChange={(v) => change({ resend_urgent: v })} /></div>
             <div className="set-row"><div>Re-send every</div>
               <div className="inline">{[2, 5, 10].map((m) => <button key={m} className={`chip ${s.resend_after_minutes === m ? "on" : ""}`} onClick={() => change({ resend_after_minutes: m })}>{m} min</button>)}</div></div>
+            <div className="set-row"><div>Quiet hours<small>Silence non-urgent notifications during scheduled hours. Urgent mail still delivers.</small></div>
+              <Toggle on={s.quiet_hours_enabled ?? false} label="Quiet hours" onChange={(v) => change({ quiet_hours_enabled: v })} /></div>
+            {s.quiet_hours_enabled && (
+              <div className="set-row"><div>Quiet window<small>Start and end times in your timezone ({s.timezone})</small></div>
+                <div className="inline" style={{ gap: 8 }}>
+                  <input type="time" className="input" style={{ width: 120 }} value={s.quiet_hours_start ?? "22:00"}
+                    onChange={(e) => change({ quiet_hours_start: e.target.value })} />
+                  <span className="dim">to</span>
+                  <input type="time" className="input" style={{ width: 120 }} value={s.quiet_hours_end ?? "07:00"}
+                    onChange={(e) => change({ quiet_hours_end: e.target.value })} />
+                </div></div>
+            )}
+            <div className="set-row" style={{ alignItems: "flex-start" }}><div>Mute notification categories<small>Silence non-urgent notifications for selected categories</small></div>
+              <div className="inline" style={{ flexWrap: "wrap", gap: 6, maxWidth: 420 }}>
+                {Object.entries(CATEGORY_LABELS).map(([catKey, label]) => {
+                  const muted = (s.muted_categories ?? []).includes(catKey);
+                  return (
+                    <button key={catKey} type="button" className={`chip ${muted ? "on" : ""}`} onClick={() => {
+                      const next = muted
+                        ? (s.muted_categories ?? []).filter((c) => c !== catKey)
+                        : [...(s.muted_categories ?? []), catKey];
+                      change({ muted_categories: next });
+                    }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div></div>
             <div className="set-row"><div>Time zone<small>For rule time windows and deadlines</small></div><span className="muted">{s.timezone}</span></div>
           </div>
         )}
