@@ -147,6 +147,33 @@ object FakeApi {
                 totalSize = 524288,
                 byType = mapOf("pdf" to com.solarquack.sift.data.AttachmentTypeStatDto(count = 1, size = 524288)),
             )
+            "senders" -> com.solarquack.sift.data.SenderListResultDto(
+                items = listOf(
+                    com.solarquack.sift.data.SenderItemDto(
+                        email = "assess@assesshub.example",
+                        name = "AssessHub",
+                        domain = "assesshub.example",
+                        totalCount = 4,
+                        unreadCount = 1,
+                        urgentCount = 1,
+                        attachmentCount = 1,
+                        lastReceivedAt = ago(0),
+                        sampleSubject = "Acme Corp online assessment",
+                    )
+                ),
+                total = 1,
+            )
+            "senderDetail" -> com.solarquack.sift.data.SenderDetailResultDto(
+                email = "assess@assesshub.example",
+                name = "AssessHub",
+                domain = "assesshub.example",
+                totalCount = 4,
+                unreadCount = 1,
+                urgentCount = 1,
+                attachmentCount = 1,
+                lastReceivedAt = ago(0),
+                sampleSubject = "Acme Corp online assessment",
+            )
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

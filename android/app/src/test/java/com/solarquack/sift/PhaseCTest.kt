@@ -5,6 +5,10 @@ import com.solarquack.sift.data.AttachmentItemDto
 import com.solarquack.sift.data.AttachmentListResultDto
 import com.solarquack.sift.data.AttachmentStatsDto
 import com.solarquack.sift.data.AttachmentTypeStatDto
+import com.solarquack.sift.data.SenderDetailResultDto
+import com.solarquack.sift.data.SenderItemDto
+import com.solarquack.sift.data.SenderListResultDto
+import com.solarquack.sift.data.SenderMessageBriefDto
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -91,5 +95,51 @@ class PhaseCTest {
         assertEquals(1, stats.totalCount)
         assertEquals(524288L, stats.totalSize)
         assertEquals(1, stats.byType["pdf"]?.count)
+    }
+
+    @Test
+    fun testSenderSerialization() {
+        val sender = SenderItemDto(
+            email = "billing@demo.sift.local",
+            name = "Billing Dept",
+            domain = "demo.sift.local",
+            totalCount = 12,
+            unreadCount = 3,
+            urgentCount = 1,
+            attachmentCount = 5,
+            lastReceivedAt = "2026-10-26T00:00:00Z",
+            sampleSubject = "Monthly Statement",
+        )
+
+        val json = Api.json.encodeToString(SenderItemDto.serializer(), sender)
+        assertTrue(json.contains("\"email\":\"billing@demo.sift.local\""))
+        assertTrue(json.contains("\"total_count\":12"))
+        assertTrue(json.contains("\"unread_count\":3"))
+        assertTrue(json.contains("\"urgent_count\":1"))
+
+        val decoded = Api.json.decodeFromString(SenderItemDto.serializer(), json)
+        assertEquals("billing@demo.sift.local", decoded.email)
+        assertEquals(12, decoded.totalCount)
+        assertEquals(3, decoded.unreadCount)
+        assertEquals(1, decoded.urgentCount)
+        assertEquals(5, decoded.attachmentCount)
+    }
+
+    @Test
+    fun testFakeApiSendersEndpoints() = runBlocking {
+        val override = Api.testOverride
+        assertNotNull(override)
+
+        val list = override!!.senders()
+        assertEquals(1, list.total)
+        assertEquals(1, list.items.size)
+        assertEquals("assess@assesshub.example", list.items[0].email)
+        assertEquals(4, list.items[0].totalCount)
+        assertEquals(1, list.items[0].unreadCount)
+
+        val detail = override.senderDetail("assess@assesshub.example")
+        assertEquals("assess@assesshub.example", detail.email)
+        assertEquals("AssessHub", detail.name)
+        assertEquals(4, detail.totalCount)
     }
 }

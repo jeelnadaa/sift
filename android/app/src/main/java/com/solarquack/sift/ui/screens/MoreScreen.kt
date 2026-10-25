@@ -29,6 +29,7 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
         Item("Outbox", "Drafts, scheduled mail, follow-up reminders") { onNavigate("outbox") }
         SectionLabel("Organize")
         Item("Attachments", "All files, PDFs, spreadsheets and images across accounts") { onNavigate("attachments") }
+        Item("Senders", "Directory and volume stats of everyone who writes to you") { onNavigate("senders") }
         Item("Folders", "Your own folders, nested; rules can file into them") { onNavigate("folders") }
         Item("Groups", "Similar mail stacked together: bank alerts, newsletters, one company's drive") { onNavigate("groups") }
         SectionLabel("Control")

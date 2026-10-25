@@ -138,6 +138,41 @@ export interface AttachmentListResult {
   total: number;
 }
 
+export interface SenderItem {
+  email: string;
+  name: string | null;
+  domain: string | null;
+  total_count: number;
+  unread_count: number;
+  urgent_count: number;
+  attachment_count: number;
+  last_received_at: string | null;
+  sample_subject: string | null;
+}
+
+export interface SenderListResult {
+  items: SenderItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface SenderMessageBrief {
+  id: string;
+  subject: string | null;
+  snippet: string | null;
+  received_at: string | null;
+  priority: Priority | null;
+  category: string | null;
+  unread: boolean;
+  has_attachment: boolean;
+}
+
+export interface SenderDetailResult extends SenderItem {
+  recent_messages: SenderMessageBrief[];
+  rules: { id: string; name: string; enabled: boolean; action: Action }[];
+}
+
 export interface Mail {
   type?: "mail";
   id: string; account_id: string; account: string | null; account_color: string | null;

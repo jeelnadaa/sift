@@ -60,6 +60,17 @@ interface SiftApi {
 
     @GET("api/v1/attachments/stats") suspend fun attachmentStats(): AttachmentStatsDto
 
+    @GET("api/v1/senders") suspend fun senders(
+        @Query("q") q: String? = null,
+        @Query("domain") domain: String? = null,
+        @Query("min_count") minCount: Int? = null,
+        @Query("sort_by") sortBy: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("offset") offset: Int? = null,
+    ): SenderListResultDto
+
+    @GET("api/v1/senders/{sender_email}") suspend fun senderDetail(@Path("sender_email") senderEmail: String): SenderDetailResultDto
+
     @GET("api/v1/accounts") suspend fun accounts(): List<AccountDto>
     @GET("api/v1/accounts/connect-url") suspend fun connectUrl(): ConnectUrl
     @DELETE("api/v1/accounts/{id}") suspend fun removeAccount(@Path("id") id: String)

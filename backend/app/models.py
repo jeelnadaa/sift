@@ -141,6 +141,7 @@ class Message(Base):
         Index("ix_messages_user_received", "user_id", "received_at"),
         Index("ix_messages_account_thread", "account_id", "thread_id"),
         Index("ix_messages_user_pinned", "user_id", "pinned"),
+        Index("ix_messages_user_sender", "user_id", "sender"),
         CheckConstraint(f"priority IS NULL OR {_in('priority', PRIORITIES)}", name="priority_valid"),
     )
     id: Mapped[uuid.UUID] = pk()

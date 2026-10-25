@@ -109,6 +109,61 @@ data class AttachmentListResultDto(
 )
 
 @Serializable
+data class SenderItemDto(
+    val email: String,
+    val name: String? = null,
+    val domain: String? = null,
+    @SerialName("total_count") val totalCount: Int = 0,
+    @SerialName("unread_count") val unreadCount: Int = 0,
+    @SerialName("urgent_count") val urgentCount: Int = 0,
+    @SerialName("attachment_count") val attachmentCount: Int = 0,
+    @SerialName("last_received_at") val lastReceivedAt: String? = null,
+    @SerialName("sample_subject") val sampleSubject: String? = null,
+)
+
+@Serializable
+data class SenderListResultDto(
+    val items: List<SenderItemDto> = emptyList(),
+    val total: Int = 0,
+    val offset: Int = 0,
+    val limit: Int = 50,
+)
+
+@Serializable
+data class SenderMessageBriefDto(
+    val id: String,
+    val subject: String? = null,
+    val snippet: String? = null,
+    @SerialName("received_at") val receivedAt: String? = null,
+    val priority: String? = null,
+    val category: String? = null,
+    val unread: Boolean = false,
+    @SerialName("has_attachment") val hasAttachment: Boolean = false,
+)
+
+@Serializable
+data class SenderRuleBriefDto(
+    val id: String,
+    val name: String,
+    val enabled: Boolean = true,
+)
+
+@Serializable
+data class SenderDetailResultDto(
+    val email: String,
+    val name: String? = null,
+    val domain: String? = null,
+    @SerialName("total_count") val totalCount: Int = 0,
+    @SerialName("unread_count") val unreadCount: Int = 0,
+    @SerialName("urgent_count") val urgentCount: Int = 0,
+    @SerialName("attachment_count") val attachmentCount: Int = 0,
+    @SerialName("last_received_at") val lastReceivedAt: String? = null,
+    @SerialName("sample_subject") val sampleSubject: String? = null,
+    @SerialName("recent_messages") val recentMessages: List<SenderMessageBriefDto> = emptyList(),
+    val rules: List<SenderRuleBriefDto> = emptyList(),
+)
+
+@Serializable
 data class BodyDto(val text: String, val attachments: List<String> = emptyList())
 
 @Serializable
