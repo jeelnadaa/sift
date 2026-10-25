@@ -846,8 +846,7 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
     if a == "delete_timeline":
         o = _need_company(db, user_id, s["company"])
         name = o.company
-        db.delete(o)
-        db.flush()
+        opp_api.delete_opportunity(o.id, user, db)
         return {"text": f"Deleted the {name} timeline; its mail stays", "link": {"page": "opportunities"}}
     if a == "add_section":
         o = _need_company(db, user_id, s["company"])

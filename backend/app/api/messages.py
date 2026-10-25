@@ -13,7 +13,7 @@ from app.db import get_db
 from app.mail.base import AuthRevoked
 from app.mail.gmail import GmailError
 from app.mail.message import extract_body
-from app.models import GmailAccount, GroupMember, MailNote, Message, Notification, User
+from app.models import GmailAccount, GroupMember, MailNote, Message, Notification, Opportunity, Todo, User
 from app.security import current_user
 
 router = APIRouter(prefix="/api/v1/messages")
@@ -108,6 +108,38 @@ def _own(db: Session, user: User, message_id: uuid.UUID) -> Message:
 @router.get("/{message_id}")
 def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     m = _own(db, user, message_id)
+    ext = m.extraction or {}
+    changed = False
+
+    if ext.get("opportunity_id"):
+        try:
+            opp_id = uuid.UUID(str(ext["opportunity_id"]))
+            if not db.scalar(select(Opportunity.id).where(Opportunity.id == opp_id, Opportunity.user_id == user.id)):
+                ext = dict(ext)
+                ext.pop("opportunity_id", None)
+                changed = True
+        except (ValueError, TypeError):
+            ext = dict(ext)
+            ext.pop("opportunity_id", None)
+            changed = True
+
+    if ext.get("todo_id"):
+        try:
+            t_id = uuid.UUID(str(ext["todo_id"]))
+            t_row = db.get(Todo, t_id)
+            if not t_row or t_row.user_id != user.id or t_row.done:
+                ext = dict(ext)
+                ext.pop("todo_id", None)
+                changed = True
+        except (ValueError, TypeError):
+            ext = dict(ext)
+            ext.pop("todo_id", None)
+            changed = True
+
+    if changed:
+        m.extraction = ext
+        db.commit()
+
     n = db.scalar(select(Notification).where(Notification.message_id == m.id))
     note_items = notes_service.list_for_message(db, user.id, m.id)
     out = message_json(m, db.get(GmailAccount, m.account_id), n, notes_count=len(note_items))

@@ -18,6 +18,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -106,7 +109,7 @@ fun GroupingPromptDialog(onAnswered: (String) -> Unit) {
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, onEditRule: () -> Unit) {
     val context = LocalContext.current
@@ -121,6 +124,7 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
     var selected by remember { mutableStateOf(setOf<String>()) }
     var editing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var actionsOpen by remember { mutableStateOf(false) }
 
     fun load() = scope.launch {
         try { g = Api.get(context).group(id); error = null } catch (t: Throwable) { error = t.userMessage() }
@@ -176,16 +180,84 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                     }
                     com.solarquack.sift.ui.SiftSwitch(group.muted, { on -> run { Api.get(context).editGroup(id, GroupPatch(muted = on)) } })
                 }
-                FlowRow(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GhostButton("File all in folder") { filing = "file" }
-                    GhostButton("File mail like this…") { filing = "rule" }
-                    GhostButton("Silence mail like this") { ruleDraft("silent") }
-                    GhostButton(if (selecting) "Cancel split" else "Split") { selecting = !selecting; selected = emptySet() }
-                    GhostButton("Merge into…") { merging = true }
-                    GhostButton("Delete group", color = Ink.urgent) { deleting = true }
-                    group.items.firstOrNull()?.sender?.let { sender ->
-                        GhostButton("Never group $sender") {
-                            run("Mail from $sender won't be grouped") { Api.get(context).setGroupPreference(PreferenceIn(sender, "never")) }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    GhostButton("Actions ▾", onClick = { actionsOpen = true })
+                    if (selecting) {
+                        GhostButton("Cancel split", onClick = { selecting = false; selected = emptySet() })
+                    }
+                }
+
+                if (actionsOpen) {
+                    ModalBottomSheet(
+                        onDismissRequest = { actionsOpen = false },
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                        containerColor = Ink.surface,
+                    ) {
+                        val groupActions = buildList {
+                            add(SheetItem("File all in folder", "Move all emails in this group to a folder", section = "Organize") {
+                                filing = "file"
+                            })
+                            add(SheetItem("Split group", "Select emails to split into a new group", section = "Organize") {
+                                selecting = true
+                                selected = emptySet()
+                            })
+                            add(SheetItem("Merge into…", "Combine with another existing group", section = "Organize") {
+                                merging = true
+                            })
+                            add(SheetItem("File mail like this…", "Create a rule to file future similar emails automatically", section = "Automation") {
+                                filing = "rule"
+                            })
+                            add(SheetItem("Silence mail like this", "Create a rule to silence future similar emails", section = "Automation") {
+                                ruleDraft("silent")
+                            })
+                            group.items.firstOrNull()?.sender?.let { sender ->
+                                add(SheetItem("Never group $sender", "Keep future emails from this sender out of groups", section = "Automation") {
+                                    run("Mail from $sender won't be grouped") {
+                                        Api.get(context).setGroupPreference(PreferenceIn(sender, "never"))
+                                    }
+                                })
+                            }
+                            add(SheetItem("Delete group", "Remove this group without deleting emails", danger = true, section = "Manage") {
+                                deleting = true
+                            })
+                        }
+
+                        LazyColumn(Modifier.padding(bottom = 28.dp)) {
+                            val sections = groupActions.groupBy { it.section }
+                            sections.forEach { (section, entries) ->
+                                item(key = "hdr-$section") {
+                                    Text(
+                                        section.uppercase(),
+                                        color = Ink.text3,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(start = 22.dp, top = 14.dp, bottom = 6.dp)
+                                    )
+                                }
+                                items(entries, key = { it.label }) { entry ->
+                                    Column(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                actionsOpen = false
+                                                entry.onClick()
+                                            }
+                                            .padding(horizontal = 22.dp, vertical = 12.dp)
+                                    ) {
+                                        Text(
+                                            entry.label,
+                                            color = if (entry.danger) Ink.urgent else Ink.text,
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        entry.hint?.let { hint ->
+                                            Text(hint, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

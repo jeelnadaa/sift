@@ -79,6 +79,14 @@ def create_todo(body: TodoIn, user: User = Depends(current_user), db: Session = 
              message_id=body.message_id, opportunity_id=body.opportunity_id, source="manual")
     db.add(t)
     db.flush()
+    if body.message_id:
+        m = db.get(Message, body.message_id)
+        if m:
+            ext = dict(m.extraction or {})
+            ext["todo_id"] = str(t.id)
+            m.extraction = ext
+            from app import events
+            events.publish(db, user.id, "mail", ids=[m.id])
     _reschedule(db, t)
     db.commit()
     return todo_json(t)
@@ -97,6 +105,9 @@ def update_todo(todo_id: uuid.UUID, body: TodoPatch, user: User = Depends(curren
         t.due_at = body.due_at
     if body.done is not None and body.done != t.done:
         t.done, t.done_at = body.done, datetime.now(UTC) if body.done else None
+        if t.message_id:
+            from app import events
+            events.publish(db, user.id, "mail", ids=[t.message_id])
     _reschedule(db, t)
     db.commit()
     return todo_json(t)
@@ -104,5 +115,32 @@ def update_todo(todo_id: uuid.UUID, body: TodoPatch, user: User = Depends(curren
 
 @router.delete("/{todo_id}", status_code=204)
 def delete_todo(todo_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
-    db.delete(_own(db, user, todo_id))
+    t = _own(db, user, todo_id)
+    todo_str = str(t.id)
+    affected_ids = []
+    if t.message_id:
+        m = db.get(Message, t.message_id)
+        if m and m.extraction and m.extraction.get("todo_id") == todo_str:
+            ext = dict(m.extraction)
+            ext.pop("todo_id", None)
+            m.extraction = ext
+            affected_ids.append(m.id)
+
+    msgs = list(db.scalars(
+        select(Message).where(
+            Message.user_id == user.id,
+            Message.extraction["todo_id"].astext == todo_str
+        )
+    ))
+    for m in msgs:
+        if m.id not in affected_ids and m.extraction:
+            ext = dict(m.extraction)
+            ext.pop("todo_id", None)
+            m.extraction = ext
+            affected_ids.append(m.id)
+
+    db.delete(t)
+    if affected_ids:
+        from app import events
+        events.publish(db, user.id, "mail", ids=affected_ids)
     db.commit()

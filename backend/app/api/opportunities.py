@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app import opportunities as opp_service
@@ -133,7 +133,36 @@ def update_opportunity(opportunity_id: uuid.UUID, body: OpportunityPatch, user: 
 @router.delete("/opportunities/{opportunity_id}", status_code=204)
 def delete_opportunity(opportunity_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
     """Deletes the timeline only; the mail itself stays."""
-    db.delete(_own(db, user, opportunity_id))
+    opp = _own(db, user, opportunity_id)
+    opp_str = str(opp.id)
+    event_msg_ids = list(db.scalars(
+        select(OpportunityEvent.message_id).where(
+            OpportunityEvent.opportunity_id == opp.id,
+            OpportunityEvent.message_id.is_not(None)
+        )
+    ))
+    q = select(Message).where(
+        Message.user_id == user.id,
+        or_(
+            Message.id.in_(event_msg_ids),
+            Message.extraction["opportunity_id"].astext == opp_str
+        )
+    ) if event_msg_ids else select(Message).where(
+        Message.user_id == user.id,
+        Message.extraction["opportunity_id"].astext == opp_str
+    )
+    affected_ids = []
+    for m in db.scalars(q):
+        if m.extraction and m.extraction.get("opportunity_id") == opp_str:
+            ext = dict(m.extraction)
+            ext.pop("opportunity_id", None)
+            m.extraction = ext
+            affected_ids.append(m.id)
+
+    db.delete(opp)
+    if affected_ids:
+        from app import events
+        events.publish(db, user.id, "mail", ids=affected_ids)
     db.commit()
 
 
