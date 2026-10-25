@@ -332,3 +332,12 @@ div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
 .ask-in textarea { flex: 1; resize: none; min-height: 48px; max-height: 140px; background: var(--bg); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); padding: 12px 14px; font: inherit; font-size: 15px; line-height: 1.4; }
 .ask-in textarea:focus { outline: none; border-color: var(--signal); }
 .ask-in .btn { height: 48px; padding: 0 22px; }
+
+/* Groups page sections and a custom group's criteria card */
+.sec-h { font-size: 16px; margin: 18px 0 10px; color: var(--text-2); }
+.sec-h:first-child { margin-top: 0; }
+.crit { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.crit code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-xs); font-size: 13px; }
+.ask-targets { margin: 6px 0 0 32px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-3); }
+.ask-targets li::before { content: "→ "; color: var(--text-3); }
+.ask-est { font-size: 12.5px; color: var(--warn); width: 100%; }

@@ -4,29 +4,32 @@ import { ApiError, get, post, type Mail } from "../api";
 import { Icon, MailRow, Tag, errorText, toast } from "../components";
 import { fullTime } from "../util";
 
-/** Ask Sift (backend: app/assistant.py). One box for anything the app can do, in plain words.
- * Each request is one small AI call that makes a plan of the app's own actions; plans that only
- * look things up run at once, plans that change anything wait for Run (steps that change Gmail
- * are marked). Opens from the sidebar or with the "a" key. */
+/** Sift AI / Ask Sift (backend: app/assistant.py). One box for anything the app can do, in plain
+ * words. Each request is one small AI call that makes a plan of the app's own actions. Before
+ * anything changes the plan shows every step, what it will touch (folders, groups, timelines,
+ * rules, the first mails) and the tokens it may use; lookups run at once, changes wait for Run
+ * (Gmail changes are marked; replies and forwards become drafts, never sent). Sidebar or "a". */
 
-interface Step { action: string; kind: "read" | "write" | "gmail"; preview: string | null; error: string | null }
+interface Step { action: string; kind: "read" | "write" | "gmail"; preview: string | null; error: string | null; targets: string[]; tokens: number }
 interface Result {
   ok: boolean; text: string; mail?: Mail[]; task_id?: string;
   todos?: { id: string; title: string; due_at: string | null; done: boolean }[];
   timelines?: { id: string; company: string; last: string | null; deadline: string | null }[];
   timeline?: { id: string; kind: string; occurred_at: string; title?: string | null; summary?: string | null }[];
+  items?: { id: string; name: string; page: string; detail?: string | null }[];
   link?: { page: string; id?: string; q?: string };
   rule_draft?: unknown;
 }
 export interface Run {
   id: string; text: string; reply: string | null; status: string; steps: Step[]; results: Result[];
-  needs_confirm: boolean; changes_gmail: boolean; tokens: number; created_at: string | null;
+  needs_confirm: boolean; changes_gmail: boolean; tokens: number; estimate: number; created_at: string | null;
 }
 
 const EXAMPLES = [
-  "Make timelines from the last 30 days of placement mail",
+  "Make a group Internships for internship offers and add old ones too",
+  "New mail from Nvidia goes to the Nvidia folder and a group Nvidia updates",
   "What's due this week?",
-  "Sort my Placements folder by company",
+  "Draft a reply to Riya saying Thursday 4 pm works",
   "Archive bank alerts older than a month",
 ];
 
@@ -39,6 +42,8 @@ function linkTo(l: Result["link"]): { to: string; state?: unknown } | null {
   if (!l) return null;
   if (l.page === "opportunity" && l.id) return { to: `/opportunities/${l.id}` };
   if (l.page === "folder" && l.id) return { to: `/folders/${l.id}` };
+  if (l.page === "group" && l.id) return { to: `/groups/${l.id}` };
+  if (l.page === "draft" && l.id) return { to: `/compose?draft=${l.id}` };
   if (l.page === "search") return { to: l.q ? `/search?q=${encodeURIComponent(l.q)}` : "/search" };
   return PAGES[l.page] ? { to: PAGES[l.page] } : null;
 }
@@ -91,7 +96,7 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
       <aside className="ask" role="dialog" aria-modal="true" aria-label="Ask Sift">
         <header className="ask-h">
           <Icon name="spark" /><h3>Ask Sift</h3>
-          <span className="dim ask-sub">Anything the app can do. Changes wait for your OK.</span>
+          <span className="dim ask-sub">Anything the app can do. You see what it touches and the tokens first; changes wait for your OK.</span>
           <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close" data-tip="Close  (Esc)">✕</button>
         </header>
         <div className="ask-log">
@@ -135,9 +140,13 @@ function RunView({ r, busy, onRun, onCancel, onOpen, onMail }: {
                   <div className="ask-step">
                     <span className="ask-n">{i + 1}</span>
                     <span className="grow">{s.preview}</span>
-                    {s.kind === "gmail" && <Tag tone="warn" tip="This step changes mail in Gmail">Gmail</Tag>}
+                    {s.tokens > 0 && !s.error && <Tag tip="AI tokens this step may use with your key when it runs">~{s.tokens.toLocaleString()} tokens</Tag>}
+                    {s.kind === "gmail" && <Tag tone="warn" tip="This step changes mail in Gmail (drafts are never sent)">Gmail</Tag>}
                     {s.kind === "write" && !ran && !s.error && <Tag tip="Changes something in Sift when you press Run">Change</Tag>}
                   </div>
+                  {s.targets.length > 0 && !s.error && (
+                    <ul className="ask-targets" aria-label="What this step touches">{s.targets.map((t, j) => <li key={j}>{t}</li>)}</ul>
+                  )}
                   {s.error && <div className="ask-err">Can't do this step: {s.error}</div>}
                   {res && <ResultView res={res} onOpen={onOpen} onMail={onMail} />}
                 </li>
@@ -146,12 +155,13 @@ function RunView({ r, busy, onRun, onCancel, onOpen, onMail }: {
           </ol>
         )}
         <div className="ask-foot">
+          {r.needs_confirm && r.estimate > 0 && <span className="ask-est" data-tip="What running may use, on top of the planning shown at the right">Running may use about {r.estimate.toLocaleString()} more tokens</span>}
           {r.needs_confirm && <>
             <button className="btn btn-primary btn-sm" onClick={onRun} disabled={busy}>{busy ? "Running…" : r.changes_gmail ? "Run, including Gmail changes" : "Run"}</button>
             <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>
           </>}
           {r.status === "cancelled" && <span className="dim">Cancelled. Nothing changed.</span>}
-          <span className="dim ask-cost" data-tip="Tokens this request used with your key (AI tasks it started count on their own)">{r.tokens.toLocaleString()} tokens</span>
+          <span className="dim ask-cost" data-tip="Tokens this request used with your key so far (Token usage → Sift AI lists every request)">{r.tokens.toLocaleString()} tokens used</span>
         </div>
       </div>
     </div>
@@ -164,7 +174,7 @@ function ResultView({ res, onOpen, onMail }: { res: Result; onOpen: (l: Result["
       <div className="ask-res-t">
         <span>{res.ok ? "✓" : "✕"} {res.text}</span>
         {res.link && (linkTo(res.link) || res.link.page === "rule_draft") && (
-          <button className="link" onClick={() => onOpen(res.link, res)}>{res.link.page === "rule_draft" ? "Review rule" : "Open"}</button>
+          <button className="link" onClick={() => onOpen(res.link, res)}>{res.link.page === "rule_draft" ? "Review rule" : res.link.page === "draft" ? "Open draft" : "Open"}</button>
         )}
       </div>
       {res.mail && res.mail.length > 0 && <div className="list ask-list">{res.mail.map((m) => <MailRow key={m.id} m={m} draggable={false} onOpen={() => onMail(m.id)} />)}</div>}
@@ -174,6 +184,10 @@ function ResultView({ res, onOpen, onMail }: { res: Result; onOpen: (l: Result["
       {res.timelines && res.timelines.length > 0 && (
         <ul className="ask-mini">{res.timelines.map((o) => <li key={o.id}><button className="link" onClick={() => onOpen({ page: "opportunity", id: o.id }, res)}>{o.company}</button>
           {o.last && <span className="dim"> · {o.last}</span>}{o.deadline && <span className="dim"> · deadline {fullTime(o.deadline)}</span>}</li>)}</ul>
+      )}
+      {res.items && res.items.length > 0 && (
+        <ul className="ask-mini">{res.items.map((x) => <li key={x.id}><button className="link" onClick={() => onOpen({ page: x.page, id: x.id }, res)}>{x.name}</button>
+          {x.detail && <span className="dim"> · {x.detail}</span>}</li>)}</ul>
       )}
       {res.timeline && res.timeline.length > 0 && (
         <ul className="ask-mini">{res.timeline.map((e) => <li key={e.id}><b>{e.kind}</b> {e.title || e.summary || ""}<span className="dim"> · {fullTime(e.occurred_at)}</span></li>)}</ul>

@@ -25,7 +25,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import folder_ai, grouping, heuristics, notify, opportunities, outbox, rules, todos, user_settings
+from app import folder_ai, grouping, heuristics, notify, opportunities, outbox, places, rules, todos, user_settings
 from app.fingerprint import fingerprint, normalize_subject
 from app.llm import service as llm
 from app.mail.base import AuthRevoked, MailProvider
@@ -175,6 +175,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
     outcome.quiet = quiet
     if not quiet:
         folder_ai.on_processed(db, msg)  # AI filing and auto-sort into subfolders; never raises
+    places.route(db, msg)  # every custom group / folder with criteria it fits (searches only when quiet); never raises
     snooze_service.on_new_mail(db, msg)  # a reply wakes its snoozed conversation
     outbox.on_new_mail(db, msg, account)  # ...and resolves a "remind me if no reply"
     if msg.status == "processed":
@@ -273,7 +274,9 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
     elif ai_allowed and llm.ai_enabled(db, user_id) and llm.under_cap(db, user_id):
         body = redact(clean_body(load_body()))
         opp_text, opp_keys = opportunities.prompt_list(opportunities.active(db, user_id))
-        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at, opp_text, list(opp_keys))
+        place_text, place_keys = places.prompt_block(places.load(db, user_id))  # described groups/folders, same call
+        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at, opp_text, list(opp_keys),
+                                 place_text, place_keys)
         llm_called = extraction is not None and extraction.get("source") == "llm"
         if llm_called:
             # the o1/o2 keys the model saw, so a resumed run maps its answer to the same opportunities

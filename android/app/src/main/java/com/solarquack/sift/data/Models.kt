@@ -47,6 +47,7 @@ data class MessageDto(
     @SerialName("opportunity_id") val opportunityId: String? = null,
     @SerialName("todo_id") val todoId: String? = null,
     @SerialName("group_id") val groupId: String? = null,
+    val groups: List<MailGroupRef> = emptyList(),  // every group it's in (mail detail)
     @SerialName("company_question") val companyQuestion: List<CompanyChoice>? = null,
 )
 
@@ -321,7 +322,15 @@ data class UsageDay(val day: String, val calls: Int = 0, @SerialName("input_toke
 
 @Serializable
 data class UsageDto(val days: List<UsageDay> = emptyList(), @SerialName("tokens_today") val tokensToday: Int = 0, @SerialName("daily_token_cap") val dailyTokenCap: Int = 0,
-                    val automatic: List<UsagePurpose> = emptyList(), val tasks: List<AiTaskDto> = emptyList())
+                    val automatic: List<UsagePurpose> = emptyList(), val tasks: List<AiTaskDto> = emptyList(),
+                    @SerialName("sift_ai") val siftAi: SiftAiUsage? = null)
+
+/** Sift AI (Ask Sift) on its own: planning, its drafts and rules, the AI tasks it started. */
+@Serializable
+data class SiftAiUsage(val tokens: Int = 0, val calls: Int = 0, val runs: List<SiftAiRun> = emptyList())
+
+@Serializable
+data class SiftAiRun(val id: String, val text: String, val status: String = "done", val tokens: Int = 0, @SerialName("created_at") val createdAt: String? = null)
 
 // ---- folders (brief section 18) ----
 
@@ -346,7 +355,8 @@ data class FolderDto(
 )
 
 @Serializable
-data class AiRuleDto(val categories: List<String> = emptyList(), val timeline: Boolean = false)
+data class AiRuleDto(val categories: List<String> = emptyList(), val timeline: Boolean = false,
+                     val query: String? = null, val describe: String? = null)  // also: new mail matching a search / described in words
 
 @Serializable
 data class AiTaskDto(
@@ -367,7 +377,21 @@ data class AiTaskDto(
 data class AiTaskList(val tasks: List<AiTaskDto> = emptyList())
 
 @Serializable
-data class AiTaskIn(val kind: String, @SerialName("include_subfolders") val includeSubfolders: Boolean = true, val instruction: String? = null)
+data class AiTaskIn(val kind: String, @SerialName("include_subfolders") val includeSubfolders: Boolean = true, val instruction: String? = null,
+                    val query: String? = null)
+
+/** "fill": done at once (search only) or started as an AI task. */
+@Serializable
+data class FillResult(val status: String = "done", val changed: Int = 0, val id: String? = null)
+
+@Serializable
+data class NewGroupIn(val title: String, val query: String? = null, val instruction: String? = null, val fill: Boolean = false)
+
+@Serializable
+data class GroupIdsIn(@SerialName("message_ids") val messageIds: List<String>)
+
+@Serializable
+data class MailGroupRef(val id: String, val title: String, val custom: Boolean = false)
 
 @Serializable
 data class UsagePurpose(val purpose: String, val label: String, val calls: Int = 0, val tokens: Int = 0)
@@ -463,6 +487,9 @@ data class GroupDto(
     val urgent: Int = 0,
     @SerialName("latest_sender") val latestSender: String? = null,
     @SerialName("latest_subject") val latestSubject: String? = null,
+    val custom: Boolean = false,  // your own group, with criteria for new mail
+    val query: String? = null,
+    val instruction: String? = null,
     @SerialName("received_at") val receivedAt: String? = null,
     val items: List<MessageDto> = emptyList(),
 )
@@ -476,7 +503,8 @@ data class MailItem(val m: MessageDto) : FeedItem { override val key get() = "m:
 data class GroupItem(val g: GroupDto) : FeedItem { override val key get() = "g:" + g.id }
 
 @Serializable
-data class GroupPatch(val title: String? = null, val muted: Boolean? = null, val collapsed: Boolean? = null)
+data class GroupPatch(val title: String? = null, val muted: Boolean? = null, val collapsed: Boolean? = null,
+                      val query: String? = null, val instruction: String? = null)
 
 @Serializable
 data class SplitIn(@SerialName("message_ids") val messageIds: List<String>, val title: String? = null)
@@ -775,7 +803,11 @@ data class ReadStateOut(val unread: Boolean = false, @SerialName("in_gmail") val
 data class AskIn(val text: String)
 
 @Serializable
-data class AskStepDto(val action: String, val kind: String = "read", val preview: String? = null, val error: String? = null)
+data class AskStepDto(val action: String, val kind: String = "read", val preview: String? = null, val error: String? = null,
+                      val targets: List<String> = emptyList(), val tokens: Int = 0)
+
+@Serializable
+data class AskItemDto(val id: String, val name: String, val page: String, val detail: String? = null)
 
 @Serializable
 data class AskLinkDto(val page: String, val id: String? = null, val q: String? = null)
@@ -793,6 +825,7 @@ data class AskResultDto(
     val timeline: List<TimelineEventDto>? = null,
     val link: AskLinkDto? = null,
     @SerialName("rule_draft") val ruleDraft: RuleDraft? = null,
+    val items: List<AskItemDto>? = null,
     @SerialName("task_id") val taskId: String? = null,
 )
 
@@ -807,4 +840,5 @@ data class AskRunDto(
     @SerialName("needs_confirm") val needsConfirm: Boolean = false,
     @SerialName("changes_gmail") val changesGmail: Boolean = false,
     val tokens: Int = 0,
+    val estimate: Int = 0,  // tokens running may use, said before Run
 )

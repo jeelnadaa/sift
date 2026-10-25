@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { get, post, type Draft, type Folder, type FolderTree, type Mail, type Preview } from "../api";
+import { get, post, type Draft, type Folder, type FolderTree, type Group, type Mail, type Preview } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Thread } from "./Thread";
 import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailActions";
-import { Avatar, Banner, FolderPicker, Modal, Tag, errorText, setReadState, toast, useLoad } from "../components";
+import { Avatar, Banner, FolderPicker, Modal, Tag, TextField, errorText, setReadState, toast, useLoad } from "../components";
 import { findFolder, fullTime, safeUrl } from "../util";
 
 const DECIDED: Record<string, string> = {
@@ -44,6 +44,7 @@ export function MailDetail() {
   const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id], [...inFoldersLive]);
   const [picking, setPicking] = useState(false);
   const [likeThis, setLikeThis] = useState<{ draft: Draft; preview: Preview } | null>(null);
+  const [grouping, setGrouping] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
   const [labelling, setLabelling] = useState(false);
   async function gmail(action: MailAction, leave = false, label?: string) {
@@ -138,6 +139,7 @@ export function MailDetail() {
             </div>
             <div className="inline">
               <button className="btn btn-ghost btn-sm" onClick={() => setPicking(true)} data-tip="File this conversation into one of your folders">File in folder</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setGrouping(true)} data-tip="Put this mail in a group of yours (it can be in several)">Add to group…</button>
               {last && !(inFolders.data ?? []).some((f) => f.id === last.id) && <button className="btn btn-ghost btn-sm" onClick={() => file(last)}>Move to {last.name}</button>}
               {m.status === "silenced" || m.status === "ignored"
                 ? <button className="btn btn-ghost btn-sm" onClick={unsilence} data-tip="Bring it back to the feed and stop silencing mail like it">Not like this</button>
@@ -145,6 +147,12 @@ export function MailDetail() {
                     try { setLikeThis(await post(`/messages/${id}/like-this`, { action: "silent", save: false })); } catch (e) { toast(errorText(e)); }
                   }} data-tip="Silence future mail from this sender with this kind of subject">Ignore mails like this</button>}
             </div>
+            {(m.groups ?? []).length > 0 && (
+              <div className="inline">
+                <span className="dim">In group</span>
+                {m.groups!.map((g) => <button key={g.id} className="chip" onClick={() => navigate(`/groups/${g.id}`)} data-tip="Open the group">{g.title}</button>)}
+              </div>
+            )}
             {(inFolders.data ?? []).length > 0 && (
               <div className="inline">
                 <span className="dim">In</span>
@@ -164,6 +172,8 @@ export function MailDetail() {
         )}
       </section>
 
+      {grouping && <GroupPicker messageId={id} exclude={new Set((m?.groups ?? []).map((g) => g.id))} onClose={() => setGrouping(false)}
+        onDone={() => { setGrouping(false); mail.reload(); }} />}
       {snoozing && <SnoozeDialog target={{ message_ids: [id] }} onClose={() => setSnoozing(false)} onDone={() => { setSnoozing(false); navigate(-1); }} />}
       {labelling && m && <LabelDialog accountId={m.account_id} onClose={() => setLabelling(false)} onPick={(name) => { setLabelling(false); gmail("label", false, name); }} />}
       {picking && <FolderPicker title="File in folder" exclude={new Set((inFolders.data ?? []).map((f) => f.id))}
@@ -182,5 +192,30 @@ export function MailDetail() {
         </Modal>
       )}
     </>
+  );
+}
+
+/** Your groups to put this mail in, or a new one by name. */
+function GroupPicker({ messageId, exclude, onClose, onDone }: { messageId: string; exclude: Set<string>; onClose: () => void; onDone: () => void }) {
+  const groups = useLoad(() => get<Group[]>("/groups"));
+  const [name, setName] = useState("");
+  const mine = (groups.data ?? []).filter((g) => g.custom && !exclude.has(g.id));
+  async function add(id: string, title: string) {
+    try { await post(`/groups/${id}/add`, { message_ids: [messageId] }); toast(`Added to ${title}`); onDone(); } catch (e) { toast(errorText(e)); }
+  }
+  return (
+    <Modal title="Add to group" onClose={onClose}>
+      <div className="stack" style={{ gap: 6 }}>
+        {groups.data && mine.length === 0 && <p className="dim">No groups of your own yet. Make one below, or on the Groups page with rules for new mail.</p>}
+        {mine.map((g) => <button key={g.id} className="chip" style={{ justifyContent: "flex-start" }} onClick={() => add(g.id, g.title)}>{g.title} <span className="dim">· {g.count} mails</span></button>)}
+        <div className="inline" style={{ marginTop: 8 }}>
+          <div style={{ flex: 1 }}><TextField value={name} onChange={setName} maxLength={200} placeholder="New group name" ariaLabel="New group name"
+            onEnter={async () => { if (!name.trim()) return; try { const g = await post<Group>("/groups", { title: name.trim() }); add(g.id, g.title); } catch (e) { toast(errorText(e)); } }} /></div>
+          <button className="btn btn-primary btn-sm" style={{ height: 42 }} disabled={!name.trim()} onClick={async () => {
+            try { const g = await post<Group>("/groups", { title: name.trim() }); add(g.id, g.title); } catch (e) { toast(errorText(e)); }
+          }}>Make and add</button>
+        </div>
+      </div>
+    </Modal>
   );
 }

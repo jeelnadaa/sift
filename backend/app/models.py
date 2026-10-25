@@ -292,6 +292,7 @@ class TokenUsage(Base):
     model: Mapped[str] = mapped_column(String(120), nullable=False)
     purpose: Mapped[str] = mapped_column(String(40), default="extract", server_default="extract", nullable=False)
     task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_tasks.id", ondelete="SET NULL"), index=True)  # set = spent by an explicit AI task
+    assistant_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assistant_runs.id", ondelete="SET NULL"), index=True)  # set = spent by Sift AI
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = created()
@@ -420,8 +421,12 @@ class MailGroup(Base):
     id: Mapped[uuid.UUID] = pk()
     user_id: Mapped[uuid.UUID] = user_fk()
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # thread, opportunity, list, template, similar, ai
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # thread, opportunity, list, template, similar, sender, custom
     key: Mapped[str] = mapped_column(String(320), nullable=False)
+    # custom groups (made by the user): new mail joins when it matches the search and/or the AI
+    # says it fits the description (app/places.py)
+    query: Mapped[str | None] = mapped_column(Text)
+    instruction: Mapped[str | None] = mapped_column(Text)
     last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     collapsed: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
@@ -538,7 +543,7 @@ class FollowUp(Base):
     created_at: Mapped[datetime] = created()
 
 
-AI_TASK_KINDS = ("timelines", "todos", "sort")
+AI_TASK_KINDS = ("timelines", "todos", "sort", "fill")
 AI_TASK_STATUSES = ("queued", "running", "done", "stopped", "failed")
 
 
@@ -565,6 +570,8 @@ class AiTask(Base):
     note: Mapped[str | None] = mapped_column(String(300))
     # set when the task runs over a search (Ask Sift, e.g. "from:nvidia newer_than:30d") instead of a folder
     query: Mapped[str | None] = mapped_column(Text)
+    target_group_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mail_groups.id", ondelete="CASCADE"))  # fill: into this group (else folder_id)
+    assistant_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assistant_runs.id", ondelete="SET NULL"))  # started by Sift AI
     created_at: Mapped[datetime] = created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

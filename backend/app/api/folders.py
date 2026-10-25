@@ -67,6 +67,8 @@ def create(body: FolderIn, user: User = Depends(current_user), db: Session = Dep
 class AiRuleIn(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=30)
     timeline: bool = False
+    query: str | None = Field(default=None, max_length=500)  # also: new mail matching this search (free)
+    describe: str | None = Field(default=None, max_length=300)  # ...and/or described like this (checked by the AI)
 
 
 class FolderPatch(BaseModel):
@@ -94,8 +96,15 @@ def edit(folder_id: uuid.UUID, body: FolderPatch, user: User = Depends(current_u
     if body.clear_ai_rule:
         f.ai_rule = None
     elif body.ai_rule is not None:
+        from app import places
         cats = sorted({c.strip().lower() for c in body.ai_rule.categories if c.strip()})[:30]
-        f.ai_rule = {"categories": cats, "timeline": body.ai_rule.timeline} if cats or body.ai_rule.timeline else None
+        try:
+            query, describe = places.check_query(db, user.id, body.ai_rule.query), places.check_instruction(body.ai_rule.describe)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        rule = {"categories": cats, "timeline": body.ai_rule.timeline, **({"query": query} if query else {}),
+                **({"describe": describe} if describe else {})}
+        f.ai_rule = rule if cats or body.ai_rule.timeline or query or describe else None
     if body.auto_sort is not None:
         f.auto_sort = None if body.auto_sort == "off" else body.auto_sort
     if body.auto_sort_instruction is not None:
@@ -107,7 +116,8 @@ def edit(folder_id: uuid.UUID, body: FolderPatch, user: User = Depends(current_u
 
 
 class AiTaskIn(BaseModel):
-    kind: str = Field(pattern="^(timelines|todos|sort)$")
+    kind: str = Field(pattern="^(timelines|todos|sort|fill)$")
+    query: str | None = Field(default=None, max_length=500)  # fill: which mail to look at (default: the last 30 days)
     include_subfolders: bool = True
     instruction: str | None = Field(default=None, max_length=500)  # sort: how to group (else the folder's own setting)
 
@@ -122,6 +132,26 @@ def start_ai_task(folder_id: uuid.UUID, body: AiTaskIn, user: User = Depends(cur
     f = _folder(db, user, folder_id)
     if f.saved_search_id is not None:
         raise HTTPException(422, "AI tasks work on folders mail is filed into, not on smart folders")
+    if body.kind == "fill":  # put existing mail that fits the folder's criteria in it
+        from app import places
+        query, describe = (f.ai_rule or {}).get("query"), (f.ai_rule or {}).get("describe")
+        if not (query or describe):
+            raise HTTPException(422, "give the folder a search or a description first")
+        scope = " ".join((body.query or "").split()) or query or "newer_than:30d"
+        try:
+            places.check_query(db, user.id, scope)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if not describe:
+            n = folder_ai.fill_now(db, user.id, "folder", f.id, scope, query)
+            db.commit()
+            return {"status": "done", "changed": n}
+        if not llm.ai_enabled(db, user.id):
+            raise HTTPException(409, "Add an API key to enable AI tasks")
+        task = folder_ai.create_fill_task(db, user.id, "folder", f.id, f.name, scope)
+        db.commit()
+        jobs.enqueue_sync("ai_task", {"task_id": str(task.id)}, dedupe_key=f"ai_task:{task.id}")
+        return folder_ai.task_json(db, task)
     needs_ai = body.kind != "sort" or body.instruction or f.auto_sort in (None, "ai", "company")
     if needs_ai and not llm.ai_enabled(db, user.id):
         raise HTTPException(409, "Add an API key to enable AI tasks")

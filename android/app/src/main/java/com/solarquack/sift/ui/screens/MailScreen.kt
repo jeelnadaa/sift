@@ -55,6 +55,7 @@ import com.solarquack.sift.ui.fullTime
 import com.solarquack.sift.ui.theme.Ink
 
 /** Mail detail: Sift's view of the mail, then the whole conversation (Phase 3a reader). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}, onWrite: (mode: String, messageId: String) -> Unit = { _, _ -> },
                onOpenGroup: (String) -> Unit = {}) {
@@ -65,6 +66,7 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
     var likeThis by remember { mutableStateOf<DraftResponse?>(null) }
     var silencedByRule by remember { mutableStateOf<String?>(null) }
     var folderPick by remember { mutableStateOf(0) }
+    var groupPick by remember { mutableStateOf(false) }
     var companyPick by remember { mutableStateOf(0) }
     var filingRefresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -135,7 +137,9 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             })
             if (msg.opportunityId == null && msg.companyQuestion == null) add(SheetItem("Add to a company…", "Put it on a company timeline", section = "Organize") { companyPick++ })
             if (msg.todoId == null) add(SheetItem("Add to to-do…", "With an optional deadline and reminders", section = "Organize") { addingTodo = true })
-            msg.groupId?.let { g -> add(SheetItem("Open its group", "Every mail grouped with this one", section = "Organize") { onOpenGroup(g) }) }
+            add(SheetItem("Add to group…", "One of your groups, or a new one; a mail can be in several", section = "Organize") { groupPick = true })
+            msg.groups.forEach { g -> add(SheetItem("Open group: ${g.title}", "Every mail in it", section = "Organize") { onOpenGroup(g.id) }) }
+            if (msg.groups.isEmpty()) msg.groupId?.let { g -> add(SheetItem("Open its group", "Every mail grouped with this one", section = "Organize") { onOpenGroup(g) }) }
             if (deadlineAhead) add(SheetItem("Add to calendar", "Opens your calendar with the deadline", section = "Organize") {
                 CalendarIntent.open(context, listOfNotNull(msg.company, msg.summary ?: msg.subject).joinToString(": "), msg.deadline)
             })
@@ -161,6 +165,10 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
 
         CompanySection(msg, onOpenOpportunity, onChanged = reload, pickRequest = companyPick)
         if (msg.todoId != null) Box(Modifier.padding(top = 10.dp)) { Tag("On your to-do list", Ink.signal) }
+        if (msg.groups.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("In group", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            msg.groups.forEach { g -> com.solarquack.sift.ui.Chip(g.title, false) { onOpenGroup(g.id) } }
+        }
 
         FilingSection(msg.id, buttons = false, pickRequest = folderPick, refreshKey = filingRefresh) { r -> RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; onEditRule() }
 
@@ -210,6 +218,13 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
         )
     }
 
+    if (groupPick) m?.let { msg ->
+        GroupPickerDialog(msg.id, msg.groups.map { it.id }.toSet(), onDismiss = { groupPick = false }) { title ->
+            groupPick = false
+            android.widget.Toast.makeText(context, "Added to $title", android.widget.Toast.LENGTH_SHORT).show()
+            scope.launch { m = runCatching { Api.get(context).message(id) }.getOrNull() ?: m }
+        }
+    }
     if (addingTodo) m?.let { msg ->
         AddTodoDialog(initialTitle = msg.summary ?: msg.subject ?: "", onDismiss = { addingTodo = false }) { title, due ->
             addingTodo = false
@@ -285,5 +300,49 @@ private fun CompanyPicker(onDismiss: () -> Unit, onNew: () -> Unit, onPick: (Str
         confirmButton = { PrimaryButton("+ New company", onClick = onNew) },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
         containerColor = Ink.surface, shape = Radius.xl,
+    )
+}
+
+
+/** Your groups to put this mail in, or a new one by name. */
+@Composable
+fun GroupPickerDialog(messageId: String, exclude: Set<String>, onDismiss: () -> Unit, onAdded: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var groups by remember { mutableStateOf<List<com.solarquack.sift.data.GroupDto>?>(null) }
+    var name by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { groups = runCatching { Api.get(context).groups().filter { it.custom && it.id !in exclude } }.getOrDefault(emptyList()) }
+    fun add(id: String, title: String) = scope.launch {
+        try { Api.get(context).addToGroup(id, com.solarquack.sift.data.GroupIdsIn(listOf(messageId))); onAdded(title) } catch (t: Throwable) { error = t.userMessage() }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to group") },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                when {
+                    groups == null -> Text("Loading…", color = Ink.text3)
+                    groups!!.isEmpty() -> Text("No groups of your own yet. Make one here, or in More → Groups with rules for new mail.", color = Ink.text3,
+                        style = MaterialTheme.typography.bodySmall)
+                    else -> groups!!.forEach { g ->
+                        Text("${g.title}  ·  ${g.count} mails", color = Ink.text, style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.fillMaxWidth().clickable { add(g.id, g.title) }.padding(vertical = 10.dp))
+                    }
+                }
+                com.solarquack.sift.ui.Field(name, { name = it.take(200) }, "New group", placeholder = "Name")
+                error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            com.solarquack.sift.ui.PrimaryButton("Make and add", enabled = name.isNotBlank()) {
+                scope.launch {
+                    try { val g = Api.get(context).createGroup(com.solarquack.sift.data.NewGroupIn(name.trim())); add(g.id, g.title) }
+                    catch (t: Throwable) { error = t.userMessage() }
+                }
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        containerColor = Ink.surface, shape = com.solarquack.sift.ui.theme.Radius.xl,
     )
 }

@@ -64,7 +64,7 @@ def test_prompt_is_asked_up_to_three_times(client, setup):
     s = client.get("/api/v1/grouping", headers=H(user)).json()
     assert s["grouping_enabled"] == "not_asked" and s["should_ask"] is False
     assert client.post("/api/v1/grouping", headers=H(user), json={"answer": "no"}).json()["should_ask"] is False
-    assert client.get("/api/v1/groups", headers=H(user)).status_code == 409
+    assert client.get("/api/v1/groups", headers=H(user)).json() == []  # off: only custom groups, and there are none
 
 
 @pytest.mark.parametrize("answer", [None, "no"])

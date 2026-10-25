@@ -162,6 +162,77 @@ def create_query_task(db: Session, user_id: uuid.UUID, kind: str, query: str, la
     return task
 
 
+# ---- filling a custom group or a folder with criteria (app/places.py) ---------------------------
+
+def _target(db: Session, kind: str, target_id: uuid.UUID):
+    from app.models import MailGroup
+    return db.get(MailGroup, target_id) if kind == "group" else db.get(Folder, target_id)
+
+
+def _criteria(target, kind: str) -> tuple[str | None, str | None]:
+    if kind == "group":
+        return target.query, target.instruction
+    rule = target.ai_rule or {}
+    return rule.get("query"), rule.get("describe")
+
+
+def fill_now(db: Session, user_id: uuid.UUID, kind: str, target_id: uuid.UUID, scope: str, query: str | None) -> int:
+    """Search-only places: no AI. Every stored mail in `scope` that matches the place's search."""
+    from app import places
+    from app.search.engine import stored_matches
+    n = 0
+    for m in stored_matches(db, user_id, scope, TASK_LIMIT):
+        if (not query or places.query_matches(db, user_id, query, m)) and places.add(db, kind, target_id, m):
+            n += 1
+    return n
+
+
+def create_fill_task(db: Session, user_id: uuid.UUID, kind: str, target_id: uuid.UUID, name: str, scope: str) -> AiTask:
+    task = AiTask(user_id=user_id, folder_id=target_id if kind == "folder" else None, target_group_id=target_id if kind == "group" else None,
+                  folder_name=name[:120], kind="fill", include_subfolders=False, query=scope.strip()[:500])
+    db.add(task)
+    db.flush()
+    return task
+
+
+def run_fill(db: Session, task: AiTask) -> None:
+    """Mail in the task's search that fits the place: its search checked here, its description by
+    the AI, 25 mails per call (sender, subject, summary; never the body)."""
+    from app import places
+    from app.llm import service as llm
+    from app.search.engine import stored_matches
+    kind, tid = ("group", task.target_group_id) if task.target_group_id else ("folder", task.folder_id)
+    target = _target(db, kind, tid) if tid else None
+    if target is None:
+        task.status, task.note = "failed", "The group or folder was deleted"
+        return
+    query, describe = _criteria(target, kind)
+    import_matching(db, task.user_id, task.query or "newer_than:30d")
+    ms = [m for m in stored_matches(db, task.user_id, task.query or "newer_than:30d", TASK_LIMIT)
+          if not query or places.query_matches(db, task.user_id, query, m)]
+    task.total, task.done = len(ms), 0
+    db.commit()
+    for i in range(0, len(ms), llm.MATCH_BATCH):
+        chunk = ms[i:i + llm.MATCH_BATCH]
+        if describe:
+            items = [(f"m{j}", m.sender_name or m.sender or "", m.subject or "", (m.extraction or {}).get("summary") or m.snippet or "")
+                     for j, m in enumerate(chunk)]
+            picked = llm.match_batch(db, task.user_id, describe, items)
+            if picked is None:
+                task.status = "stopped"
+                task.note = "Stopped: the AI couldn't answer (no key, daily cap or limit reached). Run it again later."
+                db.commit()
+                return
+            chosen = [m for j, m in enumerate(chunk) if f"m{j}" in picked]
+        else:
+            chosen = chunk
+        for m in chosen:
+            if places.add(db, kind, tid, m):
+                task.changed += 1
+        task.done += len(chunk)
+        db.commit()
+
+
 def import_matching(db: Session, user_id: uuid.UUID, query: str, limit: int = TASK_LIMIT) -> int:
     """Brings mail that matches the Gmail part of `query` into Sift (rules only, no AI, silent),
     so work over a search also covers mail from before Sift was connected. Returns how many were new."""
@@ -266,6 +337,29 @@ def run_task(task_id: uuid.UUID) -> None:
         if task is None or task.status not in ("queued", "running"):
             return
         folder = db.get(Folder, task.folder_id) if task.folder_id else None
+        if task.kind == "fill":
+            task.status = "running"
+            db.commit()
+            token, run_token = llm.current_task.set(task.id), llm.current_run.set(task.assistant_run_id)
+            paced = llm.pace_wait.set(90.0)
+            try:
+                run_fill(db, task)
+                if task.status == "running":
+                    task.status = "done"
+            except Exception as exc:  # noqa: BLE001
+                log.exception("fill task %s failed", task.id)
+                db.rollback()
+                task = db.get(AiTask, task_id)
+                task.status, task.note = "failed", f"Something went wrong ({type(exc).__name__}). Nothing was lost; run it again."
+            finally:
+                llm.current_task.reset(token)
+                llm.current_run.reset(run_token)
+                llm.pace_wait.reset(paced)
+            task.finished_at = datetime.now(UTC)
+            notify.send_system(db, task.user_id, f"Filled: {task.folder_name}",
+                               f"{task.changed} of {task.done} mail{'s' if task.done != 1 else ''} fit · {task_tokens(db, task.id):,} tokens.")
+            db.commit()
+            return
         if folder is None and not (task.query and task.kind != "sort"):
             task.status, task.note, task.finished_at = "failed", "The folder was deleted", datetime.now(UTC)
             db.commit()
@@ -285,6 +379,7 @@ def run_task(task_id: uuid.UUID) -> None:
         task.total, task.done, task.changed = len(msgs), 0, 0
         db.commit()
         token = llm.current_task.set(task.id)
+        run_token = llm.current_run.set(task.assistant_run_id)  # started by Sift AI: counted there too
         paced = llm.pace_wait.set(90.0)  # background work waits for a free slot instead of failing
         try:
             unread = 0
@@ -317,10 +412,12 @@ def run_task(task_id: uuid.UUID) -> None:
             task.status, task.note = "failed", f"Something went wrong ({type(exc).__name__}). Nothing was lost; run it again."
         finally:
             llm.current_task.reset(token)
+            llm.current_run.reset(run_token)
             llm.pace_wait.reset(paced)
         task.finished_at = datetime.now(UTC)
         tokens = task_tokens(db, task.id)
-        what = {"timelines": "mail joined company timelines", "todos": "to-dos made", "sort": "mail moved into subfolders"}[task.kind]
+        what = {"timelines": "mail joined company timelines", "todos": "to-dos made", "sort": "mail moved into subfolders",
+                "fill": "mail filed"}[task.kind]
         notify.send_system(db, task.user_id, f"AI task finished: {task.folder_name}",
                            f"{task.changed} {what} from {task.done} mail{'s' if task.done != 1 else ''} · {tokens:,} tokens.")
         db.commit()
@@ -360,6 +457,8 @@ def task_tokens(db: Session, task_id: uuid.UUID) -> int:
 
 def task_json(db: Session, t: AiTask) -> dict:
     return {"id": str(t.id), "folder_id": str(t.folder_id) if t.folder_id else None, "folder_name": t.folder_name, "kind": t.kind,
+            "group_id": str(t.target_group_id) if t.target_group_id else None, "query": t.query,
+            "by_sift_ai": t.assistant_run_id is not None,
             "include_subfolders": t.include_subfolders, "instruction": t.instruction, "status": t.status, "total": t.total,
             "done": t.done, "changed": t.changed, "note": t.note, "tokens": task_tokens(db, t.id),
             "created_at": t.created_at.isoformat(), "finished_at": t.finished_at.isoformat() if t.finished_at else None}

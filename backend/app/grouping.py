@@ -126,7 +126,8 @@ def _ungrouped(db: Session, m: Message):
     return (select(Message).where(
         Message.user_id == m.user_id, Message.id != m.id, Message.status.in_(GROUPABLE_STATUSES),
         Message.received_at >= when - GROUP_WINDOW, Message.received_at <= when,
-        ~select(GroupMember.message_id).where(GroupMember.message_id == Message.id).exists(),
+        ~select(GroupMember.message_id).join(MailGroup, MailGroup.id == GroupMember.group_id)
+        .where(GroupMember.message_id == Message.id, MailGroup.kind != "custom").exists(),
     ).order_by(Message.received_at.desc()))
 
 
@@ -169,8 +170,9 @@ def assign(db: Session, m: Message) -> MailGroup | None:
     """Put one mail in a group, or leave it alone. Safe to call twice (stable)."""
     if m.status not in GROUPABLE_STATUSES:
         return None
-    if db.scalar(select(GroupMember.group_id).where(GroupMember.message_id == m.id).limit(1)) is not None:
-        return None  # already assigned (or removed by the user: stays out)
+    if db.scalar(select(GroupMember.group_id).join(MailGroup, MailGroup.id == GroupMember.group_id)
+                 .where(GroupMember.message_id == m.id, MailGroup.kind != "custom").limit(1)) is not None:
+        return None  # already assigned (or removed by the user: stays out); custom groups are extra
     pref, pref_key = _preference(db, m)
     if pref == "never":
         return None
@@ -187,7 +189,7 @@ def assign(db: Session, m: Message) -> MailGroup | None:
     thread_group = db.scalar(
         select(MailGroup).join(GroupMember, GroupMember.group_id == MailGroup.id).join(Message, Message.id == GroupMember.message_id)
         .where(Message.account_id == m.account_id, Message.thread_id == m.thread_id, Message.id != m.id,
-               GroupMember.added_by != "removed", MailGroup.user_id == m.user_id).limit(1))
+               GroupMember.added_by != "removed", MailGroup.user_id == m.user_id, MailGroup.kind != "custom").limit(1))
     if thread_group is not None:
         _add(db, thread_group, m)
         return thread_group
@@ -271,7 +273,7 @@ def shown_group_ids(db: Session, user_id: uuid.UUID):
     """Subquery of groups big enough to show as a group."""
     vm = _visible_members().subquery()
     return (select(MailGroup.id).join(vm, vm.c.group_id == MailGroup.id).where(MailGroup.user_id == user_id)
-            .group_by(MailGroup.id).having(func.count() >= MIN_GROUP_SIZE))
+            .group_by(MailGroup.id).having((func.count() >= MIN_GROUP_SIZE) | (MailGroup.kind == "custom")))  # custom: from one mail
 
 
 def members(db: Session, group: MailGroup) -> list[Message]:
@@ -286,7 +288,8 @@ def group_json(g: MailGroup, rows: list[Message]) -> dict:
     return {
         "type": "group", "id": str(g.id), "title": g.title, "kind": g.kind, "muted": g.muted, "collapsed": g.collapsed,
         "count": len(rows), "unread": sum("UNREAD" in (m.labels or []) for m in rows),
-        "urgent": sum(m.priority == "urgent" for m in rows), "shown": len(rows) >= MIN_GROUP_SIZE,
+        "urgent": sum(m.priority == "urgent" for m in rows), "shown": len(rows) >= MIN_GROUP_SIZE or g.kind == "custom",
+        "custom": g.kind == "custom", "query": g.query, "instruction": g.instruction,
         "latest_sender": (latest.sender_name or latest.sender) if latest else None,
         "latest_subject": latest.subject if latest else None,
         "received_at": latest.received_at.isoformat() if latest and latest.received_at else None,

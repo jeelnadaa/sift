@@ -90,15 +90,26 @@ object FakeApi {
                 com.solarquack.sift.data.AskRunDto("r2", "Make timelines from Placements → Globex and archive Northbank alerts older than a month",
                     "I'll build Globex's timeline from that folder and archive the old bank alerts.", "planned",
                     steps = listOf(
-                        com.solarquack.sift.data.AskStepDto("build_timelines", "write", "AI builds company timelines from 2 stored mail matching folder:Globex: no new AI reading"),
-                        com.solarquack.sift.data.AskStepDto("mail_action", "gmail", "In Gmail: archive 14 conversations matching from:northbank older_than:30d")),
-                    needsConfirm = true, changesGmail = true, tokens = 1402),
+                        com.solarquack.sift.data.AskStepDto("create_group", "write", "New group Internships: new mail that the AI reads as \"internship offers\" joins it, and matching mail already here",
+                            targets = listOf("New group: Internships"), tokens = 2100),
+                        com.solarquack.sift.data.AskStepDto("draft_reply", "gmail", "AI writes a reply to this mail as a Gmail draft (you send it yourself)",
+                            targets = listOf("Riya at Globex: Backend role at Globex: quick chat?"), tokens = 2500),
+                        com.solarquack.sift.data.AskStepDto("mail_action", "gmail", "In Gmail: archive 14 conversations matching from:northbank older_than:30d",
+                            targets = listOf("Northbank: ₹240.00 debited via UPI", "Northbank: ₹1,180.00 debited via UPI", "+ 12 more"))),
+                    needsConfirm = true, changesGmail = true, tokens = 1652, estimate = 4600),
             )
             "groups" -> listOf(
+                com.solarquack.sift.data.GroupDto("g0", "Internships", "custom", count = 3, unread = 1, latestSender = "Globex Talent", latestSubject = "Summer internship 2027: apply by Nov 10",
+                    receivedAt = ago(5), custom = true, instruction = "internship offers"),
                 com.solarquack.sift.data.GroupDto("g1", "Northbank alerts", "template", count = 14, unread = 2, latestSender = "Northbank", latestSubject = "₹240.00 debited via UPI", receivedAt = ago(1)),
                 com.solarquack.sift.data.GroupDto("g2", "Globex", "opportunity", count = 4, unread = 1, urgent = 0, latestSender = "Riya at Globex", latestSubject = "Backend role at Globex: quick chat?", receivedAt = ago(3)),
                 com.solarquack.sift.data.GroupDto("g3", "Campus Weekly", "list", muted = true, count = 6, latestSender = "Campus Weekly", latestSubject = "This week on campus", receivedAt = ago(30)),
             )
+            "usage" -> com.solarquack.sift.data.UsageDto(tokensToday = 8420, dailyTokenCap = 50000,
+                automatic = listOf(com.solarquack.sift.data.UsagePurpose("extract", "Reading each new mail", 7, 6300)),
+                siftAi = com.solarquack.sift.data.SiftAiUsage(3054, 2, listOf(
+                    com.solarquack.sift.data.SiftAiRun("r2", "Make a group Internships for internship offers and add old ones too", "done", 2120),
+                    com.solarquack.sift.data.SiftAiRun("r1", "What's due this week?", "done", 934))))
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

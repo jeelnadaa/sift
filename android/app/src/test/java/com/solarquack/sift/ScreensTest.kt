@@ -44,6 +44,8 @@ class ScreensTest {
     @Test fun more() = shot { com.solarquack.sift.ui.screens.MoreScreen(onNavigate = {}) }
     @Test fun ask() = shot { com.solarquack.sift.ui.screens.AskScreen(onBack = {}, onOpenMail = {}, onOpenLink = {}, onRuleDraft = {}) }
     @Test fun groups() = shot { com.solarquack.sift.ui.screens.GroupsScreen(onBack = {}, onOpen = {}) }
+    @Test fun usage() = shot { com.solarquack.sift.ui.screens.UsageScreen(onBack = {}) }
+    @Test fun newGroup() = shot { com.solarquack.sift.ui.screens.GroupFormDialog(null, onDismiss = {}) {} }
     @Test fun editTodoDelete() = shot {
         com.solarquack.sift.ui.screens.EditTodoDialog(TodoDto("t1", "Register for the Globex drive", notes = "Needs the latest marksheet"), onDismiss = {}, onDelete = {}) { _, _, _ -> }
     }

@@ -5,7 +5,7 @@
  * makes every live page reload, so nothing is missed. */
 import { session } from "./api";
 
-export interface LiveEvent { type: "hello" | "mail" | "new_mail" | "folders" | "drafts" | "resync"; ids?: string[] }
+export interface LiveEvent { type: "hello" | "mail" | "new_mail" | "folders" | "drafts" | "resync" | "assistant"; ids?: string[] }
 
 let started = false;
 let controller: AbortController | null = null;

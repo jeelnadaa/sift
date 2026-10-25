@@ -102,8 +102,14 @@ def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: S
     n = db.scalar(select(Notification).where(Notification.message_id == m.id))
     out = message_json(m, db.get(GmailAccount, m.account_id), n)
     # the group it was put in (when grouping is on), so the apps can open it from the mail
-    g = db.scalar(select(GroupMember.group_id).where(GroupMember.message_id == m.id, GroupMember.added_by != "removed")) if grouping.enabled(db, user.id) else None
-    out["group_id"] = str(g) if g else None
+    from app.models import MailGroup
+    on = grouping.enabled(db, user.id)
+    groups = [{"id": str(g.id), "title": g.title, "custom": g.kind == "custom"} for g in db.scalars(
+        select(MailGroup).join(GroupMember, GroupMember.group_id == MailGroup.id)
+        .where(GroupMember.message_id == m.id, GroupMember.added_by != "removed").order_by(MailGroup.kind != "custom"))
+        if g.kind == "custom" or on]
+    out["groups"] = groups
+    out["group_id"] = groups[0]["id"] if groups else None
     return out
 
 

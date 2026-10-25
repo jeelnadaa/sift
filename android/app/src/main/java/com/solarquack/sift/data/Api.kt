@@ -23,6 +23,7 @@ interface SiftApi {
     @POST("api/v1/auth/register") suspend fun register(@Body body: LoginRequest): LoginResponse
     @GET("api/v1/auth/options") suspend fun authOptions(): AuthOptions
     @POST("api/v1/folders/{id}/ai-tasks") suspend fun startAiTask(@Path("id") id: String, @Body body: AiTaskIn): AiTaskDto
+    @POST("api/v1/folders/{id}/ai-tasks") suspend fun fillFolder(@Path("id") id: String, @Body body: AiTaskIn = AiTaskIn("fill")): FillResult
     @GET("api/v1/ai-tasks") suspend fun aiTasks(): AiTaskList
     @GET("api/v1/me") suspend fun me(): UserDto
     @POST("api/v1/assistant") suspend fun ask(@Body body: AskIn): AskRunDto
@@ -148,6 +149,10 @@ interface SiftApi {
     @POST("api/v1/grouping") suspend fun answerGrouping(@Body body: AnswerIn): GroupingStatus
     @GET("api/v1/groups") suspend fun groups(): List<GroupDto>
     @POST("api/v1/groups/collapse-all") suspend fun collapseAllGroups(@Body body: CollapseIn)
+    @POST("api/v1/groups") suspend fun createGroup(@Body body: NewGroupIn): GroupDto
+    @DELETE("api/v1/groups/{id}") suspend fun deleteGroup(@Path("id") id: String)
+    @POST("api/v1/groups/{id}/fill") suspend fun fillGroup(@Path("id") id: String, @Body body: JsonObject = JsonObject(emptyMap())): FillResult
+    @POST("api/v1/groups/{id}/add") suspend fun addToGroup(@Path("id") id: String, @Body body: GroupIdsIn): GroupDto
     @GET("api/v1/groups/{id}") suspend fun group(@Path("id") id: String): GroupDto
     @POST("api/v1/groups/{id}/split") suspend fun splitGroup(@Path("id") id: String, @Body body: SplitIn): GroupDto
     @POST("api/v1/groups/{id}/merge") suspend fun mergeGroup(@Path("id") id: String, @Body body: TargetIn): GroupDto

@@ -63,7 +63,7 @@ export function UsagePage() {
                 {u.tasks.map((t) => (
                   <div key={t.id} className="inline" style={{ justifyContent: "space-between" }}>
                     <span data-tip={`${fullTime(t.created_at)}${t.note ? `\n${t.note}` : ""}`}>
-                      {{ timelines: "Timelines", todos: "To-dos", sort: "Sorting" }[t.kind]} · {t.folder_name}
+                      {{ timelines: "Timelines", todos: "To-dos", sort: "Sorting", fill: "Filling" }[t.kind]} · {t.folder_name}{t.by_sift_ai ? " · by Sift AI" : ""}
                       <span className="dim"> · {t.status === "running" || t.status === "queued" ? "running" : `${t.changed} ${TASK_DONE[t.kind]}`}</span>
                     </span>
                     <span className="mono muted">{fmt(t.tokens)}</span>
@@ -72,6 +72,21 @@ export function UsagePage() {
               </div>
             )}
           </div>
+        </div>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="inline" style={{ justifyContent: "space-between" }}><b>✦ Sift AI</b>
+            <span className="mono muted" data-tip={`${fmt(u?.sift_ai?.calls ?? 0)} AI calls, last 30 days`}>{fmt(u?.sift_ai?.tokens ?? 0)} tokens</span></div>
+          <p className="dim" style={{ fontSize: 13, margin: "4px 0 10px" }}>Everything you asked Sift AI for, kept apart from everyday work: planning each request, the drafts and rules it wrote, and the AI tasks it started. Last 30 days.</p>
+          {!u?.sift_ai?.runs.length ? <p className="dim">No requests yet.</p> : (
+            <div className="stack" style={{ gap: 8 }}>
+              {u.sift_ai.runs.map((r) => (
+                <div key={r.id} className="inline" style={{ justifyContent: "space-between" }}>
+                  <span data-tip={fullTime(r.created_at)}>{r.text}{r.status === "cancelled" ? <span className="dim"> · cancelled</span> : r.status === "planned" ? <span className="dim"> · not run</span> : null}</span>
+                  <span className="mono muted">{fmt(r.tokens)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="card"><b>Last 30 days</b>
           {u && u.days.length === 0 ? <p className="dim" style={{ marginTop: 10 }}>No AI calls yet.</p> : (

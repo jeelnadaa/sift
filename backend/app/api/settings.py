@@ -105,19 +105,30 @@ def usage(days: int = 30, user: User = Depends(current_user), db: Session = Depe
     # everyday work (every new mail, searches, rules…) as one line per kind; explicit AI tasks one by one
     auto = db.execute(
         select(TokenUsage.purpose, func.count(), func.sum(TokenUsage.input_tokens + TokenUsage.output_tokens))
-        .where(TokenUsage.user_id == user.id, TokenUsage.day >= since, TokenUsage.task_id.is_(None))
+        .where(TokenUsage.user_id == user.id, TokenUsage.day >= since, TokenUsage.task_id.is_(None), TokenUsage.assistant_run_id.is_(None))
         .group_by(TokenUsage.purpose).order_by(func.sum(TokenUsage.input_tokens + TokenUsage.output_tokens).desc()))
     tasks = db.scalars(select(AiTask).where(AiTask.user_id == user.id).order_by(AiTask.created_at.desc()).limit(30))
+    # Sift AI (Ask Sift) on its own: planning, its drafts and rules, and the AI tasks it started
+    from app.assistant import run_tokens
+    from app.models import AssistantRun
+    sift_tokens, sift_calls = db.execute(
+        select(func.coalesce(func.sum(TokenUsage.input_tokens + TokenUsage.output_tokens), 0), func.count())
+        .where(TokenUsage.user_id == user.id, TokenUsage.day >= since, TokenUsage.assistant_run_id.is_not(None))).one()
+    runs = list(db.scalars(select(AssistantRun).where(AssistantRun.user_id == user.id).order_by(AssistantRun.created_at.desc()).limit(20)))
     return {"days": [{"day": d.isoformat(), "calls": c, "input_tokens": int(i or 0), "output_tokens": int(o or 0)} for d, c, i, o in rows],
             "tokens_today": llm.tokens_today(db, user.id), "daily_token_cap": user_settings.get(db, user.id)["daily_token_cap"],
             "automatic": [{"purpose": p, "label": PURPOSE_LABELS.get(p, p.replace("_", " ").capitalize()), "calls": c, "tokens": int(t or 0)} for p, c, t in auto],
-            "tasks": [folder_ai.task_json(db, t) for t in tasks]}
+            "tasks": [folder_ai.task_json(db, t) for t in tasks],
+            "sift_ai": {"tokens": int(sift_tokens or 0), "calls": int(sift_calls or 0),
+                        "runs": [{"id": str(r.id), "text": r.text, "status": r.status, "tokens": run_tokens(db, r.id),
+                                  "created_at": r.created_at.isoformat()} for r in runs]}}
 
 
 PURPOSE_LABELS = {
     "extract": "Reading each new mail", "embed": "Search by meaning (index)", "search": "Plain-English search",
     "rule": "Plain-English rules", "reply": "AI reply drafts", "sort": "Sorting new mail into subfolders",
     "validate": "Checking your key", "categories": "Custom categories",
+    "fill": "Filling groups and folders by description", "assistant": "Sift AI requests",
 }
 
 

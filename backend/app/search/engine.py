@@ -24,7 +24,7 @@ from app import accounts as account_service
 from app import demo, folders
 from app.mail.base import AuthRevoked
 from app.mail.message import parse_metadata
-from app.models import (Folder, FolderItem, GmailAccount, GroupMember, MailNote, MailTag, Message, Notification, Opportunity,
+from app.models import (Folder, FolderItem, GmailAccount, GroupMember, MailGroup, MailNote, MailTag, Message, Notification, Opportunity,
                         OpportunityEvent, Rule, SavedSearch, Tag)
 from app.search.local import Unknown, gmail_match
 from app.search.query import Filter, Parsed, QueryError, parse
@@ -85,6 +85,9 @@ def _condition(db: Session, user_id: uuid.UUID, f: Filter, accounts: list[GmailA
             raise SearchError(f"no folder called {v}")
         ids = {fid for r in roots for fid in tree.subtree(r.id)}
         c = exists().where(FolderItem.account_id == Message.account_id, FolderItem.thread_id == Message.thread_id, FolderItem.folder_id.in_(ids))
+    elif f.key == "group":  # by name: your own groups and automatic ones
+        ids = select(MailGroup.id).where(MailGroup.user_id == user_id, func.lower(MailGroup.title) == v.lower())
+        c = exists().where(GroupMember.message_id == Message.id, GroupMember.added_by != "removed", GroupMember.group_id.in_(ids))
     elif f.key == "tag":
         c = exists().where(MailTag.message_id == Message.id, MailTag.tag_id == Tag.id, Tag.user_id == user_id, func.lower(Tag.name) == v.lower())
     elif f.key == "priority":
@@ -428,3 +431,22 @@ def stored_matches(db: Session, user_id: uuid.UUID, q: str, limit: int = 300) ->
             if len(out) >= limit:
                 break
     return out
+
+
+def message_matches(db: Session, user_id: uuid.UUID, q: str, m: Message) -> bool:
+    """Whether one stored mail matches a full query (Sift filters in SQL, the Gmail part locally)."""
+    try:
+        p = parse(expand_saved(db, user_id, q))
+    except QueryError as exc:
+        raise SearchError(str(exc)) from exc
+    accounts = _accounts(db, user_id)
+    if m.account_id not in {a.id for a in selected_accounts(p, accounts)}:
+        return False
+    if (p.filters or p.any_of) and db.scalar(select(Message.id).where(Message.id == m.id, *conditions(db, user_id, p, accounts))) is None:
+        return False
+    if p.gmail:
+        try:
+            return gmail_match(p.gmail, m)
+        except Unknown as exc:
+            raise SearchError(f"can't match {exc} on stored mail") from exc
+    return True

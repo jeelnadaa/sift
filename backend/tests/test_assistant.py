@@ -98,7 +98,7 @@ def test_one_small_call_per_request_and_no_mail_text_reaches_the_planner(client,
         assert (m.subject or "zz-none") not in prompt and (m.snippet or "zz-none")[:30] not in prompt  # names only, never mail
     usage = db.scalar(select(TokenUsage).where(TokenUsage.purpose == "assistant"))
     assert usage.input_tokens == 1200 and body["tokens"] == 1280
-    assert len(fake.planner_calls[0]["system"]) < 4000  # the catalogue stays small
+    assert len(fake.planner_calls[0]["system"]) < 6000  # the catalogue stays small (~1.3k tokens)
 
 
 def test_bad_model_output_gives_a_plain_answer_not_an_error(client, world, auth, fake):
@@ -187,7 +187,8 @@ def test_rebuild_a_deleted_timeline_from_a_folder_without_new_ai_reading(client,
 
     plan = {"reply": "", "steps": [{"action": "build_timelines", "q": "folder:\"Acme Corp\"", "name": "Placements -> Acme"}]}
     body = ask(client, auth, "make the timeline again from placements -> acme", plan, fake).json()
-    assert "no new AI reading" in body["steps"][0]["preview"]
+    assert body["steps"][0]["tokens"] == 0 and body["estimate"] == 0  # the AI read these before: nothing new to pay
+    assert any("Acme" in t for t in body["steps"][0]["targets"])  # the user sees which mail it touches
     r = client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth).json()
     task_id = r["results"][0]["task_id"]
     fake.calls.clear()
@@ -204,7 +205,7 @@ def test_timelines_over_a_search_read_only_what_the_ai_never_read(client, db, wo
     m.extraction = {"source": "default"}  # as if it arrived while AI was off
     db.commit()
     body = ask(client, auth, "timelines from hirepro", {"reply": "", "steps": [{"action": "build_timelines", "q": "from:hirepro"}]}, fake).json()
-    assert "for 1 mail the AI hasn't read" in body["steps"][0]["preview"]
+    assert body["steps"][0]["tokens"] == assistant.READ_ESTIMATE  # one mail to read, said up front
     task_id = client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth).json()["results"][0]["task_id"]
     folder_ai.run_task(task_id)
     assert len(fake.calls) == 1  # exactly the unread one
@@ -319,3 +320,11 @@ def test_many_requests_in_a_row_cost_one_call_each(client, db, world, auth, fake
     assert len(fake.planner_calls) == 12
     assert db.scalar(select(func.count()).select_from(TokenUsage).where(TokenUsage.purpose == "assistant")) == 12
     assert db.scalar(select(func.count()).select_from(AssistantRun)) == 12
+
+
+def test_plans_in_the_args_format_the_model_uses(client, db, world, auth, fake):
+    from app.assistant import parse_args
+    assert parse_args('q="folder:\\"Acme Corp\\" newer_than:30d" ; name="x"') == {"q": 'folder:"Acme Corp" newer_than:30d', "name": "x"}
+    assert parse_args("q='company:\"Acme Corp\"' ; at=2026-10-26T09:00:00+05:30 ; bogus=1") == {"q": 'company:"Acme Corp"', "at": "2026-10-26T09:00:00+05:30"}
+    body = ask(client, auth, "todo", {"reply": "", "steps": [{"action": "add_todo", "args": 'title="Print CV" ; at="2026-11-02T09:00:00+05:30"'}]}, fake).json()
+    assert body["steps"][0]["error"] is None and "Print CV" in body["steps"][0]["preview"] and "02 Nov" in body["steps"][0]["preview"]

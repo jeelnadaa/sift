@@ -28,7 +28,7 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: Li
   const liveKey = live?.join(",") ?? "";
   useEffect(() => {
     if (!liveKey) return;
-    const kinds = new Set([...liveKey.split(","), "resync"]);
+    const kinds = new Set([...liveKey.split(","), "resync", "assistant"]);  // Sift AI may have changed anything
     let timer: number | undefined;
     const on = (e: Event) => {
       if (!kinds.has((e as CustomEvent<LiveEvent>).detail.type)) return;
@@ -251,7 +251,7 @@ export function GroupRow({ g, onOpen, n }: { g: Group; onOpen: () => void; n?: n
       <Dot tier={g.urgent ? "urgent" : "digest"} tip={g.urgent ? "Has urgent mail (also shown on its own row)" : "A group of similar mail"} />
       <div className="avatar" data-tip={`Grouped by ${GROUP_KIND[g.kind] ?? "similarity"}. Display only: nothing changes in Gmail.`}>▤</div>
       <div className="main">
-        <div className="who">{g.title} <Tag tip="Mails in this group">{`${g.count} mails`}</Tag>{g.muted && <Tag tip="New mail in this group doesn't notify (urgent still does)">Muted</Tag>}
+        <div className="who">{g.title} <Tag tip="Mails in this group">{`${g.count} mail${g.count === 1 ? "" : "s"}`}</Tag>{g.muted && <Tag tip="New mail in this group doesn't notify (urgent still does)">Muted</Tag>}
           {g.unread > 0 && <Tag tone="digest" tip="Unread in Gmail">{`${g.unread} unread`}</Tag>}{g.urgent > 0 && <Tag tone="urgent" tip="Urgent mail always keeps its own row too">{`${g.urgent} urgent`}</Tag>}</div>
         <div className="subj">Latest: {[g.latest_sender, g.latest_subject].filter(Boolean).join(" · ")}</div>
       </div>

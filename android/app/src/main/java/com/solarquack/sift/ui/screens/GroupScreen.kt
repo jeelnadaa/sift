@@ -72,7 +72,7 @@ fun GroupRow(g: GroupDto, onClick: () -> Unit) {
                     Text(g.title, color = Ink.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (g.unread > 0) FontWeight.Bold else FontWeight.Medium),
                         modifier = Modifier.weight(1f, fill = false))
-                    Tag("${g.count} mails")
+                    Tag("${g.count} mail" + if (g.count == 1) "" else "s")
                     if (g.muted) Tag("Muted")
                 }
                 Text(listOfNotNull(g.latestSender, g.latestSubject).joinToString(": "), color = Ink.text2, style = MaterialTheme.typography.bodyMedium,
@@ -119,6 +119,8 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
     var merging by remember { mutableStateOf(false) }
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
+    var editing by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
 
     fun load() = scope.launch {
         try { g = Api.get(context).group(id); error = null } catch (t: Throwable) { error = t.userMessage() }
@@ -149,6 +151,24 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                 }
                 Text("${group.count} mails · ${group.unread} unread" + if (group.urgent > 0) " · ${group.urgent} urgent" else "", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                 Text("A group only changes how mail is shown. Nothing changes in Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                if (group.custom) {
+                    Column(Modifier.fillMaxWidth().padding(top = 12.dp).background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(12.dp)) {
+                        Text("New mail joins when it", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                        group.query?.let { Text("matches  $it", color = Ink.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp)) }
+                        group.instruction?.let { Text((if (group.query != null) "and " else "") + "fits “$it” (the AI checks)", color = Ink.text2, style = MaterialTheme.typography.bodySmall) }
+                        if (group.query == null && group.instruction == null) Text("Nothing automatic: add mail by hand (a mail's Actions → Add to group).",
+                            color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                        FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GhostButton("Criteria…") { editing = true }
+                            if (group.query != null || group.instruction != null) GhostButton("Fill now") {
+                                run(null) {
+                                    val r = Api.get(context).fillGroup(id)
+                                    info = if (r.status == "done") "Added ${r.changed} mail" else "The AI is adding matching mail. You'll get a notification"
+                                }
+                            }
+                        }
+                    }
+                }
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Mute this group", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
@@ -162,6 +182,7 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                     GhostButton("Silence mail like this") { ruleDraft("silent") }
                     GhostButton(if (selecting) "Cancel split" else "Split") { selecting = !selecting; selected = emptySet() }
                     GhostButton("Merge into…") { merging = true }
+                    GhostButton("Delete group", color = Ink.urgent) { deleting = true }
                     group.items.firstOrNull()?.sender?.let { sender ->
                         GhostButton("Never group $sender") {
                             run("Mail from $sender won't be grouped") { Api.get(context).setGroupPreference(PreferenceIn(sender, "never")) }
@@ -191,6 +212,18 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
         }
     }
 
+    if (editing) group?.let { gr -> GroupFormDialog(gr, onDismiss = { editing = false }) { editing = false; load() } }
+    if (deleting) group?.let { gr ->
+        AlertDialog(
+            onDismissRequest = { deleting = false },
+            title = { Text("Delete ${gr.title}?") },
+            text = { Text("The group goes away; every mail in it stays in your feed, folders and timelines.", color = Ink.text2) },
+            confirmButton = { TextButton(onClick = { deleting = false; scope.launch { try { Api.get(context).deleteGroup(id); onBack() } catch (t: Throwable) { error = t.userMessage() } } }) {
+                Text("Delete", color = Ink.urgent) } },
+            dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel", color = Ink.text2) } },
+            containerColor = Ink.surface, shape = Radius.xl,
+        )
+    }
     if (renaming) group?.let { gr ->
         var title by remember { mutableStateOf(gr.title) }
         AlertDialog(
@@ -251,13 +284,14 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     var groups by remember { mutableStateOf<List<GroupDto>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
+    var making by remember { mutableStateOf(false) }
     val on = status?.groupingEnabled == "yes"
 
     fun load() = scope.launch {
         try {
             val api = Api.get(context)
             status = api.grouping()
-            groups = if (status?.groupingEnabled == "yes") api.groups() else emptyList()
+            groups = api.groups()  // your own groups always; automatic ones while grouping is on
             error = null
         } catch (t: Throwable) { error = t.userMessage() }
     }
@@ -280,10 +314,23 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         }
         error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
         info?.let { item { Banner(it, Ink.signal) } }
+        item {
+            Row(Modifier.padding(top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Your groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                PrimaryButton("+ New group") { making = true }
+            }
+        }
+        val mine = groups.orEmpty().filter { it.custom }
+        if (groups != null && mine.isEmpty()) item {
+            Text("None yet. Give a group a search (free) or describe its mail in words (the AI checks each new mail), and new mail joins it on its own, next to its folders and timeline.",
+                color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp))
+        }
+        items(mine, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
+        item { Text("Automatic groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)) }
         status?.let {
             item {
                 Column(Modifier.fillMaxWidth().background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(14.dp)) {
-                    Text(if (on) "Grouping is on" else "Grouping is off", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                    Text(if (on) "Automatic grouping is on" else "Automatic grouping is off", color = Ink.text, style = MaterialTheme.typography.titleSmall)
                     Text(if (on) "Similar mail is stacked into one row. Display only: notifications are unaffected."
                         else "Turn it on to stack similar mail (bank alerts, newsletters, one company's drive) into one row. Display only.",
                         color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
@@ -298,9 +345,60 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 }
             }
         }
-        if (on && groups?.isEmpty() == true) item {
-            Text("No groups yet. A group shows once three similar mails arrive.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 28.dp, horizontal = 4.dp))
+        if (on && groups?.none { !it.custom } == true) item {
+            Text("No automatic groups yet. A group shows once three similar mails arrive.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 28.dp, horizontal = 4.dp))
         }
-        items(groups.orEmpty(), key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
+        items(groups.orEmpty().filter { !it.custom }, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
     }
+    if (making) GroupFormDialog(null, onDismiss = { making = false }) { made -> making = false; load(); made?.let { onOpen(it.id) } }
+}
+
+/** New group, or a custom group's criteria: a search (free, exact) and/or a description (the AI
+ * checks while reading each new mail). A mail can sit in several groups and folders at once. */
+@Composable
+fun GroupFormDialog(g: GroupDto?, onDismiss: () -> Unit, onSaved: (GroupDto?) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var title by remember { mutableStateOf(g?.title ?: "") }
+    var query by remember { mutableStateOf(g?.query ?: "") }
+    var instruction by remember { mutableStateOf(g?.instruction ?: "") }
+    var fill by remember { mutableStateOf(g == null) }
+    var aiOn by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { runCatching { aiOn = Api.get(context).ai().aiEnabled } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (g == null) "New group" else "Which mail joins it") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (g == null) Field(title, { title = it.take(200) }, "Name", placeholder = "e.g. Internships")
+                Field(query, { query = it.take(500) }, "New mail matching this search (free)", placeholder = "from:nvidia.com")
+                Field(instruction, { if (aiOn || it.isEmpty()) instruction = it.take(200) }, "And/or described as (the AI checks)",
+                    placeholder = if (aiOn) "e.g. internship offers" else "Add an AI key to describe mail")
+                Text("With both, mail must match the search and fit the description. Empty: you add mail by hand.",
+                    color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                if (g == null && (query.isNotBlank() || instruction.isNotBlank())) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Also add matching mail already here" + if (instruction.isNotBlank()) " (AI, last 30 days)" else " (free)",
+                        color = Ink.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    com.solarquack.sift.ui.SiftSwitch(fill, { fill = it })
+                }
+                error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            PrimaryButton(if (g == null) "Make group" else "Save", enabled = title.isNotBlank()) {
+                scope.launch {
+                    try {
+                        val api = Api.get(context)
+                        val out = if (g == null) api.createGroup(com.solarquack.sift.data.NewGroupIn(title.trim(), query.trim().ifEmpty { null },
+                            instruction.trim().ifEmpty { null }, fill && (query.isNotBlank() || instruction.isNotBlank())))
+                        else api.editGroup(g.id, GroupPatch(query = query.trim(), instruction = instruction.trim()))
+                        onSaved(out)
+                    } catch (t: Throwable) { error = t.userMessage() }
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        containerColor = Ink.surface, shape = Radius.xl,
+    )
 }

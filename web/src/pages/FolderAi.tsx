@@ -20,7 +20,7 @@ const KINDS: [AiTask["kind"], string, string][] = [
   ["todos", "Make to-dos", "A to-do (with deadline reminders) for every mail here that needs action"],
   ["sort", "Sort into subfolders", "Move the mail here into subfolders, made as needed"],
 ];
-export const TASK_DONE: Record<AiTask["kind"], string> = { timelines: "joined timelines", todos: "to-dos made", sort: "moved" };
+export const TASK_DONE: Record<AiTask["kind"], string> = { timelines: "joined timelines", todos: "to-dos made", sort: "moved", fill: "filed" };
 
 export function FolderAi({ f, onChanged }: { f: Folder; onChanged: () => void }) {
   const ai = useLoad(() => get<AiStatus>("/ai"), []);
@@ -32,6 +32,21 @@ export function FolderAi({ f, onChanged }: { f: Folder; onChanged: () => void })
   const running = mine.some((t) => t.status === "queued" || t.status === "running");
   const aiOn = !!ai.data?.ai_enabled;
   const rule = f.ai_rule ?? { categories: [], timeline: false };
+  const [query, setQuery] = useState<string | null>(null);
+  const [describe, setDescribe] = useState<string | null>(null);
+  const q = query ?? rule.query ?? "", d = describe ?? rule.describe ?? "";
+  const dirty = q.trim() !== (rule.query ?? "") || d.trim() !== (rule.describe ?? "");
+  async function saveCriteria() {
+    await save({ ai_rule: { categories: rule.categories, timeline: rule.timeline, query: q.trim() || null, describe: d.trim() || null } });
+    setQuery(null); setDescribe(null);
+  }
+  async function fill() {
+    try {
+      const r = await post<{ status: string; changed?: number }>(`/folders/${f.id}/ai-tasks`, { kind: "fill" });
+      toast(r.status === "done" ? `Filed ${r.changed} mail already here` : "The AI is filing matching mail. You'll get a notification");
+      tasks.reload();
+    } catch (e) { toast(errorText(e)); }
+  }
 
   useEffect(() => {  // follow a running task's progress
     if (!running) return;
@@ -44,7 +59,7 @@ export function FolderAi({ f, onChanged }: { f: Folder; onChanged: () => void })
   }
   function toggleCategory(c: string) {
     const cats = rule.categories.includes(c) ? rule.categories.filter((x) => x !== c) : [...rule.categories, c];
-    save({ ai_rule: { categories: cats, timeline: rule.timeline } });
+    save({ ai_rule: { ...rule, categories: cats } });
   }
   async function start(kind: AiTask["kind"]) {
     try {
@@ -69,7 +84,23 @@ export function FolderAi({ f, onChanged }: { f: Folder; onChanged: () => void })
             <button key={c} className={`chip ${rule.categories.includes(c) ? "on" : ""}`} disabled={!aiOn} onClick={() => toggleCategory(c)}>{label}</button>
           ))}
           <span className="inline dim" style={{ fontSize: 13 }}><Toggle on={rule.timeline} disabled={!aiOn} label="Mail on a company timeline"
-            onChange={(v) => save({ ai_rule: { categories: rule.categories, timeline: v } })} /> or mail that joins a company timeline</span>
+            onChange={(v) => save({ ai_rule: { ...rule, timeline: v } })} /> or mail that joins a company timeline</span>
+        </div>
+      </div>
+
+      <div className="fa-sec">
+        <div className="fa-h">Also file new mail here when it</div>
+        <div className="stack" style={{ gap: 8, maxWidth: 680 }}>
+          <TextField value={q} onChange={setQuery} maxLength={500} code ariaLabel="Search for this folder"
+            placeholder="matches a search (free): from:nvidia.com  or  subject:internship" />
+          <TextField value={d} onChange={(v) => { if (aiOn || !v) setDescribe(v); }} maxLength={200} ariaLabel="Description for this folder"
+            placeholder={aiOn ? "and/or is described as (the AI checks while reading it): e.g. course announcements" : "Add an AI key to describe mail in words"} />
+          <div className="inline">
+            <button className="btn btn-primary btn-sm" disabled={!dirty} onClick={saveCriteria}>Save</button>
+            {(rule.query || rule.describe) && !dirty && <button className="btn btn-ghost btn-sm" disabled={running} onClick={fill}
+              data-tip={rule.describe ? "The AI checks the last 30 days, 25 mails per small call" : "Free: files every stored mail matching the search"}>File matching mail already here</button>}
+            <span className="dim" style={{ fontSize: 12.5 }}>A mail can be in several folders and groups at once, and on its timeline.</span>
+          </div>
         </div>
       </div>
 
@@ -109,7 +140,7 @@ export function FolderAi({ f, onChanged }: { f: Folder; onChanged: () => void })
           <div className="fa-tasks">
             {mine.map((t) => (
               <div key={t.id} className="inline" style={{ justifyContent: "space-between" }}>
-                <span>{KINDS.find(([k]) => k === t.kind)?.[1]} <span className="dim">· {fullTime(t.created_at)}</span></span>
+                <span>{t.kind === "fill" ? "File matching mail" : KINDS.find(([k]) => k === t.kind)?.[1]} <span className="dim">· {fullTime(t.created_at)}</span></span>
                 <span className="dim" data-tip={t.note ?? undefined}>
                   {t.status === "queued" ? "Waiting…" : t.status === "running" ? `${t.done} of ${t.total}…` : `${t.changed} ${TASK_DONE[t.kind]} of ${t.done}`}
                   {" · "}{t.tokens.toLocaleString()} tokens{t.status === "stopped" ? " · stopped at the daily cap" : t.status === "failed" ? " · failed" : ""}

@@ -50,10 +50,10 @@ import com.solarquack.sift.ui.theme.Radius
 import kotlinx.coroutines.launch
 
 private val EXAMPLES = listOf(
-    "Make timelines from the last 30 days of placement mail",
+    "Make a group Internships for internship offers and add old ones too",
+    "New mail from Nvidia goes to the Nvidia folder and a group Nvidia updates",
     "What's due this week?",
-    "Sort my Placements folder by company",
-    "Archive bank alerts older than a month",
+    "Draft a reply to Riya saying Thursday 4 pm works",
 )
 
 /** Ask Sift (backend app/assistant.py): anything the app can do, in plain words. Each request is
@@ -91,7 +91,7 @@ fun AskScreen(onBack: () -> Unit, onOpenMail: (String) -> Unit, onOpenLink: (Ask
             Text("✦", color = Ink.signal, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(end = 8.dp))
             Text("Ask Sift", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
         }
-        Text("Anything the app can do, in plain words. Changes wait for your OK.", color = Ink.text3, style = MaterialTheme.typography.bodySmall,
+        Text("Anything the app can do, in plain words. You see what it touches and the tokens first; changes wait for your OK.", color = Ink.text3, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(horizontal = 18.dp))
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
@@ -155,10 +155,18 @@ private fun RunCard(r: AskRunDto, busy: Boolean, onRun: () -> Unit, onCancel: ()
                         Text(s.preview ?: s.action, color = Ink.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 10.dp))
                         if (s.kind == "gmail") Tag("Gmail", Ink.warn)
                     }
+                    if (s.error == null && s.tokens > 0) Text("~${"%,d".format(s.tokens)} tokens when run", color = Ink.warn,
+                        style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 30.dp, top = 4.dp))
+                    if (s.error == null) s.targets.forEach { t ->
+                        Text("→ $t", color = Ink.text3, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(start = 30.dp, top = 2.dp))
+                    }
                     s.error?.let { Text("Can't do this step: $it", color = Ink.urgent, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 30.dp, top = 4.dp)) }
                     res?.let { ResultBlock(it, onOpenMail, onOpenLink, onRuleDraft) }
                 }
             }
+            if (r.needsConfirm && r.estimate > 0) Text("Running may use about ${"%,d".format(r.estimate)} more tokens", color = Ink.warn,
+                style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (r.needsConfirm) {
                     PrimaryButton(if (busy) "Running…" else if (r.changesGmail) "Run, with Gmail changes" else "Run", enabled = !busy, onClick = onRun)
@@ -166,7 +174,7 @@ private fun RunCard(r: AskRunDto, busy: Boolean, onRun: () -> Unit, onCancel: ()
                 }
                 if (r.status == "cancelled") Text("Cancelled. Nothing changed.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
             }
-            Text("%,d tokens".format(r.tokens), color = Ink.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.End))
+            Text("%,d tokens used".format(r.tokens), color = Ink.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.End))
         }
     }
 }
@@ -178,7 +186,7 @@ private fun ResultBlock(res: AskResultDto, onOpenMail: (String) -> Unit, onOpenL
             Text((if (res.ok) "✓ " else "✕ ") + res.text, color = Ink.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             val link = res.link
             if (link != null && (link.page != "rule_draft" || res.ruleDraft != null)) {
-                Text(if (link.page == "rule_draft") "Review rule" else "Open", color = Ink.signal, style = MaterialTheme.typography.labelLarge,
+                Text(when (link.page) { "rule_draft" -> "Review rule"; "draft" -> "Open draft"; else -> "Open" }, color = Ink.signal, style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.clickable { if (link.page == "rule_draft") res.ruleDraft?.let(onRuleDraft) else onOpenLink(link) }.padding(horizontal = 6.dp, vertical = 6.dp))
             }
         }
@@ -187,6 +195,10 @@ private fun ResultBlock(res: AskResultDto, onOpenMail: (String) -> Unit, onOpenL
                 Text(m.senderName ?: m.sender ?: "", color = Ink.text, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (m.unread) FontWeight.Bold else FontWeight.Medium))
                 Text(m.summary ?: m.subject ?: "", color = Ink.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
+        }
+        res.items?.forEach { x ->
+            Text("• ${x.name}" + (x.detail?.let { " · $it" } ?: ""), color = Ink.signal, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.clickable { onOpenLink(AskLinkDto(x.page, x.id)) }.padding(vertical = 3.dp))
         }
         res.todos?.forEach { t -> Text("• ${t.title}" + (t.dueAt?.let { " · due ${fullTime(it)}" } ?: ""), color = Ink.text2, style = MaterialTheme.typography.bodySmall) }
         res.timelines?.forEach { o ->

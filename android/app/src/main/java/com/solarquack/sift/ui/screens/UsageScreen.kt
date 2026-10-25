@@ -94,6 +94,24 @@ fun UsageScreen(onBack: () -> Unit) {
                 }
             }
         }
+        SectionLabel("✦ Sift AI")
+        SiftCard {
+            val s = u.siftAi
+            Row(Modifier.fillMaxWidth()) {
+                Text("Last 30 days", color = Ink.text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text("${fmt.format(s?.tokens ?: 0)} tokens", color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text("Everything you asked Sift AI for, kept apart from everyday work: planning, the drafts and rules it wrote, and the AI tasks it started.",
+                color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            if (s == null || s.runs.isEmpty()) Text("No requests yet.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+            s?.runs?.forEach { r ->
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text(r.text + when (r.status) { "cancelled" -> " · cancelled"; "planned" -> " · not run"; else -> "" },
+                        color = Ink.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2)
+                    Text(fmt.format(r.tokens), color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
         SectionLabel("AI tasks you ran")
         SiftCard {
             Text("Work you asked for on a folder (open a folder → ✦ AI).", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
@@ -101,7 +119,8 @@ fun UsageScreen(onBack: () -> Unit) {
             u.tasks.forEach { t ->
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                     Column(Modifier.weight(1f)) {
-                        Text("${mapOf("timelines" to "Timelines", "todos" to "To-dos", "sort" to "Sorting")[t.kind]} · ${t.folderName}", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
+                        Text("${mapOf("timelines" to "Timelines", "todos" to "To-dos", "sort" to "Sorting", "fill" to "Filling")[t.kind]} · ${t.folderName}",
+                            color = Ink.text, style = MaterialTheme.typography.bodyMedium)
                         Text(if (t.status == "running" || t.status == "queued") "running" else "${t.changed} ${TASK_DONE[t.kind]}", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
                     }
                     Text(fmt.format(t.tokens), color = Ink.text2, style = MaterialTheme.typography.bodyMedium)

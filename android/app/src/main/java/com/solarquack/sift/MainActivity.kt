@@ -198,6 +198,8 @@ class MainActivity : ComponentActivity() {
     private fun askRoute(l: com.solarquack.sift.data.AskLinkDto): String? = when (l.page) {
         "opportunity" -> l.id?.let { "deal/$it" }
         "folder" -> l.id?.let { "folder/$it" }
+        "group" -> l.id?.let { "group/$it" }
+        "draft" -> l.id?.let { compose(draft = it) }
         "feed" -> "feed"
         "todo" -> "todo"
         "opportunities" -> "deals"

@@ -51,7 +51,7 @@ val CATEGORY_LABELS = linkedMapOf(
     "interview" to "Interview", "result" to "Result", "recruiter" to "Recruiter", "action_needed" to "Needs action", "fyi" to "FYI",
 )
 val TASK_LABELS = mapOf("timelines" to "Build company timelines", "todos" to "Make to-dos", "sort" to "Sort into subfolders")
-val TASK_DONE = mapOf("timelines" to "joined timelines", "todos" to "to-dos made", "sort" to "moved")
+val TASK_DONE = mapOf("timelines" to "joined timelines", "todos" to "to-dos made", "sort" to "moved", "fill" to "filed")
 
 /** "AI for this folder": file new mail here by what the AI understood, sort into subfolders, and
  * ask the AI to work over the mail already here. */
@@ -66,6 +66,8 @@ fun FolderAiSheet(start: FolderDto, onDismiss: () -> Unit, onChanged: () -> Unit
     var instruction by remember { mutableStateOf(start.autoSortInstruction ?: "") }
     var taskInstruction by remember { mutableStateOf("") }
     var withSub by remember { mutableStateOf(true) }
+    var critQuery by remember { mutableStateOf(start.aiRule?.query ?: "") }
+    var critDescribe by remember { mutableStateOf(start.aiRule?.describe ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
     val running = tasks.any { it.status == "queued" || it.status == "running" }
 
@@ -94,13 +96,38 @@ fun FolderAiSheet(start: FolderDto, onDismiss: () -> Unit, onChanged: () -> Unit
                     Chip(label, c in rule.categories) {
                         if (!aiOn) return@Chip
                         val cats = if (c in rule.categories) rule.categories - c else rule.categories + c
-                        save(FolderPatch(aiRule = AiRuleDto(cats, rule.timeline)))
+                        save(FolderPatch(aiRule = rule.copy(categories = cats)))
                     }
                 }
             }
             Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("…or mail that joins a company timeline", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                SiftSwitch(rule.timeline, { on -> if (aiOn) save(FolderPatch(aiRule = AiRuleDto(rule.categories, on))) })
+                SiftSwitch(rule.timeline, { on -> if (aiOn) save(FolderPatch(aiRule = rule.copy(timeline = on))) })
+            }
+
+            // criteria: a search (free) and/or a description the AI checks while reading new mail (app/places.py)
+            SectionLabel("Also file new mail here when it")
+            Field(critQuery, { critQuery = it.take(500) }, "Matches a search (free)", placeholder = "from:nvidia.com  or  subject:internship")
+            Spacer(Modifier.height(8.dp))
+            Field(critDescribe, { if (aiOn || it.isEmpty()) critDescribe = it.take(200) }, "And/or is described as (the AI checks)",
+                placeholder = if (aiOn) "e.g. course announcements" else "Add an AI key to describe mail in words")
+            Text("A mail can be in several folders and groups at once, and on its company timeline.", color = Ink.text3,
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            val critDirty = critQuery.trim() != (rule.query ?: "") || critDescribe.trim() != (rule.describe ?: "")
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (critDirty) PrimaryButton("Save") {
+                    save(FolderPatch(aiRule = rule.copy(query = critQuery.trim().ifEmpty { null }, describe = critDescribe.trim().ifEmpty { null })))
+                }
+                if (!critDirty && (rule.query != null || rule.describe != null)) GhostButton("File matching mail already here", enabled = !running) {
+                    scope.launch {
+                        try {
+                            val r = Api.get(context).fillFolder(f.id)
+                            android.widget.Toast.makeText(context, if (r.status == "done") "Filed ${r.changed} mail already here" else "The AI is filing matching mail. You'll get a notification",
+                                android.widget.Toast.LENGTH_SHORT).show()
+                            loadTasks()
+                        } catch (t: Throwable) { error = t.userMessage() }
+                    }
+                }
             }
 
             SectionLabel("Sort mail filed here into subfolders")
@@ -147,7 +174,7 @@ fun FolderAiSheet(start: FolderDto, onDismiss: () -> Unit, onChanged: () -> Unit
             }
             tasks.forEach { t ->
                 Column(Modifier.padding(top = 10.dp)) {
-                    Text("${TASK_LABELS[t.kind]} · ${fullTime(t.createdAt)}", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
+                    Text("${TASK_LABELS[t.kind] ?: "File matching mail"} · ${fullTime(t.createdAt)}", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
                     Text(
                         when (t.status) {
                             "queued" -> "Waiting…"

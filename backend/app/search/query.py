@@ -23,7 +23,7 @@ Any Sift filter can be negated with "-" and several can be OR-ed inside braces:
 import re
 from dataclasses import dataclass, field
 
-SIFT_KEYS = {"folder", "tag", "priority", "type", "company", "account", "rule", "saved"}
+SIFT_KEYS = {"folder", "group", "tag", "priority", "type", "company", "account", "rule", "saved"}
 SIFT_IS = {"silenced", "grouped", "notified", "acked", "snoozed"}
 SIFT_HAS = {"note", "link"}
 PRIORITIES = {"urgent", "normal", "digest", "silent"}
@@ -121,7 +121,7 @@ def _sift_filter(token: str) -> Filter | None:
 
 
 LABELS = {
-    "folder": "In folder", "tag": "Tag", "priority": "Priority", "type": "Category", "company": "Company",
+    "folder": "In folder", "group": "In group", "tag": "Tag", "priority": "Priority", "type": "Category", "company": "Company",
     "account": "Account", "rule": "Rule", "saved": "Saved search",
     "is:silenced": "Silenced", "is:grouped": "In a group", "is:snoozed": "Snoozed", "is:notified": "Notified", "is:acked": "Notification delivered",
     "has:note": "Has a note", "has:link": "Has a link",
