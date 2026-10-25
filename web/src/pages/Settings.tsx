@@ -5,18 +5,44 @@ import { Top, foldersChanged } from "../App";
 import { Banner, confirmDialog, errorText, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { CATEGORY_LABELS } from "./FolderAi";
 
+const PROVIDER_OPTIONS = [
+  { value: "gemini", label: "Gemini", hint: "Google AI Studio key" },
+  { value: "ollama", label: "Ollama", hint: "Local / self-hosted" },
+  { value: "openai_compatible", label: "OpenAI-compatible", hint: "OpenAI, Groq, OpenRouter, DeepSeek" },
+];
+
 export function SettingsPage() {
   const ai = useLoad(() => get<AiStatus>("/ai"));
   const settings = useLoad(() => get<Settings>("/settings"));
   const grouping = useLoad(() => get<GroupingStatus>("/grouping"));
   const accounts = useLoad(() => get<Account[]>("/accounts"));
+  const [provider, setProvider] = useState<string>("gemini");
   const [model, setModel] = useState<string | null>(null);
+  const [baseUrl, setBaseUrl] = useState<string>("");
   const [key, setKey] = useState("");
+  const [enableFallback, setEnableFallback] = useState(false);
+  const [fallbackProvider, setFallbackProvider] = useState<string>("ollama");
+  const [fallbackModel, setFallbackModel] = useState<string>("");
+  const [fallbackBaseUrl, setFallbackBaseUrl] = useState<string>("");
+  const [fallbackKey, setFallbackKey] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [cap, setCap] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const a = ai.data;
   const s = settings.data;
+
+  useEffect(() => {
+    if (a) {
+      if (a.provider) setProvider(a.provider);
+      if (a.base_url) setBaseUrl(a.base_url);
+      if (a.fallback_provider) {
+        setEnableFallback(true);
+        setFallbackProvider(a.fallback_provider);
+        if (a.fallback_model) setFallbackModel(a.fallback_model);
+        if (a.fallback_base_url) setFallbackBaseUrl(a.fallback_base_url);
+      }
+    }
+  }, [a?.provider, a?.base_url, a?.fallback_provider, a?.fallback_model, a?.fallback_base_url]);
 
   async function change(changes: Partial<Settings>) {
     try { settings.setData(await patch<Settings>("/settings", changes)); } catch (e) { toast(errorText(e)); }
@@ -24,8 +50,18 @@ export function SettingsPage() {
   async function saveKey() {
     setBusy(true);
     try {
-      const r = await put<AiStatus>("/ai/key", { provider: "gemini", model: (model ?? a?.model ?? a?.suggested_model ?? "").trim(), api_key: key.trim() });
-      ai.setData(r); setKey("");
+      const effectiveModel = (model ?? a?.model ?? (provider === "ollama" ? "llama3.2" : provider === "openai_compatible" ? "gpt-4o-mini" : a?.suggested_model ?? "")).trim();
+      const r = await put<AiStatus>("/ai/key", {
+        provider,
+        model: effectiveModel,
+        api_key: key.trim() || (provider === "ollama" ? "ollama-local" : ""),
+        base_url: baseUrl.trim() || null,
+        fallback_provider: enableFallback ? fallbackProvider : null,
+        fallback_model: enableFallback ? (fallbackModel.trim() || (fallbackProvider === "ollama" ? "llama3.2" : fallbackProvider === "openai_compatible" ? "gpt-4o-mini" : "gemini-2.5-flash")) : null,
+        fallback_base_url: enableFallback && fallbackBaseUrl.trim() ? fallbackBaseUrl.trim() : null,
+        fallback_api_key: enableFallback && fallbackKey.trim() ? fallbackKey.trim() : (enableFallback && fallbackProvider === "ollama" ? "ollama-local" : null),
+      });
+      ai.setData(r); setKey(""); setFallbackKey("");
       toast(r.status === "valid" ? "Key works. AI is on." : r.status === "invalid" ? "The key was rejected." : r.status === "quota_exceeded" ? "Key saved, but its quota is used up." : "Saved; could not verify yet.");
     } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   }
@@ -59,20 +95,60 @@ export function SettingsPage() {
             <div className="inline" style={{ marginBottom: 12 }}>
               <b>{a?.ai_enabled ? "AI on" : "AI off"}</b>
               {a && <Tag tone={{ valid: "ok", missing: "", quota_exceeded: "warn" }[a.status] ?? "urgent"}>{{ missing: "No key", quota_exceeded: "Quota exceeded" }[a.status] ?? a.status}</Tag>}
-              {a?.key_last4 && <span className="dim" style={{ fontSize: 13 }}>Gemini · <span className="code">{a.model}</span> · key ••••{a.key_last4}</span>}
+              {a?.key_last4 && <span className="dim" style={{ fontSize: 13 }}>{a.provider ? a.provider.toUpperCase() : "GEMINI"} · <span className="code">{a.model}</span> · key ••••{a.key_last4}{a.base_url ? ` · ${a.base_url}` : ""}</span>}
+              {a?.fallback_provider && <span className="dim" style={{ fontSize: 12, marginLeft: 8 }}>· Fallback: {a.fallback_provider} (<span className="code">{a.fallback_model}</span>)</span>}
             </div>
             {a && !a.ai_enabled && <p style={{ color: "var(--warn)", fontSize: 13.5, marginBottom: 12 }}>Add an API key to enable summaries, deadlines, company matching and plain-English rules. Everything else works without one, and unhandled mail arrives as normal priority.</p>}
             <div className="grid2">
-              <div className="field"><label htmlFor="pv">Provider</label><Select id="pv" value="gemini" ariaLabel="AI provider" options={[{ value: "gemini", label: "Gemini", hint: "Google AI Studio key" }]} onChange={() => {}} /></div>
-              <div className="field"><label htmlFor="md">Model ID</label><TextField id="md" code value={model ?? a?.model ?? a?.suggested_model ?? ""} onChange={setModel} maxLength={120} /></div>
+              <div className="field"><label htmlFor="pv">Provider</label><Select id="pv" value={provider} ariaLabel="AI provider" options={PROVIDER_OPTIONS} onChange={setProvider} /></div>
+              <div className="field"><label htmlFor="md">Model ID</label><TextField id="md" code value={model ?? a?.model ?? (provider === "ollama" ? "llama3.2" : provider === "openai_compatible" ? "gpt-4o-mini" : a?.suggested_model ?? "")} onChange={setModel} maxLength={120} /></div>
             </div>
+            {(provider === "ollama" || provider === "openai_compatible") && (
+              <div className="field" style={{ marginTop: 12 }}>
+                <label htmlFor="burl">Base URL</label>
+                <TextField id="burl" code value={baseUrl} onChange={setBaseUrl} placeholder={provider === "ollama" ? "http://localhost:11434/v1" : "https://api.openai.com/v1"} maxLength={200} />
+              </div>
+            )}
             <div className="field" style={{ marginTop: 16 }}><label htmlFor="ky">{a?.key_last4 ? "Replace API key" : "API key"}</label>
               <div className="inline">
-                <input id="ky" className="input code" style={{ flex: 1 }} type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste a key from aistudio.google.com" />
-                <button className="btn btn-primary btn-sm" style={{ height: 42 }} disabled={busy || key.trim().length < 10} onClick={saveKey}>{busy ? "Checking…" : "Save and test"}</button>
+                <input id="ky" className="input code" style={{ flex: 1 }} type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={provider === "ollama" ? "Optional for local Ollama" : provider === "openai_compatible" ? "Paste OpenAI/Groq/OpenRouter key" : "Paste a key from aistudio.google.com"} />
+                <button className="btn btn-primary btn-sm" style={{ height: 42 }} disabled={busy || (provider !== "ollama" && !a?.key_last4 && key.trim().length < 10)} onClick={saveKey}>{busy ? "Checking…" : "Save and test"}</button>
                 {a?.key_last4 && <button className="btn btn-ghost btn-sm" style={{ height: 42 }} onClick={async () => { try { ai.setData(await post<AiStatus>("/ai/test")); } catch (e) { toast(errorText(e)); } }}>Test</button>}
                 {a?.key_last4 && <button className="btn btn-danger btn-sm" style={{ height: 42 }} data-tip="Delete the stored key. Sift keeps working without AI" onClick={async () => { if (!(await confirmDialog({ title: "Remove your AI key?", body: "Sift deletes the stored key and keeps working without AI: unhandled mail arrives as normal priority.", confirm: "Remove key", danger: true }))) return; try { await del("/ai/key"); ai.reload(); } catch (e) { toast(errorText(e)); } }}>Remove</button>}
               </div>
+            </div>
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+              <div className="inline" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+                <div>
+                  <b style={{ fontSize: 14 }}>Fallback LLM Provider</b>
+                  <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Automatic failover if primary provider hits quota limit (429) or fails</p>
+                </div>
+                <Toggle on={enableFallback} label="Enable Fallback" onChange={setEnableFallback} />
+              </div>
+              {enableFallback && (
+                <div style={{ marginTop: 12, padding: "12px 14px", background: "var(--bg-card-subtle, rgba(255,255,255,0.03))", borderRadius: 8 }}>
+                  <div className="grid2">
+                    <div className="field">
+                      <label htmlFor="fpv">Fallback Provider</label>
+                      <Select id="fpv" value={fallbackProvider} ariaLabel="Fallback AI provider" options={PROVIDER_OPTIONS} onChange={setFallbackProvider} />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="fmd">Fallback Model ID</label>
+                      <TextField id="fmd" code value={fallbackModel} onChange={setFallbackModel} placeholder={fallbackProvider === "ollama" ? "llama3.2" : fallbackProvider === "openai_compatible" ? "gpt-4o-mini" : "gemini-2.5-flash"} maxLength={120} />
+                    </div>
+                  </div>
+                  {(fallbackProvider === "ollama" || fallbackProvider === "openai_compatible") && (
+                    <div className="field" style={{ marginTop: 10 }}>
+                      <label htmlFor="fburl">Fallback Base URL</label>
+                      <TextField id="fburl" code value={fallbackBaseUrl} onChange={setFallbackBaseUrl} placeholder={fallbackProvider === "ollama" ? "http://localhost:11434/v1" : "https://api.openai.com/v1"} maxLength={200} />
+                    </div>
+                  )}
+                  <div className="field" style={{ marginTop: 10 }}>
+                    <label htmlFor="fky">{a?.fallback_key_last4 ? "Replace Fallback API key" : "Fallback API key"}</label>
+                    <input id="fky" className="input code" type="password" autoComplete="off" value={fallbackKey} onChange={(e) => setFallbackKey(e.target.value)} placeholder={fallbackProvider === "ollama" ? "Optional for local Ollama" : "Paste fallback API key"} />
+                  </div>
+                </div>
+              )}
             </div>
             <p className="dim" style={{ fontSize: 13, marginTop: 8 }}>Stored encrypted on your server and never shown again after saving.</p>
             {s && (

@@ -93,4 +93,70 @@ class PhaseDTest {
         val deleted = api.deleteTemplate("tpl1")
         assertEquals(true, deleted["ok"])
     }
+
+    @Test
+    fun testAiStatusAndKeyInSerialization() {
+        val status = com.solarquack.sift.data.AiStatus(
+            aiEnabled = true,
+            status = "valid",
+            provider = "openai_compatible",
+            model = "gpt-4o-mini",
+            keyLast4 = "1234",
+            baseUrl = "https://api.openai.com/v1",
+            fallbackProvider = "ollama",
+            fallbackModel = "llama3.2",
+            fallbackBaseUrl = "http://localhost:11434/v1",
+            fallbackKeyLast4 = "5678",
+            tokensToday = 500,
+            dailyTokenCap = 50000,
+            suggestedModel = "gpt-4o-mini",
+            providers = listOf("gemini", "ollama", "openai_compatible"),
+        )
+
+        val json = Api.json.encodeToString(com.solarquack.sift.data.AiStatus.serializer(), status)
+        assertTrue(json.contains("\"provider\":\"openai_compatible\""))
+        assertTrue(json.contains("\"fallback_provider\":\"ollama\""))
+        assertTrue(json.contains("\"base_url\":\"https://api.openai.com/v1\""))
+
+        val decoded = Api.json.decodeFromString(com.solarquack.sift.data.AiStatus.serializer(), json)
+        assertEquals("openai_compatible", decoded.provider)
+        assertEquals("ollama", decoded.fallbackProvider)
+        assertEquals("http://localhost:11434/v1", decoded.fallbackBaseUrl)
+
+        val keyIn = com.solarquack.sift.data.KeyIn(
+            provider = "ollama",
+            model = "llama3.2",
+            baseUrl = "http://localhost:11434/v1",
+            fallbackProvider = "gemini",
+            fallbackModel = "gemini-2.5-flash",
+            fallbackApiKey = "secret-fallback-key",
+        )
+        val keyJson = Api.json.encodeToString(com.solarquack.sift.data.KeyIn.serializer(), keyIn)
+        assertTrue(keyJson.contains("\"provider\":\"ollama\""))
+        assertTrue(keyJson.contains("\"fallback_provider\":\"gemini\""))
+        val decodedKey = Api.json.decodeFromString(com.solarquack.sift.data.KeyIn.serializer(), keyJson)
+        assertEquals("ollama", decodedKey.provider)
+        assertEquals("secret-fallback-key", decodedKey.fallbackApiKey)
+    }
+
+    @Test
+    fun testFakeApiSaveKeyWithFallback() = runBlocking {
+        val api = Api.testOverride
+        assertNotNull(api)
+
+        val saved = api!!.saveKey(
+            com.solarquack.sift.data.KeyIn(
+                provider = "openai_compatible",
+                model = "gpt-4o-mini",
+                apiKey = "sk-test12345678",
+                baseUrl = "https://api.groq.com/openai/v1",
+                fallbackProvider = "ollama",
+                fallbackModel = "llama3.2",
+            )
+        )
+        assertEquals(true, saved.aiEnabled)
+        assertEquals("openai_compatible", saved.provider)
+        assertEquals("gpt-4o-mini", saved.model)
+        assertEquals("ollama", saved.fallbackProvider)
+    }
 }

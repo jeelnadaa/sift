@@ -341,6 +341,12 @@ class LlmCredential(Base):
     status: Mapped[str] = mapped_column(String(20), default="unvalidated", server_default="unvalidated", nullable=False)
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalid_notified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fallback_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    fallback_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    fallback_base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    encrypted_fallback_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fallback_key_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
 
 
 class Folder(Base):

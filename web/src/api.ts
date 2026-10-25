@@ -270,7 +270,22 @@ export interface ReplyContext {
   in_reply_to: string | null; references: string | null; thread_id: string | null; forward_gmail_id: string | null; attachments: { filename: string; mime: string; size: number }[];
 }
 export interface FollowUpItem { id: string; account_id: string; thread_id: string; subject: string | null; recipients: string | null; sent_at: string; due_at: string; status: "waiting" | "replied" | "reminded" | "cancelled" }
-export interface AiStatus { ai_enabled: boolean; status: string; provider: string | null; model: string | null; key_last4: string | null; tokens_today: number; daily_token_cap: number; suggested_model: string | null }
+export interface AiStatus {
+  ai_enabled: boolean;
+  status: string;
+  provider: string | null;
+  model: string | null;
+  key_last4: string | null;
+  base_url?: string | null;
+  fallback_provider?: string | null;
+  fallback_model?: string | null;
+  fallback_base_url?: string | null;
+  fallback_key_last4?: string | null;
+  tokens_today: number;
+  daily_token_cap: number;
+  suggested_model: string | null;
+  providers?: string[];
+}
 export interface AiTask {
   id: string; folder_id: string | null; folder_name: string; kind: "timelines" | "todos" | "sort" | "fill"; include_subfolders: boolean; instruction: string | null;
   group_id?: string | null; query?: string | null; by_sift_ai?: boolean;

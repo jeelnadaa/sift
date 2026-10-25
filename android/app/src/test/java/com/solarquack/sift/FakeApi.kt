@@ -212,6 +212,25 @@ object FakeApi {
                 updatedAt = ago(0),
             )
             "deleteTemplate" -> mapOf("ok" to true)
+            "saveKey" -> {
+                val input = args?.get(0) as? com.solarquack.sift.data.KeyIn
+                AiStatus(
+                    aiEnabled = true,
+                    status = "valid",
+                    provider = input?.provider ?: "gemini",
+                    model = input?.model ?: "gemini-2.5-flash",
+                    keyLast4 = "9999",
+                    baseUrl = input?.baseUrl,
+                    fallbackProvider = input?.fallbackProvider,
+                    fallbackModel = input?.fallbackModel,
+                    fallbackBaseUrl = input?.fallbackBaseUrl,
+                    fallbackKeyLast4 = if (input?.fallbackApiKey != null) "8888" else null,
+                    tokensToday = 1240,
+                    dailyTokenCap = 50000,
+                )
+            }
+            "testKey" -> AiStatus(true, "valid", "gemini", "gemini-2.5-flash", "a91f", 1240, 50000)
+            "removeKey" -> Unit
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

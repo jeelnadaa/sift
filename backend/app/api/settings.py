@@ -99,14 +99,30 @@ def ai_status(user: User = Depends(current_user), db: Session = Depends(get_db))
 class KeyIn(BaseModel):
     provider: str = "gemini"
     model: str
-    api_key: str
+    api_key: str | None = None
+    base_url: str | None = None
+    fallback_provider: str | None = None
+    fallback_model: str | None = None
+    fallback_base_url: str | None = None
+    fallback_api_key: str | None = None
 
 
 @router.put("/ai/key")
 def save_key(body: KeyIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Stores the key encrypted and validates it with one minimal call. The key is never returned."""
     try:
-        llm.save_key(db, user.id, body.provider, body.model, body.api_key)
+        llm.save_key(
+            db,
+            user.id,
+            body.provider,
+            body.model,
+            body.api_key or "",
+            base_url=body.base_url,
+            fallback_provider=body.fallback_provider,
+            fallback_model=body.fallback_model,
+            fallback_base_url=body.fallback_base_url,
+            fallback_api_key=body.fallback_api_key,
+        )
     except LlmError as exc:
         raise HTTPException(422, str(exc)) from exc
     db.commit()

@@ -72,8 +72,15 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
     val scope = rememberCoroutineScope()
     var ai by remember { mutableStateOf<AiStatus?>(null) }
     var settings by remember { mutableStateOf<SettingsDto?>(null) }
+    var provider by remember { mutableStateOf("gemini") }
     var model by remember { mutableStateOf("") }
+    var baseUrl by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
+    var enableFallback by remember { mutableStateOf(false) }
+    var fallbackProvider by remember { mutableStateOf("ollama") }
+    var fallbackModel by remember { mutableStateOf("") }
+    var fallbackBaseUrl by remember { mutableStateOf("") }
+    var fallbackKey by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -94,7 +101,17 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
     fun load() = scope.launch {
         try {
             val api = Api.get(context)
-            ai = api.ai().also { if (model.isBlank()) model = it.model ?: it.suggestedModel ?: "" }
+            ai = api.ai().also {
+                if (model.isBlank()) model = it.model ?: it.suggestedModel ?: ""
+                if (it.provider != null) provider = it.provider
+                if (it.baseUrl != null) baseUrl = it.baseUrl
+                if (it.fallbackProvider != null) {
+                    enableFallback = true
+                    fallbackProvider = it.fallbackProvider
+                    if (it.fallbackModel != null) fallbackModel = it.fallbackModel
+                    if (it.fallbackBaseUrl != null) fallbackBaseUrl = it.fallbackBaseUrl
+                }
+            }
             settings = api.settings()
             grouping = runCatching { api.grouping() }.getOrNull()
             error = null
@@ -166,7 +183,12 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                 Text("Add an API key to enable: $AI_FEATURES. Everything else works without one, and unhandled mail arrives as normal priority.",
                     color = Ink.warn, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
             }
-            a?.keyLast4?.let { Text("Gemini · ${a.model} · key ••••$it", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
+            a?.keyLast4?.let {
+                val p = a.provider ?: "Gemini"
+                val b = if (a.baseUrl != null) " · ${a.baseUrl}" else ""
+                val fb = if (a.fallbackProvider != null) " · Fallback: ${a.fallbackProvider}" else ""
+                Text("$p · ${a.model} · key ••••$it$b$fb", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            }
             a?.takeIf { it.aiEnabled }?.let { Text("${it.tokensToday} of ${it.dailyTokenCap} tokens used today", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
             settings?.let { s ->
                 var cap by remember(s.dailyTokenCap) { mutableStateOf(s.dailyTokenCap.toString()) }
@@ -182,19 +204,77 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                 Text("AI stops for the day at this many tokens; mail still arrives as normal priority.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
             }
             Spacer(Modifier.height(12.dp))
-            Field(model, { model = it }, "Model ID", mono = true)
+            Text("AI Provider", color = Ink.text2, style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("gemini" to "Gemini", "ollama" to "Ollama", "openai_compatible" to "OpenAI-compat").forEach { (id, label) ->
+                    com.solarquack.sift.ui.Chip(label, provider == id) {
+                        provider = id
+                        if (model.isBlank()) {
+                            model = if (id == "ollama") "llama3.2" else if (id == "openai_compatible") "gpt-4o-mini" else "gemini-2.5-flash"
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
-            Field(key, { key = it }, if (a?.keyLast4 != null) "Replace API key" else "Gemini API key", password = true, mono = true)
-            Text("Stored encrypted on your server and never shown again. Get a key at aistudio.google.com.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            Field(model, { model = it }, "Model ID", mono = true)
+            if (provider == "ollama" || provider == "openai_compatible") {
+                Spacer(Modifier.height(8.dp))
+                Field(baseUrl, { baseUrl = it }, if (provider == "ollama") "Base URL (default: http://localhost:11434/v1)" else "Base URL (e.g. https://api.openai.com/v1)", mono = true)
+            }
+            Spacer(Modifier.height(8.dp))
+            Field(key, { key = it }, if (a?.keyLast4 != null) "Replace API key" else if (provider == "ollama") "Ollama API key (optional)" else "API key", password = true, mono = true)
+            Text(if (provider == "ollama") "Local Ollama requires no key. Base URL defaults to http://localhost:11434/v1." else "Stored encrypted on your server and never shown again.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Fallback LLM Provider", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                    Text("Failover on rate limits (429) or transient errors", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                }
+                com.solarquack.sift.ui.SiftSwitch(checked = enableFallback, onCheckedChange = { enableFallback = it })
+            }
+            if (enableFallback) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("ollama" to "Ollama", "openai_compatible" to "OpenAI-compat", "gemini" to "Gemini").forEach { (id, label) ->
+                        com.solarquack.sift.ui.Chip(label, fallbackProvider == id) { fallbackProvider = id }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Field(fallbackModel, { fallbackModel = it }, "Fallback Model ID (e.g. llama3.2)", mono = true)
+                if (fallbackProvider == "ollama" || fallbackProvider == "openai_compatible") {
+                    Spacer(Modifier.height(6.dp))
+                    Field(fallbackBaseUrl, { fallbackBaseUrl = it }, "Fallback Base URL", mono = true)
+                }
+                Spacer(Modifier.height(6.dp))
+                Field(fallbackKey, { fallbackKey = it }, if (a?.fallbackKeyLast4 != null) "Replace Fallback API key" else "Fallback API key (optional for Ollama)", password = true, mono = true)
+            }
+
             info?.let { Text(it, color = Ink.signal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) }
             Spacer(Modifier.height(10.dp))
+            val canSave = !busy && (provider == "ollama" || key.length >= 10 || a?.keyLast4 != null) && (model.isNotBlank() || a?.model != null)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PrimaryButton(if (busy) "Checking…" else "Save and test", enabled = !busy && key.length >= 10 && model.isNotBlank()) {
+                PrimaryButton(if (busy) "Checking…" else "Save and test", enabled = canSave) {
                     busy = true; info = null
                     scope.launch {
                         try {
-                            ai = Api.get(context).saveKey(KeyIn("gemini", model.trim(), key.trim()))
+                            val effModel = model.trim().ifBlank { if (provider == "ollama") "llama3.2" else if (provider == "openai_compatible") "gpt-4o-mini" else "gemini-2.5-flash" }
+                            val apiKey = key.trim().ifBlank { if (provider == "ollama") "ollama-local" else null }
+                            val fModel = if (enableFallback) fallbackModel.trim().ifBlank { if (fallbackProvider == "ollama") "llama3.2" else if (fallbackProvider == "openai_compatible") "gpt-4o-mini" else "gemini-2.5-flash" } else null
+                            val fKey = if (enableFallback) fallbackKey.trim().ifBlank { if (fallbackProvider == "ollama") "ollama-local" else null } else null
+                            ai = Api.get(context).saveKey(KeyIn(
+                                provider = provider,
+                                model = effModel,
+                                apiKey = apiKey,
+                                baseUrl = baseUrl.trim().ifBlank { null },
+                                fallbackProvider = if (enableFallback) fallbackProvider else null,
+                                fallbackModel = fModel,
+                                fallbackBaseUrl = if (enableFallback) fallbackBaseUrl.trim().ifBlank { null } else null,
+                                fallbackApiKey = fKey,
+                            ))
                             key = ""
+                            fallbackKey = ""
                             info = when (ai?.status) { "valid" -> "Key works. AI is on."; "invalid" -> "The key was rejected."; "quota_exceeded" -> "Key saved, but its quota is used up."; else -> "Saved; could not verify yet." }
                         } catch (t: Throwable) { error = t.userMessage() } finally { busy = false }
                     }

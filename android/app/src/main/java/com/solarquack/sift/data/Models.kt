@@ -235,10 +235,25 @@ data class AiStatus(
     @SerialName("tokens_today") val tokensToday: Int = 0,
     @SerialName("daily_token_cap") val dailyTokenCap: Int = 0,
     @SerialName("suggested_model") val suggestedModel: String? = null,
+    @SerialName("base_url") val baseUrl: String? = null,
+    @SerialName("fallback_provider") val fallbackProvider: String? = null,
+    @SerialName("fallback_model") val fallbackModel: String? = null,
+    @SerialName("fallback_base_url") val fallbackBaseUrl: String? = null,
+    @SerialName("fallback_key_last4") val fallbackKeyLast4: String? = null,
+    val providers: List<String> = emptyList(),
 )
 
 @Serializable
-data class KeyIn(val provider: String, val model: String, @SerialName("api_key") val apiKey: String)
+data class KeyIn(
+    val provider: String = "gemini",
+    val model: String,
+    @SerialName("api_key") val apiKey: String? = null,
+    @SerialName("base_url") val baseUrl: String? = null,
+    @SerialName("fallback_provider") val fallbackProvider: String? = null,
+    @SerialName("fallback_model") val fallbackModel: String? = null,
+    @SerialName("fallback_base_url") val fallbackBaseUrl: String? = null,
+    @SerialName("fallback_api_key") val fallbackApiKey: String? = null,
+)
 
 @Serializable
 data class SettingsDto(

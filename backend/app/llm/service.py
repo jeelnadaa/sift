@@ -26,7 +26,7 @@ BUILTIN_CATEGORIES = [
     "recruiter", "action_needed", "fyi", "other",
 ]
 PRIORITIES = ["urgent", "normal", "digest"]
-PROVIDERS = ("gemini",)
+PROVIDERS = ("gemini", "ollama", "openai_compatible")
 AI_ON_STATUSES = ("valid", "quota_exceeded")  # quota is temporary; calls fall back until it resets
 
 
@@ -41,15 +41,28 @@ def ai_enabled(db: Session, user_id: uuid.UUID) -> bool:
     return cred is not None and cred.status in AI_ON_STATUSES
 
 
-def provider_factory(provider: str, api_key: str, model: str) -> LlmProvider:
+def provider_factory(provider: str, api_key: str, model: str, base_url: str | None = None) -> LlmProvider:
     if provider == "gemini":
         from app.llm.gemini import GeminiProvider
         return GeminiProvider(api_key, model)
+    if provider in ("ollama", "openai_compatible"):
+        from app.llm.openai_compatible import OpenAiCompatibleProvider
+        return OpenAiCompatibleProvider(api_key=api_key, model=model, base_url=base_url, provider_name=provider)
     raise LlmError(f"unknown provider {provider}")
 
 
 def _provider(cred: LlmCredential) -> LlmProvider:
-    return Paced(provider_factory(cred.provider, crypto.decrypt(cred.encrypted_api_key), cred.model), cred.user_id)
+    return Paced(provider_factory(cred.provider, crypto.decrypt(cred.encrypted_api_key), cred.model, cred.base_url), cred.user_id)
+
+
+def _fallback_provider(cred: LlmCredential) -> LlmProvider | None:
+    if not cred.fallback_provider or not cred.fallback_model:
+        return None
+    key = crypto.decrypt(cred.encrypted_fallback_key) if cred.encrypted_fallback_key else ""
+    return Paced(
+        provider_factory(cred.fallback_provider, key, cred.fallback_model, cred.fallback_base_url),
+        cred.user_id,
+    )
 
 
 # ---- pacing: stay under the provider's free-tier limits ---------------------------------------
@@ -459,17 +472,48 @@ def rule_from_text(db: Session, user_id: uuid.UUID, text: str) -> dict:
 
 # ---- key management --------------------------------------------------------------------
 
-def save_key(db: Session, user_id: uuid.UUID, provider: str, model: str, api_key: str) -> LlmCredential:
+def save_key(
+    db: Session,
+    user_id: uuid.UUID,
+    provider: str,
+    model: str,
+    api_key: str,
+    base_url: str | None = None,
+    fallback_provider: str | None = None,
+    fallback_model: str | None = None,
+    fallback_base_url: str | None = None,
+    fallback_api_key: str | None = None,
+) -> LlmCredential:
     """Store the key encrypted and validate it with one minimal call."""
     if provider not in PROVIDERS:
         raise LlmError(f"provider must be one of {', '.join(PROVIDERS)}")
     api_key, model = api_key.strip(), model.strip()
-    if len(api_key) < 10 or not model:
+    if provider == "ollama" and not api_key:
+        api_key = "ollama-local"
+    if len(api_key) < 3 or not model:
         raise LlmError("API key and model are required")
     cred = credential(db, user_id) or LlmCredential(user_id=user_id)
     cred.provider, cred.model = provider, model
     cred.encrypted_api_key = crypto.encrypt(api_key)
     cred.key_last4 = api_key[-4:]
+    cred.base_url = base_url.strip() if base_url and base_url.strip() else None
+
+    if fallback_provider and fallback_model:
+        cred.fallback_provider = fallback_provider.strip()
+        cred.fallback_model = fallback_model.strip()
+        cred.fallback_base_url = fallback_base_url.strip() if fallback_base_url and fallback_base_url.strip() else None
+        fb_key = (fallback_api_key or "").strip()
+        if cred.fallback_provider == "ollama" and not fb_key:
+            fb_key = "ollama-local"
+        if fb_key:
+            cred.encrypted_fallback_key = crypto.encrypt(fb_key)
+            cred.fallback_key_last4 = fb_key[-4:]
+    else:
+        cred.fallback_provider = None
+        cred.fallback_model = None
+        cred.fallback_base_url = None
+        cred.encrypted_fallback_key = None
+        cred.fallback_key_last4 = None
     cred.invalid_notified = False
     db.add(cred)
     validate(db, cred)
@@ -504,8 +548,29 @@ def status(db: Session, user_id: uuid.UUID) -> dict:
     s = user_settings.get(db, user_id)
     base = {"ai_enabled": ai_enabled(db, user_id), "tokens_today": tokens_today(db, user_id), "daily_token_cap": s["daily_token_cap"]}
     if cred is None:
-        return {**base, "provider": None, "model": None, "key_last4": None, "status": "missing"}
-    return {**base, "provider": cred.provider, "model": cred.model, "key_last4": cred.key_last4, "status": cred.status,
+        return {
+            **base,
+            "provider": None,
+            "model": None,
+            "key_last4": None,
+            "base_url": None,
+            "fallback_provider": None,
+            "fallback_model": None,
+            "fallback_base_url": None,
+            "fallback_key_last4": None,
+            "status": "missing",
+        }
+    return {
+        **base,
+        "provider": cred.provider,
+        "model": cred.model,
+        "key_last4": cred.key_last4,
+        "base_url": cred.base_url,
+        "fallback_provider": cred.fallback_provider,
+        "fallback_model": cred.fallback_model,
+        "fallback_base_url": cred.fallback_base_url,
+        "fallback_key_last4": cred.fallback_key_last4,
+        "status": cred.status,
             "last_validated_at": cred.last_validated_at.isoformat() if cred.last_validated_at else None}
 
 
