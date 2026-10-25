@@ -191,6 +191,13 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
     if not quiet:  # imports announce themselves once per batch (app.accounts)
         from app import events
         events.publish(db, msg.user_id, "new_mail", ids=[msg.id])
+    if msg.has_attachment:
+        try:
+            from app import attachments
+            full = provider.get_full(meta.gmail_id)
+            attachments.index_attachments(db, msg, account, full.get("payload", {}))
+        except Exception:
+            log.warning("could not index attachments for message %s", msg.id)
     db.commit()
     if not quiet:
         if not outcome.notified and not late:

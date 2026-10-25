@@ -124,6 +124,29 @@ object FakeApi {
             "addNote" -> com.solarquack.sift.data.MailNoteDto("n2", "m1", "New note", ago(0), ago(0))
             "updateNote" -> com.solarquack.sift.data.MailNoteDto("n1", "m1", "Updated note", ago(1), ago(0))
             "deleteNote" -> Unit
+            "attachments" -> com.solarquack.sift.data.AttachmentListResultDto(
+                items = listOf(
+                    com.solarquack.sift.data.AttachmentItemDto(
+                        id = "att1",
+                        messageId = "m1",
+                        accountId = "a1",
+                        filename = "assessment_guide.pdf",
+                        mime = "application/pdf",
+                        size = 524288,
+                        sender = "noreply@assesshub.example",
+                        senderName = "AssessHub",
+                        subject = "Acme Corp online assessment",
+                        receivedAt = ago(0),
+                        downloadUrl = "https://demo.sift.local/api/v1/files/tok1",
+                    )
+                ),
+                total = 1,
+            )
+            "attachmentStats" -> com.solarquack.sift.data.AttachmentStatsDto(
+                totalCount = 1,
+                totalSize = 524288,
+                byType = mapOf("pdf" to com.solarquack.sift.data.AttachmentTypeStatDto(count = 1, size = 524288)),
+            )
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

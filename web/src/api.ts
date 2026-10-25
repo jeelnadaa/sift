@@ -107,6 +107,37 @@ export interface MailNote {
   updated_at: string;
 }
 
+export interface AttachmentItem {
+  id: string;
+  message_id: string;
+  account_id: string;
+  filename: string;
+  mime: string;
+  size: number;
+  sender: string | null;
+  sender_name: string | null;
+  subject: string | null;
+  received_at: string | null;
+  download_url: string;
+}
+
+export interface AttachmentTypeStat {
+  count: number;
+  size: number;
+}
+
+export interface AttachmentStats {
+  total_count: number;
+  total_size: number;
+  by_type: Record<string, AttachmentTypeStat>;
+}
+
+export interface AttachmentListResult {
+  items: AttachmentItem[];
+  next_before: string | null;
+  total: number;
+}
+
 export interface Mail {
   type?: "mail";
   id: string; account_id: string; account: string | null; account_color: string | null;

@@ -48,6 +48,18 @@ interface SiftApi {
     @PATCH("api/v1/messages/{id}/notes/{note_id}") suspend fun updateNote(@Path("id") messageId: String, @Path("note_id") noteId: String, @Body body: NoteIn): MailNoteDto
     @DELETE("api/v1/messages/{id}/notes/{note_id}") suspend fun deleteNote(@Path("id") messageId: String, @Path("note_id") noteId: String)
 
+    @GET("api/v1/attachments") suspend fun attachments(
+        @Query("q") q: String? = null,
+        @Query("type") type: String? = null,
+        @Query("min_size") minSize: Long? = null,
+        @Query("max_size") maxSize: Long? = null,
+        @Query("account_id") accountId: String? = null,
+        @Query("before") before: String? = null,
+        @Query("limit") limit: Int? = null,
+    ): AttachmentListResultDto
+
+    @GET("api/v1/attachments/stats") suspend fun attachmentStats(): AttachmentStatsDto
+
     @GET("api/v1/accounts") suspend fun accounts(): List<AccountDto>
     @GET("api/v1/accounts/connect-url") suspend fun connectUrl(): ConnectUrl
     @DELETE("api/v1/accounts/{id}") suspend fun removeAccount(@Path("id") id: String)

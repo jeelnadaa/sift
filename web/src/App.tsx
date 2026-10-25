@@ -25,6 +25,7 @@ import { ScanPage } from "./pages/Scan";
 import { Accounts } from "./pages/Accounts";
 import { UsagePage } from "./pages/Usage";
 import { SettingsPage } from "./pages/Settings";
+import { AttachmentsPage } from "./pages/Attachments";
 
 const SIDEBAR_KEY = "sift.sidebar";
 
@@ -63,6 +64,7 @@ const NAV: { h: string; items: [string, string, string, string][] }[] = [
     ["/groups", "Groups", "groups", "Similar mail stacked together (display only)"]] },
   { h: "Organize", items: [
     ["/folders", "Folders", "folder", "Your own nested folders. Drop mail on one to file it"],
+    ["/attachments", "Attachments", "paperclip", "All files and documents across accounts"],
     ["/search", "Search", "search", "Gmail syntax plus Sift filters, across every account, or by meaning  ( / )"]] },
   { h: "Control", items: [
     ["/rules", "Rules", "rules", "What gets silenced, digested, notified or filed"],
@@ -176,6 +178,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
           <Route path="/" element={<Feed />} />
           <Route path="/mail/:id" element={<MailDetail />} />
           <Route path="/read/:accountId/:threadId" element={<ReadThread />} />
+          <Route path="/attachments" element={<AttachmentsPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/compose" element={<ComposeKeyed />} />
           <Route path="/outbox" element={<OutboxPage />} />
@@ -246,6 +249,7 @@ export function Top({ title, children, back }: { title: string; children?: React
 function Icons() {
   return (
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs>
+      <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></symbol>
       <symbol id="i-feed" viewBox="0 0 24 24"><path d="M3 13l2.5-7.5A2 2 0 017.4 4h9.2a2 2 0 011.9 1.5L21 13v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z" /><path d="M3 13h5l1.5 2.5h5L16 13h5" /></symbol>
       <symbol id="i-todo" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M8.5 12.5l2.5 2.5 4.5-5" /></symbol>
       <symbol id="i-opps" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></symbol>

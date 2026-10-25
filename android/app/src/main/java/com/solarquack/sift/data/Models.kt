@@ -74,6 +74,41 @@ data class PinResult(val id: String, val pinned: Boolean)
 data class MessagePage(val items: List<MessageDto>, @SerialName("next_before") val nextBefore: String? = null)
 
 @Serializable
+data class AttachmentItemDto(
+    val id: String,
+    @SerialName("message_id") val messageId: String,
+    @SerialName("account_id") val accountId: String,
+    val filename: String,
+    val mime: String,
+    val size: Long,
+    val sender: String? = null,
+    @SerialName("sender_name") val senderName: String? = null,
+    val subject: String? = null,
+    @SerialName("received_at") val receivedAt: String? = null,
+    @SerialName("download_url") val downloadUrl: String,
+)
+
+@Serializable
+data class AttachmentTypeStatDto(
+    val count: Int = 0,
+    val size: Long = 0,
+)
+
+@Serializable
+data class AttachmentStatsDto(
+    @SerialName("total_count") val totalCount: Int = 0,
+    @SerialName("total_size") val totalSize: Long = 0,
+    @SerialName("by_type") val byType: Map<String, AttachmentTypeStatDto> = emptyMap(),
+)
+
+@Serializable
+data class AttachmentListResultDto(
+    val items: List<AttachmentItemDto> = emptyList(),
+    @SerialName("next_before") val nextBefore: String? = null,
+    val total: Int = 0,
+)
+
+@Serializable
 data class BodyDto(val text: String, val attachments: List<String> = emptyList())
 
 @Serializable

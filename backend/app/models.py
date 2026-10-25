@@ -170,6 +170,31 @@ class Message(Base):
     created_at: Mapped[datetime] = created()
 
 
+class MessageAttachment(Base):
+    __tablename__ = "message_attachments"
+    __table_args__ = (
+        Index("ix_message_attachments_user_received", "user_id", "received_at"),
+        Index("ix_message_attachments_user_mime", "user_id", "mime"),
+        Index("ix_message_attachments_user_filename", "user_id", "filename"),
+        Index("ix_message_attachments_message", "message_id"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gmail_accounts.id", ondelete="CASCADE"), nullable=False)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    gmail_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    attachment_id: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime: Mapped[str] = mapped_column(String(120), nullable=False)
+    size: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0", nullable=False)
+    content_id: Mapped[str | None] = mapped_column(String(255))
+    sender: Mapped[str | None] = mapped_column(String(320))
+    sender_name: Mapped[str | None] = mapped_column(String(200))
+    subject: Mapped[str | None] = mapped_column(Text)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created()
+
+
 class Opportunity(Base):
     __tablename__ = "opportunities"
     __table_args__ = (

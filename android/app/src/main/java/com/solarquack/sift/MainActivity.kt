@@ -48,6 +48,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.solarquack.sift.data.Session
 import com.solarquack.sift.ui.screens.AccountsScreen
+import com.solarquack.sift.ui.screens.AttachmentsScreen
 import com.solarquack.sift.ui.screens.ComposeArgs
 import com.solarquack.sift.ui.screens.ComposeScreen
 import com.solarquack.sift.ui.screens.OutboxScreen
@@ -157,6 +158,7 @@ class MainActivity : ComponentActivity() {
                         ReadThreadScreen(entry.arguments?.getString("account") ?: "", entry.arguments?.getString("thread") ?: "", onBack = { nav.popBackStack() },
                             onWrite = { mode, acc, gmail -> nav.navigate(compose(mode = mode, account = acc, gmail = gmail)) })
                     }
+                    composable("attachments") { AttachmentsScreen(onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") }) }
                     composable("folders") { FoldersScreen(onOpen = { nav.navigate("folder/$it") }, onBack = { nav.popBackStack() }) }
                     composable("folder/{id}") { entry ->
                         FolderScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") }, onOpenFolder = { nav.navigate("folder/$it") })
@@ -186,7 +188,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 // Deals, To-do and Rules keep their own add button in this corner
-                val fab = route != null && (route in setOf("feed", "silenced", "search", "folders", "outbox", "more", "accounts") ||
+                val fab = route != null && (route in setOf("feed", "silenced", "search", "folders", "attachments", "outbox", "more", "accounts") ||
                     route == "groups" || route.startsWith("folder/") || route.startsWith("group/") || route.startsWith("read/"))
                 if (fab) WriteFab(Modifier.align(Alignment.BottomEnd)) { nav.navigate(compose()) }
             }

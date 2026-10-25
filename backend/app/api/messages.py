@@ -151,6 +151,20 @@ def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, 
     for x in msgs:
         x["id"] = str(stored[x["gmail_id"]]) if x["gmail_id"] in stored else None
         x.pop("html")  # clients load the sandboxed document from html_url instead
+
+    # Index any attachments in the rendered messages if stored in db
+    from app import attachments
+    for m_raw in thread.get("messages") or []:
+        gid = m_raw.get("id")
+        if gid in stored and m_raw.get("payload"):
+            m_db = db.get(Message, stored[gid])
+            if m_db:
+                try:
+                    attachments.index_attachments(db, m_db, account, m_raw["payload"])
+                except Exception:
+                    pass
+    db.commit()
+
     return {"thread_id": thread_id, "account": account.label or account.email, "account_id": str(account.id),
             "subject": (msgs[0]["subject"] if msgs else fallback_subject) or "", "images": images, "messages": msgs}
 
