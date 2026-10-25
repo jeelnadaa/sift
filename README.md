@@ -2,7 +2,7 @@
 
 Personal email assistant: watches your Gmail accounts, runs your rules first, uses a small LLM (your own key) only for what rules don't settle, and pushes priority mail to your Android phone in seconds. Full spec: [`Inbox_Agent_Master_Prompt.md`](Inbox_Agent_Master_Prompt.md). Status: [`PROGRESS.md`](PROGRESS.md). Design: [`DESIGN.md`](DESIGN.md).
 
-**Current phase: Phase D (Search & Engine Enhancements).** Phases 0–4, Phase B Core Specs (Private Mail Notes, Pinned Mail, Per-Account Signatures & Sender Profiles, Quiet Hours schedule & category filtering), Phase C Hubs (Attachments Hub, Senders Directory, One-Tap Unsubscribe, Google Calendar & RSVP Hub), and Phase D Item 1 (Canned Reply Templates in Compose with shortcut expansion and full management) are completed with full feature parity across the FastAPI Backend, React Web UI, and Kotlin Jetpack Compose Android app.
+**Current status: Phases 0–4, Phase A (Defect Remediation), Phase B (Core Specs), Phase C (Productivity Hubs), and Phase D (Search & Engine Enhancements) are 100% completed with full feature parity across the FastAPI Backend, React Web UI, and Kotlin Jetpack Compose Android app.** All features (Private Mail Notes, Pinned Mail, Signatures & Profiles, Quiet Hours schedule & category filtering, Attachments Hub, Senders Directory, One-Tap Unsubscribe, Calendar RSVPs, Canned Reply Templates, Fallback LLMs with Ollama/OpenAI, PostgreSQL Trigram typo-tolerant search, and VIP Senders & Muted Threads) are fully tested and verified across all tiers.
 
 ```
                  ┌── poll (default): scheduler asks Gmail "what changed?" every 10 s ──┐
