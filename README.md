@@ -27,7 +27,7 @@ Two independent choices, both set in `.env`, no code changes:
 | `design/` | HTML design prototypes (landing, web UI, mobile) |
 | `docker-compose.yml` | postgres, redis, api, worker, scheduler, cloudflared, caddy |
 | `deploy/Caddyfile` | HTTPS reverse proxy for a VM |
-| `scripts/` | `run-local.ps1` (native Windows), `backup.sh`, `restore.sh` |
+| `scripts/` | `sift.ps1` (start/stop/restart/status/logs/update/backup/restore/autostart on Windows; `start-sift.cmd`, `stop-sift.cmd`, `sift-status.cmd` to double-click), `run-local.ps1`, `install-autostart.ps1`, `backup.sh`, `restore.sh` (Docker) |
 
 ---
 
@@ -136,6 +136,22 @@ A tunnel only works for a domain whose DNS Cloudflare manages. GoDaddy stays the
 With Docker instead of a Windows service: put the token in `TUNNEL_TOKEN`, add `tunnel` to `COMPOSE_PROFILES`, and route the hostname to `http://api:8000`.
 
 Exposed to the internet, Sift keeps `/docs` off (`API_DOCS=false`), throttles failed sign-ins (`LOGIN_ATTEMPTS` per email and per visitor in 15 minutes), requires sign-in on every app endpoint, and verifies Google's signature on the Pub/Sub webhook.
+
+**Everyday control (Windows): `scripts\sift.ps1`.** Run `powershell -ExecutionPolicy Bypass -File scripts\sift.ps1 <command>`, or double-click `scripts\start-sift.cmd`, `stop-sift.cmd`, `sift-status.cmd`.
+
+| Command | What it does |
+|---|---|
+| `start` | Turns the autostart task on and starts Sift; waits until it answers |
+| `stop` | Stops Sift **and keeps it stopped** (pauses the task; its 5-minute watchdog would otherwise restart it). Mail isn't lost: Sift catches up on start |
+| `restart` | `stop` then `start` |
+| `status` | Task on/off, API/worker/scheduler, local and public health, tunnel and Postgres services, latest backup, recent errors in the logs |
+| `logs api` | Follow a log live (`api`, `worker`, `scheduler`, `supervisor`) |
+| `update` | After `git pull`: stop, `pip install`, migrate, build the web app (`-SkipWeb` to skip), start |
+| `backup` | `pg_dump` to `backups\sift-<time>.dump`, keeps the newest 14 (Sift keeps running). Copy it off the laptop with your `.env` |
+| `restore <file>` | Asks you to type RESTORE, stops Sift, restores the dump, starts Sift |
+| `autostart on` / `off` | Install or remove the sign-in task |
+
+The database password is read from `.env` and given to `pg_dump`/`pg_restore` through the environment only; nothing prints it.
 
 **Start automatically (Windows):** `powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1` registers a "Sift" task for your user that starts `run-local.ps1` hidden at every sign-in. `run-local.ps1` restarts any service that crashes (see `logs\supervisor.log`), and the task re-fires every 5 minutes as a watchdog in case the supervisor itself dies. Control it with `Start-ScheduledTask Sift` / `Stop-ScheduledTask Sift`; remove it with `install-autostart.ps1 -Remove`. The Cloudflare Tunnel runs as its own Windows service.
 
