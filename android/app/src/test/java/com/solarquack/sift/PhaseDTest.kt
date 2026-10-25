@@ -159,4 +159,15 @@ class PhaseDTest {
         assertEquals("gpt-4o-mini", saved.model)
         assertEquals("ollama", saved.fallbackProvider)
     }
+
+    @Test
+    fun testFakeApiFuzzySearch() = runBlocking {
+        val api = Api.testOverride
+        assertNotNull(api)
+
+        val res = api!!.search("assessment", fuzzy = true)
+        assertTrue(res.items.isNotEmpty())
+        assertEquals("m1", res.items[0].id)
+        assertEquals("Acme Corp online assessment: link inside", res.items[0].subject)
+    }
 }

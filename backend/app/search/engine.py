@@ -452,3 +452,32 @@ def message_matches(db: Session, user_id: uuid.UUID, q: str, m: Message) -> bool
         except Unknown as exc:
             raise SearchError(f"can't match {exc} on stored mail") from exc
     return True
+
+
+def fuzzy_search(db: Session, user_id: uuid.UUID, q: str, accounts: list[GmailAccount], limit: int = 30) -> list[Hit]:
+    """Finds stored messages using PostgreSQL pg_trgm similarity on subject, sender, and sender_name."""
+    clean_q = q.strip().lower()
+    if not clean_q:
+        return []
+    sim_score = func.greatest(
+        func.similarity(func.lower(func.coalesce(Message.subject, "")), clean_q),
+        func.similarity(func.lower(func.coalesce(Message.sender, "")), clean_q),
+        func.similarity(func.lower(func.coalesce(Message.sender_name, "")), clean_q),
+    )
+    stmt = (
+        select(Message, sim_score.label("score"))
+        .where(
+            Message.user_id == user_id,
+            Message.status.in_(SEARCHABLE_STATUSES),
+            (
+                (func.similarity(func.lower(func.coalesce(Message.subject, "")), clean_q) > 0.2)
+                | (func.similarity(func.lower(func.coalesce(Message.sender, "")), clean_q) > 0.2)
+                | (func.similarity(func.lower(func.coalesce(Message.sender_name, "")), clean_q) > 0.2)
+            ),
+        )
+        .order_by(sim_score.desc(), Message.received_at.desc().nulls_last())
+        .limit(limit)
+    )
+    rows = [r[0] for r in db.execute(stmt).all()]
+    by_id = {a.id: a for a in accounts}
+    return [Hit(by_id[r.account_id], r.gmail_id, r.thread_id, r.received_at, r) for r in rows if r.account_id in by_id]

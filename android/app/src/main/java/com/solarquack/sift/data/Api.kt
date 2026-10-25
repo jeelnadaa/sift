@@ -196,7 +196,7 @@ interface SiftApi {
     @POST("api/v1/groups/{id}/rule") suspend fun ruleFromGroup(@Path("id") id: String, @Body body: GroupRuleIn): DraftResponse
     @PUT("api/v1/grouping/preferences") suspend fun setGroupPreference(@Body body: PreferenceIn): List<PreferenceDto>
 
-    @GET("api/v1/search") suspend fun search(@Query("q") q: String, @Query("cursor") cursor: String? = null, @Query("limit") limit: Int = 30): SearchResult
+    @GET("api/v1/search") suspend fun search(@Query("q") q: String, @Query("cursor") cursor: String? = null, @Query("limit") limit: Int = 30, @Query("fuzzy") fuzzy: Boolean = false): SearchResult
     @GET("api/v1/search/semantic") suspend fun semantic(@Query("q") q: String, @Query("offset") offset: Int = 0, @Query("limit") limit: Int = 30): SemanticResult
     @GET("api/v1/search/semantic/status") suspend fun semanticStatus(): SemanticStatus
     @POST("api/v1/search/parse") suspend fun parseQuery(@Body body: QueryIn): ParseResult

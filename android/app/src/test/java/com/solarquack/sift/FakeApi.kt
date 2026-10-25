@@ -231,6 +231,29 @@ object FakeApi {
             }
             "testKey" -> AiStatus(true, "valid", "gemini", "gemini-2.5-flash", "a91f", 1240, 50000)
             "removeKey" -> Unit
+            "search" -> com.solarquack.sift.data.SearchResult(
+                items = mails.map { m ->
+                    com.solarquack.sift.data.SearchHit(
+                        id = m.id,
+                        accountId = m.accountId,
+                        account = m.account,
+                        accountColor = m.accountColor,
+                        threadId = "t_${m.id}",
+                        sender = m.sender,
+                        senderName = m.senderName,
+                        subject = m.subject,
+                        snippet = m.snippet,
+                        summary = m.summary,
+                        receivedAt = m.receivedAt,
+                        priority = m.priority,
+                        category = m.category,
+                        company = m.company,
+                        unread = m.unread,
+                    )
+                },
+                total = mails.size,
+                chips = emptyList(),
+            )
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

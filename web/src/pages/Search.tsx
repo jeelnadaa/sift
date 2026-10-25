@@ -37,7 +37,7 @@ export function SearchPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
-  const mode = params.get("mode") === "meaning" ? "meaning" : "keywords";
+  const mode = params.get("mode") === "meaning" ? "meaning" : params.get("mode") === "fuzzy" ? "fuzzy" : "keywords";
   const [draft, setDraft] = useState(q);
   const [chips, setChips] = useState<Chip[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -67,6 +67,10 @@ export function SearchPage() {
       const offset = before ? Number(before) : 0;
       const r = await get<{ items: Result["items"]; total: number; next_offset: number | null }>("/search/semantic", { q, offset, limit: PAGE });
       return { items: r.items, next_before: r.next_offset === null ? null : String(r.next_offset), total: r.total, pages: Math.max(1, Math.ceil(r.total / PAGE)) };
+    }
+    if (mode === "fuzzy") {
+      const r = await get<Result & { next_cursor: string | null }>("/search", { q, fuzzy: true, limit: PAGE });
+      return { ...r, next_before: null, total: r.total, pages: 1 };
     }
     const r = await get<Result & { next_cursor: string | null }>("/search", { q, cursor: before, limit: PAGE });
     // Gmail only estimates how many results a search has (and badly), so Gmail searches show no total
@@ -130,6 +134,7 @@ export function SearchPage() {
           </div>
           <div className="tabs" style={{ margin: 0 }}>
             <button className={`chip ${mode === "keywords" ? "on" : ""}`} onClick={() => run(q, "keywords")} data-tip="Gmail's own search plus Sift's filters, across all your accounts">Keywords</button>
+            <button className={`chip ${mode === "fuzzy" ? "on" : ""}`} onClick={() => run(q, "fuzzy")} data-tip="PostgreSQL trigram fuzzy search tolerant to typos across subjects and senders">Fuzzy</button>
             <button className={`chip ${mode === "meaning" ? "on" : ""}`} disabled={!aiOn} onClick={() => aiOn && run(q, "meaning")}
               data-tip={aiOn ? `Find mail by what it's about, not exact words. ${sem.data?.indexed ?? 0} mails indexed (new mail + last ${sem.data?.backfill_days ?? 90} days)` : "Add an API key to enable"}>By meaning</button>
             {mode === "meaning" && sem.data && sem.data.indexed < sem.data.recent_total && (

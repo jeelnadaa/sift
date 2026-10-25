@@ -66,6 +66,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
     var draft by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
     var meaning by rememberSaveable { mutableStateOf(false) }
+    var fuzzy by rememberSaveable { mutableStateOf(false) }
     var chips by remember { mutableStateOf<List<QueryChip>>(emptyList()) }
     var hits by remember { mutableStateOf<List<SearchHit>>(emptyList()) }
     var next by remember { mutableStateOf<String?>(null) }
@@ -91,6 +92,11 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             val r = api.semantic(query, cursor?.toInt() ?: 0)
             total = r.total
             r.items to r.nextOffset?.toString()
+        } else if (fuzzy) {
+            val r = api.search(query, fuzzy = true)
+            total = r.total; estimated = false; failed = emptyList()
+            if (cursor == null) chips = r.chips
+            r.items to null
         } else {
             val r = api.search(query, cursor)
             total = r.total; estimated = r.estimated; failed = r.failedAccounts
@@ -99,7 +105,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
         }
     }
 
-    LaunchedEffect(query, meaning) {
+    LaunchedEffect(query, meaning, fuzzy) {
         hits = emptyList(); next = null; error = null
         if (query.isBlank()) { chips = emptyList(); return@LaunchedEffect }
         loading = true
@@ -137,8 +143,9 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             Field(draft, { draft = it }, "Search all accounts", placeholder = "from:kotak has:attachment · folder:Work")
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 PrimaryButton("Search", enabled = draft.isNotBlank()) { run(draft) }
-                Chip("Keywords", !meaning) { meaning = false }
-                Chip(if (aiOn) "By meaning" else "By meaning (needs key)", meaning) { if (aiOn) meaning = true }
+                Chip("Keywords", !meaning && !fuzzy) { meaning = false; fuzzy = false }
+                Chip("Fuzzy", fuzzy) { fuzzy = true; meaning = false }
+                Chip(if (aiOn) "By meaning" else "By meaning (needs key)", meaning) { if (aiOn) { meaning = true; fuzzy = false } }
             }
             if (chips.isNotEmpty()) {
                 FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

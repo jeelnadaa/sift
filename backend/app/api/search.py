@@ -40,8 +40,22 @@ def _search(db: Session, user: User, q: str, cursor: str | None, limit: int):
 
 @router.get("/search")
 def search(q: str = Query(min_length=1, max_length=1000), cursor: str | None = Query(default=None, max_length=20000),
-           limit: int = Query(default=30, ge=1, le=100), user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+           limit: int = Query(default=30, ge=1, le=100), fuzzy: bool = Query(default=False),
+           user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Gmail syntax plus Sift filters, across accounts; one row per conversation, newest first."""
+    if fuzzy:
+        accounts = engine._accounts(db, user.id)
+        hits = engine.fuzzy_search(db, user.id, q, accounts, limit)
+        if not cursor:
+            _remember(db, user.id, q.strip())
+        db.commit()
+        return {
+            "items": [engine.hit_json(h, message_json) for h in hits], "next_cursor": None,
+            "total": len(hits), "estimated": False, "failed_accounts": [],
+            "gmail_query": "", "words": [q],
+            "chips": [{"text": q, "kind": "sift", "label": f"Fuzzy: {q}", "negated": False}],
+            "fuzzy": True,
+        }
     hits, nxt, total, failed, parsed = _search(db, user, q, cursor, limit)
     if not cursor:
         _remember(db, user.id, q.strip())
@@ -51,6 +65,7 @@ def search(q: str = Query(min_length=1, max_length=1000), cursor: str | None = Q
         "total": total, "estimated": parsed.has_gmail and not engine.answered_locally(parsed), "failed_accounts": failed,
         "gmail_query": parsed.gmail, "words": parsed.words,
         "chips": [c.__dict__ for c in parsed.chips],
+        "fuzzy": False,
     }
 
 
@@ -72,15 +87,89 @@ def parse_query(body: ParseIn, user: User = Depends(current_user)) -> dict:
 def suggest(q: str = Query(default="", max_length=200), user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Live suggestions: senders, folders, tags, saved and recent searches matching what's typed."""
     term = q.strip().lower()
-    like = f"%{term.replace('%', '').replace('_', '')}%"
-    senders = db.execute(
+    clean_term = term.replace("%", "").replace("_", "")
+    like = f"%{clean_term}%"
+    sender_rows = list(db.execute(
         select(Message.sender, func.max(Message.sender_name), func.count()).where(
             Message.user_id == user.id, Message.sender.is_not(None),
             (func.lower(Message.sender).like(like)) | (func.lower(Message.sender_name).like(like)))
-        .group_by(Message.sender).order_by(func.count().desc()).limit(6)).all()
-    folders = db.scalars(select(Folder.name).where(Folder.user_id == user.id, func.lower(Folder.name).like(like)).order_by(Folder.name).limit(6))
-    tags = db.scalars(select(Tag.name).where(Tag.user_id == user.id, func.lower(Tag.name).like(like)).order_by(Tag.name).limit(6))
-    saved = db.scalars(select(SavedSearch).where(SavedSearch.user_id == user.id, func.lower(SavedSearch.name).like(like)).order_by(SavedSearch.pinned.desc(), SavedSearch.name).limit(6))
+        .group_by(Message.sender).order_by(func.count().desc()).limit(6)).all())
+
+    if len(sender_rows) < 6 and len(clean_term) >= 3:
+        existing = {s for s, _, _ in sender_rows}
+        sim_col = func.greatest(
+            func.word_similarity(clean_term, func.lower(Message.sender)),
+            func.word_similarity(clean_term, func.lower(func.coalesce(Message.sender_name, ""))),
+            func.similarity(clean_term, func.lower(Message.sender)),
+            func.similarity(clean_term, func.lower(func.coalesce(Message.sender_name, ""))),
+        )
+        fuzzy_rows = db.execute(
+            select(Message.sender, func.max(Message.sender_name), func.count(), sim_col.label("sim"))
+            .where(
+                Message.user_id == user.id,
+                Message.sender.is_not(None),
+                Message.sender.not_in(existing) if existing else True,
+                (
+                    (func.word_similarity(clean_term, func.lower(Message.sender)) > 0.3)
+                    | (func.word_similarity(clean_term, func.lower(func.coalesce(Message.sender_name, ""))) > 0.3)
+                    | (func.similarity(clean_term, func.lower(Message.sender)) > 0.2)
+                    | (func.similarity(clean_term, func.lower(func.coalesce(Message.sender_name, ""))) > 0.2)
+                ),
+            )
+            .group_by(Message.sender, Message.sender_name)
+            .order_by(sim_col.desc())
+            .limit(6 - len(sender_rows))
+        ).all()
+        sender_rows.extend([(s, n, c) for s, n, c, _ in fuzzy_rows])
+
+    folders = list(db.scalars(select(Folder.name).where(Folder.user_id == user.id, func.lower(Folder.name).like(like)).order_by(Folder.name).limit(6)))
+    if len(folders) < 6 and len(clean_term) >= 3:
+        existing_f = set(folders)
+        f_sim = func.greatest(
+            func.word_similarity(clean_term, func.lower(Folder.name)),
+            func.similarity(clean_term, func.lower(Folder.name)),
+        )
+        fuzzy_f = list(db.scalars(
+            select(Folder.name).where(
+                Folder.user_id == user.id,
+                Folder.name.not_in(existing_f) if existing_f else True,
+                f_sim > 0.3,
+            ).order_by(f_sim.desc()).limit(6 - len(folders))
+        ))
+        folders.extend(fuzzy_f)
+
+    tags = list(db.scalars(select(Tag.name).where(Tag.user_id == user.id, func.lower(Tag.name).like(like)).order_by(Tag.name).limit(6)))
+    if len(tags) < 6 and len(clean_term) >= 3:
+        existing_t = set(tags)
+        t_sim = func.greatest(
+            func.word_similarity(clean_term, func.lower(Tag.name)),
+            func.similarity(clean_term, func.lower(Tag.name)),
+        )
+        fuzzy_t = list(db.scalars(
+            select(Tag.name).where(
+                Tag.user_id == user.id,
+                Tag.name.not_in(existing_t) if existing_t else True,
+                t_sim > 0.3,
+            ).order_by(t_sim.desc()).limit(6 - len(tags))
+        ))
+        tags.extend(fuzzy_t)
+
+    saved = list(db.scalars(select(SavedSearch).where(SavedSearch.user_id == user.id, func.lower(SavedSearch.name).like(like)).order_by(SavedSearch.pinned.desc(), SavedSearch.name).limit(6)))
+    if len(saved) < 6 and len(clean_term) >= 3:
+        existing_s = {s.id for s in saved}
+        s_sim = func.greatest(
+            func.word_similarity(clean_term, func.lower(SavedSearch.name)),
+            func.similarity(clean_term, func.lower(SavedSearch.name)),
+        )
+        fuzzy_s = list(db.scalars(
+            select(SavedSearch).where(
+                SavedSearch.user_id == user.id,
+                SavedSearch.id.not_in(existing_s) if existing_s else True,
+                s_sim > 0.3,
+            ).order_by(s_sim.desc()).limit(6 - len(saved))
+        ))
+        saved.extend(fuzzy_s)
+
     row = db.scalar(select(Setting).where(Setting.user_id == user.id, Setting.account_id.is_(None)))
     recent = [r for r in (row.data if row else {}).get("recent_searches", []) if term in r.lower()][:6]
 
@@ -88,7 +177,7 @@ def suggest(q: str = Query(default="", max_length=200), user: User = Depends(cur
         return f'"{v}"' if any(c in v for c in ' (){}"') else v
 
     return {
-        "senders": [{"label": n or s, "detail": s, "count": c, "query": f"from:{s}"} for s, n, c in senders],
+        "senders": [{"label": n or s, "detail": s, "count": c, "query": f"from:{s}"} for s, n, c in sender_rows],
         "folders": [{"label": f, "query": f"folder:{quote(f)}"} for f in folders],
         "tags": [{"label": t, "query": f"tag:{quote(t)}"} for t in tags],
         "saved": [{"label": s.name, "query": s.query, "id": str(s.id)} for s in saved],
