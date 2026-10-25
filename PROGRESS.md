@@ -19,6 +19,9 @@ Rule: commit every change to git, never push (the owner pushes).
 | Phase 5 | Not started (semantic search already done in Phase 3) |
 | Custom groups, multi-place routing, Sift AI over everything (2026-10-25) | **Built and tested** (backend, web, Android). Waiting for the owner to try it |
 | Healing, offline, Ask Sift (2026-10-25) | **Built and tested** (backend, web, Android): catch-up after downtime, apps open offline with Clear, Ask Sift with pacing, Android to-do delete and Groups. Waiting for the owner to try it |
+| Phase A (Critical Audits & Defect Remediation) | **Resolved & Verified 2026-10-26** (timezone test bug, Ask Sift action crash, subject privacy leak, intake transaction lock, 25MB draft attachment limit) |
+| Phase B (Core Specs & Essential Primitives) | **Built, Verified & Parity Complete 2026-10-26** (backend, web, Android): Mail Notes CRUD, Pinned Mail top ordering & filters, Per-account signatures & sender profiles, Quiet Hours schedule & category notification filtering |
+| Phase C (Organization & Productivity Hubs) | In progress |
 
 ## Log (newest last)
 - 2026-10-24 — Chose name Sift. Started design track: static HTML prototypes in `design/`.
@@ -277,3 +280,15 @@ Rule: commit every change to git, never push (the owner pushes).
 - `scripts/run-local.ps1` must be started as its own process (`powershell -File ...`); it does not work inside a PowerShell background job (Start-Job).
 - Phone screens can be rendered without a device: `./gradlew :app:recordPaparazziDebug` writes PNGs to `android/app/src/test/snapshots/images/` (not committed; `FakeApi` in `app/src/test` supplies sample data). The Android emulator can't run here (no hypervisor driver).
 - Gradle on Windows here fails with "Unable to establish loopback connection" unless `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\gtmp` is set (and it must run outside the tool sandbox).
+
+- 2026-10-26 — **Phase A: Critical engine and security audit fixes (`31ed725`).**
+  - Resolved semantic search date test fixture failure (`today + 1d` timezone boundary).
+  - Fixed runtime crash in Ask Sift general assistant when tools return action strings.
+  - Eliminated subject redaction privacy leak in intake pipeline during LLM payload preparation.
+  - Added PostgreSQL advisory transaction locks per account to prevent intake concurrency races.
+  - Enforced aggregate 25 MB payload limit on compose attachments with HTTP 413 error handling.
+- 2026-10-26 — **Phase B: Core Specs & Essential Primitives (`d0ab2c9`, `11bb7f3`, `ce94bb1`, `7ea7cef`, `a7690a6`).**
+  - **Item 1: Mail Notes**: Private annotations CRUD service layer (`app/notes.py`), REST endpoints (`/api/v1/messages/{id}/notes`), Ask Sift `note_mail` assistant action, Web UI Private Notes card in `Mail.tsx` and 📝 badge in `components.tsx`, Android UI `PrivateNotesSection` in `MailScreen.kt` and 📝 badge in `FeedScreen.kt`, unit tests passing.
+  - **Item 2: Pinned Mail**: Database migration `0013_pinned_messages.py` adding `pinned: Mapped[bool]` and `ix_messages_user_pinned`, feed query ordering with cursor pagination fallback, search filters `is:pinned` / `-is:pinned`, Ask Sift `pin_mail` / `unpin_mail` actions, Web UI pin toggle in `Mail.tsx` and 📌 badge & filter tab in `Feed.tsx`, Android pin toggle in `MailScreen.kt` and 📌 badge & filter chip in `FeedScreen.kt`, unit tests passing.
+  - **Item 3: Per-Account Signatures & Sender Profiles**: Extended settings with `account_id` query parameter and dedicated `/accounts/{id}/settings` endpoints, compose draft and AI draft sender name resolution, Web UI account selector chips in `Settings.tsx` and dynamic signature swap in `Compose.tsx`, Android UI account selector chips in `SettingsScreen.kt` and dynamic signature swap in `ComposeScreen.kt`, unit tests passing.
+  - **Item 4: Quiet Hours & Notification Filtering**: User settings extended with `quiet_hours_enabled`, `quiet_hours_start`, `quiet_hours_end`, `muted_categories`, timezone-aware `is_in_quiet_hours()` calculation with overnight wrap-around, `notify_message` and `notify_match` suppression of non-urgent notifications with urgent break-through guarantee, Web UI settings in `Settings.tsx`, Android UI settings in `SettingsScreen.kt`, backend and Android unit tests passing.

@@ -110,6 +110,20 @@ object FakeApi {
                 siftAi = com.solarquack.sift.data.SiftAiUsage(3054, 2, listOf(
                     com.solarquack.sift.data.SiftAiRun("r2", "Make a group Internships for internship offers and add old ones too", "done", 2120),
                     com.solarquack.sift.data.SiftAiRun("r1", "What's due this week?", "done", 934))))
+            "settings" -> com.solarquack.sift.data.SettingsDto(
+                senderName = "Demo User",
+                signature = "Demo Signature",
+                quietHoursEnabled = true,
+                quietHoursStart = "22:00",
+                quietHoursEnd = "07:00",
+                mutedCategories = listOf("fyi"),
+            )
+            "patchSettings" -> com.solarquack.sift.data.SettingsDto()
+            "pinMessage" -> com.solarquack.sift.data.PinResult("m1", true)
+            "notes" -> listOf(com.solarquack.sift.data.MailNoteDto("n1", "m1", "Review by Friday", ago(1), ago(1)))
+            "addNote" -> com.solarquack.sift.data.MailNoteDto("n2", "m1", "New note", ago(0), ago(0))
+            "updateNote" -> com.solarquack.sift.data.MailNoteDto("n1", "m1", "Updated note", ago(1), ago(0))
+            "deleteNote" -> Unit
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false
