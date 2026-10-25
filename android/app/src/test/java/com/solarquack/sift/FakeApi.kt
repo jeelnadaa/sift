@@ -81,6 +81,24 @@ object FakeApi {
                 TodoDto("t2", "Register for the Globex drive", notes = "Needs the latest marksheet", dueAt = ahead(60), company = "Globex"),
                 TodoDto("t3", "Send updated CV to the placement cell"),
             )
+            "askRuns" -> listOf(
+                com.solarquack.sift.data.AskRunDto("r1", "What's due this week?", "Here's what's due in the next 7 days.", "done",
+                    steps = listOf(com.solarquack.sift.data.AskStepDto("list_todos", "read", "Show week to-dos")),
+                    results = listOf(com.solarquack.sift.data.AskResultDto(true, "2 to-dos due this week", todos = listOf(
+                        TodoDto("t1", "Acme Corp: finish the online test", dueAt = tonight), TodoDto("t2", "Register for the Globex drive", dueAt = ahead(60))))),
+                    tokens = 1310),
+                com.solarquack.sift.data.AskRunDto("r2", "Make timelines from Placements → Globex and archive Northbank alerts older than a month",
+                    "I'll build Globex's timeline from that folder and archive the old bank alerts.", "planned",
+                    steps = listOf(
+                        com.solarquack.sift.data.AskStepDto("build_timelines", "write", "AI builds company timelines from 2 stored mail matching folder:Globex: no new AI reading"),
+                        com.solarquack.sift.data.AskStepDto("mail_action", "gmail", "In Gmail: archive 14 conversations matching from:northbank older_than:30d")),
+                    needsConfirm = true, changesGmail = true, tokens = 1402),
+            )
+            "groups" -> listOf(
+                com.solarquack.sift.data.GroupDto("g1", "Northbank alerts", "template", count = 14, unread = 2, latestSender = "Northbank", latestSubject = "₹240.00 debited via UPI", receivedAt = ago(1)),
+                com.solarquack.sift.data.GroupDto("g2", "Globex", "opportunity", count = 4, unread = 1, urgent = 0, latestSender = "Riya at Globex", latestSubject = "Backend role at Globex: quick chat?", receivedAt = ago(3)),
+                com.solarquack.sift.data.GroupDto("g3", "Campus Weekly", "list", muted = true, count = 6, latestSender = "Campus Weekly", latestSubject = "This week on campus", receivedAt = ago(30)),
+            )
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

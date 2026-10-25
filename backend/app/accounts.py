@@ -3,6 +3,16 @@
 check_account() is the single entry point for "something may have changed in this
 mailbox". Poll mode calls it on a timer; push mode calls it when Pub/Sub pings.
 Everything after it (the Phase 1 pipeline) is the same in both modes.
+
+Healing after downtime (the server is a laptop that gets switched off):
+- Off for less than about a week: Gmail still lists the changes since our stored cursor, so the
+  next check processes every missed mail. Only urgent mail pushes on its own; the rest of the
+  late mail is summed up in one push ("12 mails arrived while Sift was off").
+- Off for longer (the cursor expired): a catch_up job lists inbox mail since the last good check
+  (up to CATCH_UP_DAYS / CATCH_UP_MAX) and runs it through the same pipeline. Mail older than
+  pipeline.AI_MAX_AGE is sorted by rules only, never sent to the AI.
+- A newly connected account imports its last IMPORT_DAYS of inbox mail, rules only, silently,
+  so the feed is not empty on day one.
 """
 import logging
 import time
@@ -24,6 +34,14 @@ from app.models import GmailAccount, Message, User
 log = logging.getLogger(__name__)
 
 _token_cache: dict[uuid.UUID, tuple[str, float]] = {}  # account id -> (access token, expiry epoch)
+
+
+CATCH_UP_DAYS = 30  # a longer outage is caught up for its last 30 days
+CATCH_UP_MAX = 500
+IMPORT_DAYS = 7
+IMPORT_MAX = 300
+# mail Sift itself sends or drafts is not new mail; Gmail's list already leaves out spam and trash
+CATCH_UP_QUERY = "-in:sent -in:drafts -in:chats"
 
 
 class ConnectError(Exception):
@@ -111,26 +129,85 @@ def connect_account(db: Session, user_email: str, code: str) -> GmailAccount:
         from app import jobs
 
         jobs.enqueue_sync("onboarding_scan", {"scan_id": str(scan_id)}, dedupe_key=f"scan:{scan_id}")
+        # the feed starts with the last week of mail, not empty (rules only, no AI, no pushes)
+        since = datetime.now(UTC) - timedelta(days=IMPORT_DAYS)
+        jobs.enqueue_sync("catch_up", {"account_id": str(account.id), "since": since.isoformat(), "mode": "import"},
+                          dedupe_key=f"catch_up:{account.id}")
     log.info("connected account %s", account.id)
     return account
 
 
 # ---- change detection ----------------------------------------------------------
 
-def on_new_messages(db: Session, account: GmailAccount, provider: MailProvider, message_ids: list[str]) -> None:
+def on_new_messages(db: Session, account: GmailAccount, provider: MailProvider, message_ids: list[str], mode: str = "live") -> int:
     """Run the pipeline for each new message, oldest first. A transient error stops here and the
-    check is retried from the same cursor; already processed messages are skipped then."""
+    check is retried from the same cursor; already processed messages are skipped then.
+    Late mail that was not pushed on its own gets one summary push at the end.
+    Returns how many messages were new to Sift."""
+    from app import events, notify
     from app.locks import user_lock
     from app.pipeline import process_message
 
-    log.info("account %s: %d new message(s)", account.id, len(message_ids))
-    for gmail_id in message_ids:
-        # one mail at a time per user, across accounts and AI tasks (see app.locks)
-        with user_lock(account.user_id), get_sessionmaker()() as mdb:
-            acc = mdb.get(GmailAccount, account.id)
-            outcome = process_message(mdb, acc, provider, gmail_id)
-            if outcome.decided_by != "existing":
-                log.info("message %s: %s by %s%s", outcome.message_id, outcome.priority, outcome.decided_by, ", notified" if outcome.notified else "")
+    log.info("account %s: %d new message(s)%s", account.id, len(message_ids), f" ({mode})" if mode != "live" else "")
+    new = held = 0
+    quiet_ids: list[uuid.UUID] = []
+
+    def announce() -> None:  # quietly sorted mail reaches open apps in batches, not one by one
+        if quiet_ids:
+            with get_sessionmaker()() as edb:
+                events.publish(edb, account.user_id, "new_mail", ids=list(quiet_ids))
+                edb.commit()
+            quiet_ids.clear()
+
+    try:
+        for gmail_id in message_ids:
+            # one mail at a time per user, across accounts and AI tasks (see app.locks)
+            with user_lock(account.user_id), get_sessionmaker()() as mdb:
+                acc = mdb.get(GmailAccount, account.id)
+                outcome = process_message(mdb, acc, provider, gmail_id, mode=mode)
+            if outcome.decided_by in ("existing", "gone"):
+                continue
+            new += 1
+            # late mail not pushed on its own; too-old mail counts too (but not imports or silenced mail)
+            if outcome.held or (outcome.quiet and mode == "live" and outcome.priority not in (None, "silent")):
+                held += 1
+            if outcome.quiet and outcome.message_id:
+                quiet_ids.append(outcome.message_id)
+                if len(quiet_ids) >= 25:
+                    announce()
+            log.info("message %s: %s by %s%s", outcome.message_id, outcome.priority, outcome.decided_by, ", notified" if outcome.notified else "")
+    finally:
+        announce()
+        if held:
+            with get_sessionmaker()() as ndb:
+                n = f"{held} mail{'s' if held != 1 else ''}"
+                notify.send_system(ndb, account.user_id, "Caught up on missed mail",
+                                   f"{n} arrived in {account.email} while Sift was off. They're in your feed.")
+                ndb.commit()
+    return new
+
+
+def catch_up(account_id: uuid.UUID | str, since: datetime, mode: str = "live") -> int:
+    """List inbox mail since `since` and run it through the pipeline, oldest first: after an
+    outage too long for the change cursor, or as a new account's import. Idempotent: mail
+    already in Sift is skipped, so a retry or an overlapping regular check costs nothing extra."""
+    with get_sessionmaker()() as db:
+        account = db.get(GmailAccount, uuid.UUID(str(account_id)))
+        if account is None or account.status != "active" or not account.encrypted_refresh_token:
+            return 0
+        days, limit = (IMPORT_DAYS, IMPORT_MAX) if mode == "import" else (CATCH_UP_DAYS, CATCH_UP_MAX)
+        since = max(since, datetime.now(UTC) - timedelta(days=days))
+        try:
+            provider = provider_for(account)
+            ids = provider.list_message_ids(f"after:{int(since.timestamp())} {CATCH_UP_QUERY}", limit)
+            ids.reverse()  # Gmail lists newest first; process oldest first, like live mail
+            new = on_new_messages(db, account, provider, ids, mode=mode)
+        except AuthRevoked as exc:
+            mark_auth_failure(account, exc)
+            db.commit()
+            return 0
+        log.info("account %s: caught up %d of %d listed message(s) (%s)", account.id, new, len(ids), mode)
+        return new
 
 
 PUSH_MISS_AGE = timedelta(seconds=90)  # Gmail's push normally lands ~20 s after a mail arrives
@@ -169,11 +246,16 @@ def check_account(account_id: uuid.UUID | str, source: str = "poll") -> int:
             try:
                 changes = provider.list_changes(account.history_id)
             except CursorExpired:
-                # Down for over a week. Phase 1 adds a catch-up scan of recent mail here.
-                log.warning("account %s: history cursor expired, restarting from now", account.id)
+                # Down for over a week: restart the cursor from now and fetch the gap by search.
+                since = account.last_check_ok_at or (datetime.now(UTC) - timedelta(days=CATCH_UP_DAYS))
+                log.warning("account %s: history cursor expired, catching up by search", account.id)
                 account.history_id = provider.profile().cursor
                 intake.record_ok(db, account)
                 db.commit()
+                from app import jobs
+
+                jobs.enqueue_sync("catch_up", {"account_id": str(account.id), "since": since.isoformat(), "mode": "live"},
+                                  dedupe_key=f"catch_up:{account.id}")
                 return 0
             if changes.message_ids:
                 on_new_messages(db, account, provider, changes.message_ids)

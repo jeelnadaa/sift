@@ -175,6 +175,8 @@ private fun MailWebView(url: String) {
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
                     settings.textZoom = zoom.toInt()
+                    // offline: show the copy this phone kept when the mail was last opened
+                    settings.cacheMode = if (com.solarquack.sift.data.Offline.since.value != null) WebSettings.LOAD_CACHE_ELSE_NETWORK else WebSettings.LOAD_DEFAULT
                     isVerticalScrollBarEnabled = false
                     setBackgroundColor(Ink.surface.toArgb())
                     webViewClient = object : WebViewClient() {

@@ -57,7 +57,8 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit, onOpenGroup: (String) -> Unit = {}, onSearch: (() -> Unit)? = null, onWrite: (() -> Unit)? = null) {
+fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit, onOpenGroup: (String) -> Unit = {}, onSearch: (() -> Unit)? = null, onWrite: (() -> Unit)? = null,
+               onAsk: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
@@ -94,7 +95,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 val api = Api.get(context)
                 accounts = api.accounts()
                 val grouping = if (silenced) null else runCatching { api.grouping() }.getOrNull()
-                if (grouping?.shouldAsk == true && !GroupingPrompt.askedThisOpen) { GroupingPrompt.askedThisOpen = true; askGrouping = true }
+                if (grouping?.shouldAsk == true && !GroupingPrompt.askedThisOpen && com.solarquack.sift.data.Offline.since.value == null) { GroupingPrompt.askedThisOpen = true; askGrouping = true }
                 grouped = grouping?.groupingEnabled == "yes"
                 val (first, cursor) = page(null)
                 items = first
@@ -173,6 +174,10 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (silenced) "Silenced" else "Feed", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f))
+            onAsk?.let { go ->
+                Text("✦ Ask", color = Ink.signal, style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(end = 8.dp).background(Ink.surface, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 10.dp))
+            }
             onSearch?.let { go ->
                 Text("⌕ Search", color = Ink.text2, style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.background(Ink.surface, com.solarquack.sift.ui.theme.Radius.md).clickable(onClick = go).padding(horizontal = 12.dp, vertical = 10.dp))

@@ -33,6 +33,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -107,6 +108,7 @@ class MainActivity : ComponentActivity() {
         }
         val route = nav.currentBackStackEntryAsState().value?.destination?.route
         Column(Modifier.fillMaxSize().background(Ink.bg).systemBarsPadding()) {
+            OfflineBar()
             Box(Modifier.weight(1f)) {
                 NavHost(nav, startDestination = start) {
                     composable("welcome") {
@@ -117,7 +119,17 @@ class MainActivity : ComponentActivity() {
                     })) { entry ->
                         LoginScreen(startRegistering = entry.arguments?.getBoolean("register") == true) { nav.navigate("feed") { popUpTo(0) } }
                     }
-                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }) }
+                    composable("feed") { FeedScreen(onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }, onOpenGroup = { nav.navigate("group/$it") }, onSearch = { nav.navigate("search") }, onAsk = { nav.navigate("ask") }) }
+                    composable("ask") {
+                        com.solarquack.sift.ui.screens.AskScreen(onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") },
+                            onOpenLink = { l -> askRoute(l)?.let { nav.navigate(it) } },
+                            onRuleDraft = { d ->
+                                com.solarquack.sift.ui.screens.RuleEditorSeed.clear()
+                                com.solarquack.sift.ui.screens.RuleEditorSeed.draft = d
+                                com.solarquack.sift.ui.screens.RuleEditorSeed.origin = "english"
+                                nav.navigate("rule-edit")
+                            })
+                    }
                     composable(
                         "compose?mode={mode}&message={message}&account={account}&gmail={gmail}&draft={draft}",
                         arguments = listOf("mode", "message", "account", "gmail", "draft").map { name ->
@@ -137,6 +149,7 @@ class MainActivity : ComponentActivity() {
                     composable("group/{id}") { entry ->
                         GroupScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenMail = { nav.navigate("mail/$it") }, onEditRule = { nav.navigate("rule-edit") })
                     }
+                    composable("groups") { com.solarquack.sift.ui.screens.GroupsScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate("group/$it") }) }
                     composable("search") {
                         SearchScreen(onOpenMail = { nav.navigate("mail/$it") }, onOpenThread = { a, t -> nav.navigate("read/$a/$t") }, onBack = { nav.popBackStack() })
                     }
@@ -151,7 +164,7 @@ class MainActivity : ComponentActivity() {
                     composable("silenced") { FeedScreen(silenced = true, onOpen = { nav.navigate("mail/$it") }, onAccounts = { nav.go("accounts") }) }
                     composable("mail/{id}") { entry ->
                         MailScreen(entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() }, onOpenOpportunity = { nav.navigate("deal/$it") }, onEditRule = { nav.navigate("rule-edit") },
-                            onWrite = { mode, id -> nav.navigate(compose(mode = mode, message = id)) })
+                            onWrite = { mode, id -> nav.navigate(compose(mode = mode, message = id)) }, onOpenGroup = { nav.navigate("group/$it") })
                     }
                     composable("deals") { DealsScreen(onOpen = { nav.navigate("deal/$it") }) }
                     composable("deal/{id}") { entry ->
@@ -174,10 +187,34 @@ class MainActivity : ComponentActivity() {
                 }
                 // Deals, To-do and Rules keep their own add button in this corner
                 val fab = route != null && (route in setOf("feed", "silenced", "search", "folders", "outbox", "more", "accounts") ||
-                    route.startsWith("folder/") || route.startsWith("group/") || route.startsWith("read/"))
+                    route == "groups" || route.startsWith("folder/") || route.startsWith("group/") || route.startsWith("read/"))
                 if (fab) WriteFab(Modifier.align(Alignment.BottomEnd)) { nav.navigate(compose()) }
             }
             if (route != null && !route.startsWith("login") && route != "welcome") BottomBar(nav, route)
+        }
+    }
+
+    /** Where an Ask Sift result's "Open" goes (pages named by the server, see app/assistant.py). */
+    private fun askRoute(l: com.solarquack.sift.data.AskLinkDto): String? = when (l.page) {
+        "opportunity" -> l.id?.let { "deal/$it" }
+        "folder" -> l.id?.let { "folder/$it" }
+        "feed" -> "feed"
+        "todo" -> "todo"
+        "opportunities" -> "deals"
+        "folders", "groups", "rules", "settings", "outbox", "silenced", "usage", "search" -> l.page
+        else -> null
+    }
+
+    /** Shown while screens come from the phone's saved copies (data/Offline.kt). */
+    @Composable
+    private fun OfflineBar() {
+        val since = com.solarquack.sift.data.Offline.since.collectAsState().value ?: return
+        val time = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(since))
+        Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color(0xFF2A2210)).padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Offline", color = Ink.warn, style = MaterialTheme.typography.labelLarge)
+            Text("  ·  Showing what this phone saved ($time). Changes need the server.", color = Ink.text2,
+                style = MaterialTheme.typography.bodySmall, maxLines = 2)
         }
     }
 

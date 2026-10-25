@@ -121,9 +121,9 @@ fun PrimaryButton(label: String, modifier: Modifier = Modifier, enabled: Boolean
 }
 
 @Composable
-fun GhostButton(label: String, modifier: Modifier = Modifier, color: Color = Ink.text, onClick: () -> Unit) {
+fun GhostButton(label: String, modifier: Modifier = Modifier, color: Color = Ink.text, enabled: Boolean = true, onClick: () -> Unit) {
     OutlinedButton(
-        onClick = onClick, modifier = modifier.height(44.dp), shape = Radius.md,
+        onClick = onClick, modifier = modifier.height(44.dp), shape = Radius.md, enabled = enabled,
         border = androidx.compose.foundation.BorderStroke(1.dp, Ink.line2),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = color),
     ) { Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false) }

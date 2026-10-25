@@ -46,6 +46,7 @@ data class MessageDto(
     @SerialName("delivered_at") val deliveredAt: String? = null,
     @SerialName("opportunity_id") val opportunityId: String? = null,
     @SerialName("todo_id") val todoId: String? = null,
+    @SerialName("group_id") val groupId: String? = null,
     @SerialName("company_question") val companyQuestion: List<CompanyChoice>? = null,
 )
 
@@ -448,6 +449,9 @@ data class GroupingStatus(@SerialName("grouping_enabled") val groupingEnabled: S
 data class AnswerIn(val answer: String)
 
 @Serializable
+data class CollapseIn(val collapsed: Boolean = true)
+
+@Serializable
 data class GroupDto(
     val id: String,
     val title: String,
@@ -764,3 +768,43 @@ data class ReadStateIn(@SerialName("message_ids") val messageIds: List<String>, 
 
 @Serializable
 data class ReadStateOut(val unread: Boolean = false, @SerialName("in_gmail") val inGmail: Int = 0, @SerialName("sift_only") val siftOnly: List<String> = emptyList())
+
+// ---- Ask Sift (backend app/assistant.py) ----
+
+@Serializable
+data class AskIn(val text: String)
+
+@Serializable
+data class AskStepDto(val action: String, val kind: String = "read", val preview: String? = null, val error: String? = null)
+
+@Serializable
+data class AskLinkDto(val page: String, val id: String? = null, val q: String? = null)
+
+@Serializable
+data class AskTimelineRowDto(val id: String, val company: String, val last: String? = null, val deadline: String? = null)
+
+@Serializable
+data class AskResultDto(
+    val ok: Boolean = false,
+    val text: String = "",
+    val mail: List<MessageDto>? = null,
+    val todos: List<TodoDto>? = null,
+    val timelines: List<AskTimelineRowDto>? = null,
+    val timeline: List<TimelineEventDto>? = null,
+    val link: AskLinkDto? = null,
+    @SerialName("rule_draft") val ruleDraft: RuleDraft? = null,
+    @SerialName("task_id") val taskId: String? = null,
+)
+
+@Serializable
+data class AskRunDto(
+    val id: String,
+    val text: String,
+    val reply: String? = null,
+    val status: String = "planned",
+    val steps: List<AskStepDto> = emptyList(),
+    val results: List<AskResultDto> = emptyList(),
+    @SerialName("needs_confirm") val needsConfirm: Boolean = false,
+    @SerialName("changes_gmail") val changesGmail: Boolean = false,
+    val tokens: Int = 0,
+)

@@ -24,10 +24,12 @@ import com.solarquack.sift.ui.theme.Ink
 fun MoreScreen(onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize().background(Ink.bg).verticalScroll(rememberScrollState()).padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
         Text("More", style = MaterialTheme.typography.headlineMedium, color = Ink.text)
+        Item("✦ Ask Sift", "Tell it what to do in plain words: timelines, folders, to-dos, rules, mail") { onNavigate("ask") }
         SectionLabel("Write")
         Item("Outbox", "Drafts, scheduled mail, follow-up reminders") { onNavigate("outbox") }
         SectionLabel("Organize")
         Item("Folders", "Your own folders, nested; rules can file into them") { onNavigate("folders") }
+        Item("Groups", "Similar mail stacked together: bank alerts, newsletters, one company's drive") { onNavigate("groups") }
         SectionLabel("Control")
         Item("Rules", "What gets silenced, digested or marked urgent") { onNavigate("rules") }
         Item("Silenced mail", "Stored and searchable, never notified") { onNavigate("silenced") }

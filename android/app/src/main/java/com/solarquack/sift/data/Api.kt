@@ -25,6 +25,10 @@ interface SiftApi {
     @POST("api/v1/folders/{id}/ai-tasks") suspend fun startAiTask(@Path("id") id: String, @Body body: AiTaskIn): AiTaskDto
     @GET("api/v1/ai-tasks") suspend fun aiTasks(): AiTaskList
     @GET("api/v1/me") suspend fun me(): UserDto
+    @POST("api/v1/assistant") suspend fun ask(@Body body: AskIn): AskRunDto
+    @POST("api/v1/assistant/{id}/run") suspend fun runPlan(@Path("id") id: String): AskRunDto
+    @POST("api/v1/assistant/{id}/cancel") suspend fun cancelPlan(@Path("id") id: String): AskRunDto
+    @GET("api/v1/assistant/runs") suspend fun askRuns(): List<AskRunDto>
 
     @GET("api/v1/messages") suspend fun messages(
         @Query("priority") priority: String? = null,
@@ -143,6 +147,7 @@ interface SiftApi {
     @GET("api/v1/grouping") suspend fun grouping(): GroupingStatus
     @POST("api/v1/grouping") suspend fun answerGrouping(@Body body: AnswerIn): GroupingStatus
     @GET("api/v1/groups") suspend fun groups(): List<GroupDto>
+    @POST("api/v1/groups/collapse-all") suspend fun collapseAllGroups(@Body body: CollapseIn)
     @GET("api/v1/groups/{id}") suspend fun group(@Path("id") id: String): GroupDto
     @POST("api/v1/groups/{id}/split") suspend fun splitGroup(@Path("id") id: String, @Body body: SplitIn): GroupDto
     @POST("api/v1/groups/{id}/merge") suspend fun mergeGroup(@Path("id") id: String, @Body body: TargetIn): GroupDto
@@ -194,6 +199,7 @@ object Api {
                 if (token != null) req.header("Authorization", "Bearer $token")
                 chain.proceed(req.build())
             }
+            .addInterceptor(Offline.interceptor(context))  // saved copies while the server is off
             .build()
         val api = Retrofit.Builder()
             .baseUrl(server)

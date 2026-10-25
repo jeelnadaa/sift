@@ -240,3 +240,67 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
         )
     }
 }
+
+/** Every group in one place (More > Groups, or "Open its group" in a mail's Actions): grouping
+ * on/off, "Collapse all", and each group as a stacked row that opens its own screen. */
+@Composable
+fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf<com.solarquack.sift.data.GroupingStatus?>(null) }
+    var groups by remember { mutableStateOf<List<GroupDto>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var info by remember { mutableStateOf<String?>(null) }
+    val on = status?.groupingEnabled == "yes"
+
+    fun load() = scope.launch {
+        try {
+            val api = Api.get(context)
+            status = api.grouping()
+            groups = if (status?.groupingEnabled == "yes") api.groups() else emptyList()
+            error = null
+        } catch (t: Throwable) { error = t.userMessage() }
+    }
+    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
+    fun set(answer: String) = scope.launch {
+        try {
+            Api.get(context).answerGrouping(AnswerIn(answer))
+            info = if (answer == "yes") "Grouping on. The last 30 days are being grouped." else "Grouping off."
+            load()
+        } catch (t: Throwable) { error = t.userMessage() }
+    }
+
+    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 110.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 10.dp, horizontal = 4.dp))
+            }
+            Text("Groups", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 10.dp))
+        }
+        error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
+        info?.let { item { Banner(it, Ink.signal) } }
+        status?.let {
+            item {
+                Column(Modifier.fillMaxWidth().background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(14.dp)) {
+                    Text(if (on) "Grouping is on" else "Grouping is off", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                    Text(if (on) "Similar mail is stacked into one row. Display only: notifications are unaffected."
+                        else "Turn it on to stack similar mail (bank alerts, newsletters, one company's drive) into one row. Display only.",
+                        color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (on) {
+                            GhostButton("Turn off") { set("no") }
+                            GhostButton("Collapse all") {
+                                scope.launch { runCatching { Api.get(context).collapseAllGroups(com.solarquack.sift.data.CollapseIn(true)) }; info = "Every group folded into one row."; load() }
+                            }
+                        } else PrimaryButton("Turn on") { set("yes") }
+                    }
+                }
+            }
+        }
+        if (on && groups?.isEmpty() == true) item {
+            Text("No groups yet. A group shows once three similar mails arrive.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 28.dp, horizontal = 4.dp))
+        }
+        items(groups.orEmpty(), key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
+    }
+}

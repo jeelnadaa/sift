@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import crypto, user_settings
-from app.llm.base import LlmAuthError, LlmError, LlmProvider, LlmQuotaError
+from app.llm.base import LlmAuthError, LlmError, LlmPaced, LlmProvider, LlmQuotaError
 from app.models import Category, LlmCredential, TokenUsage
 from app.rules import SECURITY_LEAF, has_security_exception
 
@@ -49,7 +49,57 @@ def provider_factory(provider: str, api_key: str, model: str) -> LlmProvider:
 
 
 def _provider(cred: LlmCredential) -> LlmProvider:
-    return provider_factory(cred.provider, crypto.decrypt(cred.encrypted_api_key), cred.model)
+    return Paced(provider_factory(cred.provider, crypto.decrypt(cred.encrypted_api_key), cred.model), cred.user_id)
+
+
+# ---- pacing: stay under the provider's free-tier limits ---------------------------------------
+# Gemini's free tier allows a few requests per minute and a few hundred per day per key (the
+# defaults below; Settings can change them). Every call is counted in token_usage, so before a
+# call Sift looks at the last minute and today: over the per-minute limits it waits for a free
+# slot (background work waits longer than a request someone is watching), over the daily limit
+# it stops. Calls are never sent just to be refused with a 429.
+pace_wait: contextvars.ContextVar[float] = contextvars.ContextVar("pace_wait", default=20.0)
+
+
+def pace(user_id: uuid.UUID) -> None:
+    from app.db import get_sessionmaker
+
+    deadline = time.monotonic() + pace_wait.get()
+    while True:
+        with get_sessionmaker()() as db:
+            limits = user_settings.get(db, user_id)
+            now = datetime.now(UTC)
+            minute = db.execute(select(TokenUsage.created_at, TokenUsage.input_tokens + TokenUsage.output_tokens)
+                                .where(TokenUsage.user_id == user_id, TokenUsage.created_at > now - timedelta(seconds=60))).all()
+            today = db.scalar(select(func.count()).select_from(TokenUsage)
+                              .where(TokenUsage.user_id == user_id, TokenUsage.day == _today(db, user_id))) or 0
+        if today >= int(limits["ai_requests_per_day"]):
+            raise LlmPaced(f"Today's AI request limit ({limits['ai_requests_per_day']}) is reached; it resets at midnight. Settings can change it.")
+        if len(minute) < int(limits["ai_requests_per_minute"]) and sum(t for _, t in minute) < int(limits["ai_tokens_per_minute"]):
+            return
+        wait = max(0.2, (min(c for c, _ in minute) + timedelta(seconds=60) - now).total_seconds() + 0.2)
+        if time.monotonic() + wait > deadline:
+            raise LlmPaced(f"Pausing AI for {int(wait) + 1} s to stay under your per-minute limit. Try again then.")
+        time.sleep(wait)
+
+
+class Paced:
+    """The provider, with pace() before every call that costs a request (key checks are free)."""
+
+    def __init__(self, inner: LlmProvider, user_id: uuid.UUID):
+        self._inner, self._user_id = inner, user_id
+        self.name = getattr(inner, "name", "llm")
+
+    def generate_json(self, *args, **kwargs):
+        pace(self._user_id)
+        return self._inner.generate_json(*args, **kwargs)
+
+    def embed(self, *args, **kwargs):
+        pace(self._user_id)
+        return self._inner.embed(*args, **kwargs)
+
+    def ping(self) -> None:
+        self._inner.ping()
 
 
 # ---- usage and cap ---------------------------------------------------------------------
@@ -221,6 +271,8 @@ def extract(db: Session, user_id: uuid.UUID, account_id: uuid.UUID | None, sende
         except LlmAuthError as exc:
             _mark_invalid(db, cred, str(exc))
             return {**FALLBACK, "error": "key_invalid"}
+        except LlmPaced:
+            return {**FALLBACK, "error": "paced"}  # held back by Sift, the key is fine
         except LlmQuotaError:
             cred.status = "quota_exceeded"
             if attempt == 0:
@@ -357,7 +409,7 @@ def rule_from_text(db: Session, user_id: uuid.UUID, text: str) -> dict:
         _mark_invalid(db, cred, str(exc))
         raise LlmError("Your AI key stopped working") from exc
     except LlmQuotaError as exc:
-        raise LlmError("Your AI provider's quota is used up; try again later") from exc
+        raise LlmError(str(exc) if isinstance(exc, LlmPaced) else "Your AI provider's quota is used up; try again later") from exc
     _record(db, user_id, None, cred, "rule", result)
     data = json.loads(result.text)
     leaves = [x for x in (_to_leaf(c) for c in data.get("conditions") or []) if x]
@@ -508,7 +560,7 @@ def search_from_text(db: Session, user_id: uuid.UUID, text: str, today: str, kno
         _mark_invalid(db, cred, str(exc))
         raise LlmError("Your AI key stopped working") from exc
     except LlmQuotaError as exc:
-        raise LlmError("Your AI provider's quota is used up; try again later") from exc
+        raise LlmError(str(exc) if isinstance(exc, LlmPaced) else "Your AI provider's quota is used up; try again later") from exc
     _record(db, user_id, None, cred, "search", result)
     try:
         data = json.loads(result.text)
@@ -549,7 +601,7 @@ def reply_draft(db: Session, user_id: uuid.UUID, account_id: uuid.UUID | None, r
         _mark_invalid(db, cred, str(exc))
         raise LlmError("Your AI key stopped working") from exc
     except LlmQuotaError as exc:
-        raise LlmError("Your AI provider's quota is used up; try again later") from exc
+        raise LlmError(str(exc) if isinstance(exc, LlmPaced) else "Your AI provider's quota is used up; try again later") from exc
     _record(db, user_id, account_id, cred, "reply", result)
     try:
         body = str(json.loads(result.text).get("body") or "").strip()

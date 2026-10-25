@@ -10,11 +10,15 @@ Guarantees:
 - Read-only: nothing here changes mail in Gmail.
 - Never hides uncertain mail: anything undecided or failing is delivered as normal priority.
 - Never logs subjects, bodies or addresses.
+
+Late mail (the server was off, see app.accounts catch-up): mail older than AI_MAX_AGE, and every
+imported mail, is handled by rules only: no AI, no push. Mail older than LATE_AGE still gets the AI
+but only urgent mail pushes on its own; the rest is "held" and summed up in one push by the caller.
 """
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import select, update
@@ -35,6 +39,8 @@ from app.search import alerts, semantic
 log = logging.getLogger(__name__)
 SILENT_ACTIONS = {"ignore": "ignored", "silent": "silenced"}
 PRIORITY_ACTIONS = {"digest": "digest", "notify_normal": "normal", "notify_urgent": "urgent"}
+LATE_AGE = timedelta(minutes=30)  # live mail lands within seconds; older means Sift was off
+AI_MAX_AGE = timedelta(hours=72)  # older mail is never sent to the AI (no backfilling with tokens)
 
 
 @dataclass
@@ -44,6 +50,8 @@ class Outcome:
     decided_by: str  # rule | fingerprint | heuristic | llm | default | duplicate | existing | gone | error
     notified: bool = False
     llm_called: bool = False
+    held: bool = False  # late mail whose push was left for the caller's one summary push
+    quiet: bool = False  # imported or too old: rules only, no push
 
 
 def _rule_views(db: Session, user_id: uuid.UUID) -> list[rules.RuleView]:
@@ -105,7 +113,9 @@ def _touch_fingerprint(db: Session, user_id: uuid.UUID, fp: str, template: str, 
     return row
 
 
-def process_message(db: Session, account: GmailAccount, provider: MailProvider, gmail_id: str) -> Outcome:
+def process_message(db: Session, account: GmailAccount, provider: MailProvider, gmail_id: str, mode: str = "live") -> Outcome:
+    """`mode` is live (change detection, including catch-up after downtime) or import (a new
+    account's recent mail): imported mail is stored and sorted by rules, never sent to the AI or pushed."""
     existing = db.scalar(select(Message).where(Message.account_id == account.id, Message.gmail_id == gmail_id))
     if existing is not None and existing.status != "processing":
         return Outcome(existing.id, existing.priority, "existing")
@@ -147,8 +157,11 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
     else:
         msg = existing
 
+    age = datetime.now(UTC) - (meta.received_at or datetime.now(UTC))
+    quiet = mode == "import" or age > AI_MAX_AGE
+    late = not quiet and age > LATE_AGE
     try:
-        outcome = _classify(db, account, provider, meta, msg)
+        outcome = _classify(db, account, provider, meta, msg, ai_allowed=not quiet)
     except (AuthRevoked, GmailError, httpx.HTTPError):
         db.rollback()  # row stays "processing"; the whole check is retried from the same cursor
         raise
@@ -159,23 +172,31 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
         msg.priority, msg.category, msg.status = "normal", msg.category or "other", "processed"
         outcome = Outcome(msg.id, "normal", "error")
 
-    folder_ai.on_processed(db, msg)  # AI filing and auto-sort into subfolders; never raises
+    outcome.quiet = quiet
+    if not quiet:
+        folder_ai.on_processed(db, msg)  # AI filing and auto-sort into subfolders; never raises
     snooze_service.on_new_mail(db, msg)  # a reply wakes its snoozed conversation
     outbox.on_new_mail(db, msg, account)  # ...and resolves a "remind me if no reply"
     if msg.status == "processed":
         grouping.assign_if_enabled(db, msg)  # display only; before notify so a muted group is known
-    if notify.notify_message(db, msg, account):
+    if quiet:
+        pass
+    elif late and msg.priority != "urgent":
+        outcome.held = msg.priority in notify.NOTIFY_PRIORITIES and msg.status == "processed"
+    elif notify.notify_message(db, msg, account):
         outcome.notified = True
-    from app import events
-    events.publish(db, msg.user_id, "new_mail", ids=[msg.id])
+    if not quiet:  # imports announce themselves once per batch (app.accounts)
+        from app import events
+        events.publish(db, msg.user_id, "new_mail", ids=[msg.id])
     db.commit()
-    if not outcome.notified:
-        alerts.check_new(db, msg, account, provider)  # saved searches set to notify; never raises
-    semantic.index_new(db, msg)  # after the notification is out; uses the user's key, never raises
+    if not quiet:
+        if not outcome.notified and not late:
+            alerts.check_new(db, msg, account, provider)  # saved searches set to notify; never raises
+        semantic.index_new(db, msg)  # after the notification is out; uses the user's key, never raises
     return outcome
 
 
-def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, msg: Message) -> Outcome:
+def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, msg: Message, ai_allowed: bool = True) -> Outcome:
     user_id = account.user_id
     settings = user_settings.get(db, user_id, account.id)
     body_cache: dict = {}
@@ -249,7 +270,7 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
     extraction = None
     if msg.extraction and msg.extraction.get("source") == "llm":
         extraction = msg.extraction  # cached from an interrupted earlier run: never pay twice
-    elif llm.ai_enabled(db, user_id) and llm.under_cap(db, user_id):
+    elif ai_allowed and llm.ai_enabled(db, user_id) and llm.under_cap(db, user_id):
         body = redact(clean_body(load_body()))
         opp_text, opp_keys = opportunities.prompt_list(opportunities.active(db, user_id))
         extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at, opp_text, list(opp_keys))

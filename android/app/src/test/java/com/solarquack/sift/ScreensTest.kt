@@ -36,12 +36,17 @@ class ScreensTest {
     @org.junit.Before fun fake() = FakeApi.install()
     @org.junit.After fun real() = FakeApi.remove()
 
-    @Test fun feed() = shot { com.solarquack.sift.ui.screens.FeedScreen(onOpen = {}, onAccounts = {}, onSearch = {}) }
+    @Test fun feed() = shot { com.solarquack.sift.ui.screens.FeedScreen(onOpen = {}, onAccounts = {}, onSearch = {}, onAsk = {}) }
     @Test fun mail() = shot { com.solarquack.sift.ui.screens.MailScreen("m1", onBack = {}) }
     @Test fun timeline() = shot { com.solarquack.sift.ui.screens.OpportunityScreen("o1", onBack = {}, onOpenMail = {}) }
     @Test fun todos() = shot { com.solarquack.sift.ui.screens.TodoScreen(onOpenMail = {}) }
     @Test fun deals() = shot { com.solarquack.sift.ui.screens.DealsScreen(onOpen = {}) }
     @Test fun more() = shot { com.solarquack.sift.ui.screens.MoreScreen(onNavigate = {}) }
+    @Test fun ask() = shot { com.solarquack.sift.ui.screens.AskScreen(onBack = {}, onOpenMail = {}, onOpenLink = {}, onRuleDraft = {}) }
+    @Test fun groups() = shot { com.solarquack.sift.ui.screens.GroupsScreen(onBack = {}, onOpen = {}) }
+    @Test fun editTodoDelete() = shot {
+        com.solarquack.sift.ui.screens.EditTodoDialog(TodoDto("t1", "Register for the Globex drive", notes = "Needs the latest marksheet"), onDismiss = {}, onDelete = {}) { _, _, _ -> }
+    }
 
     @Test fun landing() = shot { LandingScreen(onGetStarted = {}, onSignIn = {}, animate = false) }
 

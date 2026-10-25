@@ -20,6 +20,10 @@ DEFAULTS: dict = {
     "sender_name": "",
     "signature": "",
     "undo_send_seconds": 10,
+    # The AI provider's limits per key (Gemini free tier); Sift paces its calls under them.
+    "ai_requests_per_minute": 15,
+    "ai_requests_per_day": 500,
+    "ai_tokens_per_minute": 250000,
 }
 EDITABLE = {
     "timezone": str,
@@ -31,6 +35,9 @@ EDITABLE = {
     "sender_name": str,
     "signature": str,
     "undo_send_seconds": int,
+    "ai_requests_per_minute": int,
+    "ai_requests_per_day": int,
+    "ai_tokens_per_minute": int,
 }
 MAX_LENGTH = {"sender_name": 100, "signature": 2000, "timezone": 64}
 
@@ -40,6 +47,9 @@ RANGES = {
     "resend_after_minutes": (1, 60),
     "resend_limit": (0, 10),
     "undo_send_seconds": (0, 30),
+    "ai_requests_per_minute": (1, 2000),
+    "ai_requests_per_day": (1, 100_000),
+    "ai_tokens_per_minute": (1000, 10_000_000),
 }
 
 

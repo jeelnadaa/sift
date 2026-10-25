@@ -7,6 +7,7 @@ import { OutboxPage } from "./pages/Outbox";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
 import { DialogHost, Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
+import { AskPanel } from "./pages/Ask";
 import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
 import { MailDetail } from "./pages/Mail";
@@ -73,11 +74,23 @@ const NAV: { h: string; items: [string, string, string, string][] }[] = [
     ["/settings", "Settings", "gear", "AI key, notifications, grouping, backup"]] },
 ];
 
+/** When pages are coming from this device's saved copies (see offline.ts): the oldest copy's time. */
+function useOfflineSince(): number | null {
+  const [since, setSince] = useState<number | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setSince((e as CustomEvent<{ savedAt: number } | null>).detail?.savedAt ?? null);
+    addEventListener("sift:offline", on);
+    return () => removeEventListener("sift:offline", on);
+  }, []);
+  return since;
+}
+
 function Shell({ onSignOut }: { onSignOut: () => void }) {
   const narrow = typeof matchMedia !== "undefined" && matchMedia("(max-width: 1000px)").matches;
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === "1" || narrow; } catch { return narrow; } });
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [asking, setAsking] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -86,6 +99,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) return;
       if (e.key === "[") toggle();
+      if (e.key === "a" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); setAsking(true); }
       if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); navigate("/compose"); }
       if (e.key === "/") { e.preventDefault(); navigate("/search"); setTimeout(() => (document.querySelector(".search-box textarea") as HTMLElement | null)?.focus(), 50); }
     };
@@ -106,6 +120,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
   }, []);
   const trouble = accounts.some((a) => a.status !== "active");
   const email = session.email() ?? "";
+  const savedAt = useOfflineSince();
 
   return (
     <div className={`shell ${collapsed ? "collapsed" : ""}`}>
@@ -117,6 +132,10 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
         </div>
         <button className="btn btn-primary write-btn" onClick={() => navigate("/compose")} data-tip={collapsed ? "Write a new mail  (C)" : "Write a new mail  (C)"} aria-label="Write">
           <Icon name="pen" /><span className="lbl">Write</span>
+        </button>
+        <button className="btn btn-ghost ask-btn" onClick={() => setAsking(true)} aria-label="Ask Sift"
+          data-tip={"Ask Sift  (A)\nTell it what to do in plain words: timelines, folders, to-dos, rules, mail"}>
+          <Icon name="spark" /><span className="lbl">Ask Sift</span>
         </button>
         <nav className="nav">
           {NAV.map((g) => (
@@ -141,6 +160,13 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
         </div>
       </aside>
       <main>
+        {savedAt !== null && (
+          <div className="offline-bar" role="status">
+            <Icon name="cloud-off" /><b>Offline</b>
+            <span>The Sift server can't be reached. Showing what this device saved{savedAt ? ` (${new Date(savedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })})` : ""}. Changes need the server.</span>
+          </div>
+        )}
+        {asking && <AskPanel onClose={() => setAsking(false)} />}
         {location.pathname !== "/compose" && (
           <button className="fab" onClick={() => navigate("/compose")} data-tip="Write a new mail  (C)" aria-label="Write a new mail">
             <Icon name="pen" /><span>Write</span>
@@ -235,6 +261,8 @@ function Icons() {
       <symbol id="i-read" viewBox="0 0 24 24"><path d="M3 10l9-6 9 6v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M3.5 10.5L12 16l8.5-5.5" /></symbol>
       <symbol id="i-unread" viewBox="0 0 24 24"><rect x="3" y="6" width="15" height="12" rx="2.5" /><path d="M3.5 8l7.5 5.5L18.5 8" /><circle cx="19.5" cy="6.5" r="2.5" fill="currentColor" /></symbol>
       <symbol id="i-chev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6" /></symbol>
+      <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="M7 18h10.5a3.5 3.5 0 00.6-6.95A5.5 5.5 0 007.6 9.4 4.3 4.3 0 007 18z" /><path d="M4 4l16 16" /></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></symbol>
       <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l4.5-1 10-10a2.1 2.1 0 00-3-3l-10 10L4 20z" /><path d="M14 7l3 3" /></symbol>
       <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5L4 12z" /><path d="M11.5 13.5L20 4" /></symbol>
     </defs></svg>

@@ -5,6 +5,9 @@ import "../../design/shared/tokens.css";
 import "../../design/shared/components.css";
 import "./styles.css";
 import { App } from "./App";
+import { registerServiceWorker } from "./offline";
+
+registerServiceWorker();  // the app keeps opening while the server is off (public/sw.js)
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

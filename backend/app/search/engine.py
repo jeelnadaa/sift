@@ -399,3 +399,32 @@ def answered_locally(p: Parsed) -> bool:
         return True
     except Unknown:
         return False
+
+
+def stored_matches(db: Session, user_id: uuid.UUID, q: str, limit: int = 300) -> list[Message]:
+    """Stored mail matching a full query (Sift filters in SQL, the Gmail part matched locally),
+    newest first. For work over a set of mail (Ask Sift, AI tasks); mail Sift never stored is
+    not here, so callers that need it import it from Gmail first."""
+    try:
+        p = parse(expand_saved(db, user_id, q))
+    except QueryError as exc:
+        raise SearchError(str(exc)) from exc
+    accounts = _accounts(db, user_id)
+    chosen = selected_accounts(p, accounts)
+    stmt = (select(Message).where(Message.user_id == user_id, Message.status.in_(SEARCHABLE_STATUSES),
+                                  Message.account_id.in_([a.id for a in chosen] or [uuid.uuid4()]), *conditions(db, user_id, p, accounts))
+            .order_by(Message.received_at.desc().nulls_last()))
+    if not p.gmail:
+        return list(db.scalars(stmt.limit(limit)))
+    out: list[Message] = []
+    now = datetime.now(UTC)
+    for m in db.scalars(stmt.limit(5000)):
+        try:
+            ok = gmail_match(p.gmail, m, now)
+        except Unknown as exc:
+            raise SearchError(f"can't match {exc} on stored mail; use simpler words") from exc
+        if ok:
+            out.append(m)
+            if len(out) >= limit:
+                break
+    return out

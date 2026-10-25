@@ -16,6 +16,11 @@ class LlmQuotaError(LlmError):
     """429 / quota exhausted on the user's own provider account."""
 
 
+class LlmPaced(LlmQuotaError):
+    """Sift itself held the call back to stay under the user's request limits (per minute, per
+    day). The key is fine; nothing was sent."""
+
+
 @dataclass
 class LlmResult:
     text: str

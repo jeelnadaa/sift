@@ -56,7 +56,8 @@ import com.solarquack.sift.ui.theme.Ink
 
 /** Mail detail: Sift's view of the mail, then the whole conversation (Phase 3a reader). */
 @Composable
-fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}, onWrite: (mode: String, messageId: String) -> Unit = { _, _ -> }) {
+fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}, onWrite: (mode: String, messageId: String) -> Unit = { _, _ -> },
+               onOpenGroup: (String) -> Unit = {}) {
     val context = LocalContext.current
     var m by remember { mutableStateOf<MessageDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -134,6 +135,7 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             })
             if (msg.opportunityId == null && msg.companyQuestion == null) add(SheetItem("Add to a company…", "Put it on a company timeline", section = "Organize") { companyPick++ })
             if (msg.todoId == null) add(SheetItem("Add to to-do…", "With an optional deadline and reminders", section = "Organize") { addingTodo = true })
+            msg.groupId?.let { g -> add(SheetItem("Open its group", "Every mail grouped with this one", section = "Organize") { onOpenGroup(g) }) }
             if (deadlineAhead) add(SheetItem("Add to calendar", "Opens your calendar with the deadline", section = "Organize") {
                 CalendarIntent.open(context, listOfNotNull(msg.company, msg.summary ?: msg.subject).joinToString(": "), msg.deadline)
             })

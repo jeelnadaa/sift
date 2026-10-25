@@ -563,5 +563,30 @@ class AiTask(Base):
     done: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     changed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)  # timelines joined / to-dos made / mails moved
     note: Mapped[str | None] = mapped_column(String(300))
+    # set when the task runs over a search (Ask Sift, e.g. "from:nvidia newer_than:30d") instead of a folder
+    query: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+ASSISTANT_STATUSES = ("planned", "running", "done", "failed", "cancelled")
+
+
+class AssistantRun(Base):
+    """One request to Ask Sift: the user's words, the plan the AI made (steps over the app's own
+    actions), and what running each step did. Plans that change anything wait for the user."""
+    __tablename__ = "assistant_runs"
+    __table_args__ = (
+        CheckConstraint(_in("status", ASSISTANT_STATUSES), name="status_valid"),
+        Index("ix_assistant_runs_user_created", "user_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    reply: Mapped[str | None] = mapped_column(Text)
+    steps: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)
+    results: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)
+    status: Mapped[str] = mapped_column(String(10), default="planned", server_default="planned", nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

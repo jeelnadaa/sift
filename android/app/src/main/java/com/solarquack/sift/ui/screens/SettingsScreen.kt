@@ -284,12 +284,34 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
         }
         GhostButton("Silenced mail", Modifier.fillMaxWidth(), onClick = onSilenced)
 
+        SectionLabel("Saved on this device")
+        SiftCard {
+            // what the phone kept so Sift still opens while the server is off (data/Offline.kt)
+            var saved by remember { mutableStateOf(com.solarquack.sift.data.Offline.size(context)) }
+            val mb = saved.first / 1048576.0
+            Text(if (mb < 0.1) "${maxOf(1, (saved.first / 1024).toInt())} KB · ${saved.second} items" else String.format(java.util.Locale.US, "%.1f MB · %d items", mb, saved.second),
+                color = Ink.text, style = MaterialTheme.typography.titleSmall)
+            Text("Mail and pages you already opened, so Sift still opens when the server is off. Clearing changes nothing in Gmail or on the server.",
+                color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(10.dp))
+            GhostButton("Clear saved data", enabled = saved.second > 0) {
+                com.solarquack.sift.data.Offline.clear(context)
+                android.webkit.WebView(context).clearCache(true)
+                saved = com.solarquack.sift.data.Offline.size(context)
+                info = "Cleared what this phone saved."
+            }
+        }
+
         SectionLabel("Server")
         Text("${Session.email(context) ?: ""} · ${Session.server(context)}", color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GhostButton("Re-register phone") { scope.launch { try { Push.registerDevice(context); info = "Phone registered." } catch (t: Throwable) { error = t.userMessage() } } }
-            GhostButton("Sign out", color = Ink.urgent) { Session.signOut(context); onSignedOut() }
+            GhostButton("Sign out", color = Ink.urgent) {
+                // signing out leaves no mail behind on the phone
+                com.solarquack.sift.data.Offline.clear(context); android.webkit.WebView(context).clearCache(true)
+                Session.signOut(context); onSignedOut()
+            }
         }
         Spacer(Modifier.height(24.dp))
     }

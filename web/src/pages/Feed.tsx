@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isOffline } from "../offline";
 import { useNavigate } from "react-router-dom";
 import { get, post, type Account, type Group, type GroupingStatus, type Mail, type Page } from "../api";
 import { Top } from "../App";
@@ -22,7 +23,7 @@ export function Feed() {
   useEffect(() => {
     let prompted = false;
     try { prompted = sessionStorage.getItem(PROMPTED_KEY) === "1"; } catch { /* ignore */ }
-    if (grouping.data?.should_ask && !prompted) {
+    if (grouping.data?.should_ask && !prompted && !isOffline()) {  // a saved copy can't be answered
       setAsk(true);
       try { sessionStorage.setItem(PROMPTED_KEY, "1"); } catch { /* ignore */ }
     }

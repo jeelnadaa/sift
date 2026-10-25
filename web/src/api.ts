@@ -2,6 +2,8 @@
  * the page is served with a strict Content-Security-Policy (no inline or third-party
  * scripts), and mail text is only ever rendered as text, never as HTML. */
 
+import * as offline from "./offline";
+
 const TOKEN_KEY = "sift.token";
 const EMAIL_KEY = "sift.email";
 
@@ -18,7 +20,7 @@ export const session = {
   token: (): string | null => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } },
   email: (): string | null => { try { return localStorage.getItem(EMAIL_KEY); } catch { return null; } },
   save(token: string, email: string) { try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(EMAIL_KEY, email); } catch { /* private mode */ } },
-  clear() { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } },
+  clear() { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } void offline.clearSaved(); },  // signing out leaves no mail behind
 };
 
 let onSignedOut: () => void = () => {};
@@ -42,18 +44,29 @@ export async function request<T>(method: string, path: string, body?: unknown, q
   const token = session.token();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  const saveable = method === "GET" && offline.saveable(url.pathname);
+  const fallback = async (): Promise<T> => {
+    // the server is off (or the tunnel shows its error page): show what this device saved
+    const saved = saveable ? await offline.recall<T>(session.email(), url.href) : null;
+    if (saved) { offline.markOffline(saved.savedAt); return saved.data; }
+    throw new ApiError(0, method === "GET" ? "Can't reach the Sift server, and this page isn't saved on this device yet." : "Can't reach the Sift server. Try again when it's back.");
+  };
   let res: Response;
   try {
     res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch {
-    throw new ApiError(0, "Can't reach the Sift server.");
+    return fallback();
   }
+  // a 5xx that isn't Sift's own JSON error is a proxy saying the server is unreachable
+  if (res.status >= 500 && !(res.headers.get("Content-Type") || "").includes("application/json")) return fallback();
+  offline.markOnline();
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && path !== "/auth/login") { session.clear(); onSignedOut(); }
     throw new ApiError(res.status, detail(data, res.status), data);
   }
+  if (saveable) void offline.remember(session.email(), url.href, data);
   return data as T;
 }
 

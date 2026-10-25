@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { clearSaved, savedSize } from "../offline";
 import { del, get, patch, post, put, type AiStatus, type GroupingStatus, type Settings } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Banner, confirmDialog, errorText, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
@@ -108,6 +109,7 @@ export function SettingsPage() {
         <div className="settings-sec"><h2>Data</h2>
           <div className="set-row"><div>Export folders, rules, tags, categories &amp; settings<small>One JSON file. No mail, tokens or keys.</small></div>
             <button className="btn btn-ghost btn-sm" onClick={exportBackup} data-tip="Download folders, rules, tags, categories and settings as JSON. No mail or keys">Export</button></div>
+          <SavedOnDevice />
           <div className="set-row"><div>Import a backup<small>Adds to what you have; never deletes. Rules for accounts that aren't connected come in switched off.</small></div>
             <button className="btn btn-ghost btn-sm" onClick={() => fileInput.current?.click()} data-tip="Add folders, rules and settings from a Sift backup file">Import…</button>
             <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} /></div>
@@ -134,5 +136,22 @@ function WritingSettings({ s, change }: { s: Settings; change: (c: Partial<Setti
           <button key={n} className={`chip ${s.undo_send_seconds === n ? "on" : ""}`} onClick={() => change({ undo_send_seconds: n })}>{n ? `${n} s` : "Off"}</button>
         ))}</div></div>
     </div>
+  );
+}
+
+/** What this browser keeps so Sift opens while the server is off (offline.ts, public/sw.js). */
+function SavedOnDevice() {
+  const [size, setSize] = useState<{ bytes: number; entries: number } | null>(null);
+  const measure = () => savedSize().then(setSize).catch(() => setSize({ bytes: 0, entries: 0 }));
+  useEffect(() => { measure(); }, []);
+  const mb = size ? (size.bytes / 1048576 < 0.1 ? `${Math.max(1, Math.round(size.bytes / 1024))} KB` : `${(size.bytes / 1048576).toFixed(1)} MB`) : "…";
+  return (
+    <div className="set-row"><div>Saved on this device<small>Mail and pages you already opened, so Sift still opens when the server is off. {size ? `${mb} · ${size.entries} items` : "Measuring…"}</small></div>
+      <button className="btn btn-ghost btn-sm" disabled={!size?.entries} data-tip="Delete the saved copies from this browser. Nothing changes on the server or in Gmail" onClick={async () => {
+        if (!(await confirmDialog({ title: "Clear saved mail on this device?", body: "Sift will load everything from the server again. Nothing changes in Gmail or on the server.", confirm: "Clear" }))) return;
+        await clearSaved();
+        toast("Cleared what this device saved");
+        measure();
+      }}>Clear</button></div>
   );
 }

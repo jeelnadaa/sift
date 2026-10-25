@@ -126,7 +126,16 @@ def handle_ai_task(payload: dict) -> None:
     run_task(uuid.UUID(payload["task_id"]))
 
 
+def handle_catch_up(payload: dict) -> None:
+    from datetime import datetime
+
+    from app.accounts import catch_up
+
+    catch_up(payload["account_id"], datetime.fromisoformat(payload["since"]), payload.get("mode", "live"))
+
+
 HANDLERS = {
+    "catch_up": handle_catch_up,
     "ai_task": handle_ai_task,
     "send_outbox": handle_send_outbox,
     "follow_ups": handle_follow_ups,
@@ -193,7 +202,7 @@ MAX_ATTEMPTS = 5
 FAST_KINDS = ("check_account", "gmail_push", "send_outbox", "resend_notifications", "send_reminders",
               "wake_snoozes", "follow_ups", "renew_watches")
 # Long jobs may run for many minutes; only after LONG_STALE are they taken to have crashed.
-LONG_KINDS = ("onboarding_scan", "semantic_backfill", "grouping_backfill", "ai_task")
+LONG_KINDS = ("catch_up", "onboarding_scan", "semantic_backfill", "grouping_backfill", "ai_task")
 STALE = timedelta(minutes=10)
 LONG_STALE = timedelta(hours=2)
 

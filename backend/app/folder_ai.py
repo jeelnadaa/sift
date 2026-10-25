@@ -11,6 +11,8 @@ explicit tasks run over a folder.
   already in a folder and its subfolders. Mail the AI never read is read once (with the user's
   key, redacted, counted under the task). Token use of a task is recorded with its id, so the
   usage page can show what each task cost apart from the everyday per-mail work.
+  A task can also run over a search instead of a folder (Ask Sift: "timelines from the last 30
+  days of Nvidia mail"); mail matching it that Sift never stored is imported from Gmail first.
 Never raises into the pipeline: a failure here leaves the mail where it was.
 """
 import logging
@@ -151,7 +153,45 @@ def create_task(db: Session, user_id: uuid.UUID, folder: Folder, kind: str, incl
     return task
 
 
+def create_query_task(db: Session, user_id: uuid.UUID, kind: str, query: str, label: str) -> AiTask:
+    """A timelines / to-dos task over the mail matching a search (no folder)."""
+    task = AiTask(user_id=user_id, folder_id=None, folder_name=label.strip()[:120] or "Search", kind=kind,
+                  include_subfolders=False, query=query.strip()[:500])
+    db.add(task)
+    db.flush()
+    return task
+
+
+def import_matching(db: Session, user_id: uuid.UUID, query: str, limit: int = TASK_LIMIT) -> int:
+    """Brings mail that matches the Gmail part of `query` into Sift (rules only, no AI, silent),
+    so work over a search also covers mail from before Sift was connected. Returns how many were new."""
+    from app import accounts as account_service
+    from app.search.query import parse
+
+    gmail = parse(query).gmail.strip()
+    if not gmail:
+        return 0
+    new = 0
+    for account in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user_id, GmailAccount.status == "active")):
+        try:
+            provider = account_service.provider_for(account)
+            if not hasattr(provider, "list_message_ids"):
+                continue  # demo mail lives in Sift already
+            ids = provider.list_message_ids(f"{gmail} {account_service.CATCH_UP_QUERY}", limit)
+        except Exception:  # noqa: BLE001  (revoked, offline: work with what Sift has)
+            log.info("import for a task skipped account %s", account.id)
+            continue
+        known = set(db.scalars(select(Message.gmail_id).where(Message.account_id == account.id, Message.gmail_id.in_(ids))))
+        missing = [i for i in reversed(ids) if i not in known]
+        if missing:
+            new += account_service.on_new_messages(db, account, provider, missing, mode="import")
+    return new
+
+
 def _messages(db: Session, task: AiTask) -> list[Message]:
+    if task.query:
+        from app.search.engine import stored_matches
+        return stored_matches(db, task.user_id, task.query, TASK_LIMIT)
     tree = folders.load_tree(db, task.user_id)
     ids = tree.subtree(task.folder_id) if task.include_subfolders else [task.folder_id]
     pairs = select(FolderItem.account_id, FolderItem.thread_id).where(FolderItem.folder_id.in_(ids))
@@ -198,8 +238,11 @@ def _timeline(db: Session, msg: Message) -> bool:
     ext = dict(msg.extraction or {})
     if not (ext.get("company") or ext.get("opportunity") not in (None, "none", "new", "unsure")):
         return False
-    if ext.get("company") and ext.get("opportunity") in (None, "none", "unsure"):
-        ext["opportunity"] = "new"  # the user asked for timelines here: start one rather than ask
+    alive = {k for k, oid in (ext.get("opportunity_keys") or {}).items() if db.get(Opportunity, uuid.UUID(oid)) is not None}
+    if ext.get("company") and (ext.get("opportunity") in (None, "none", "unsure") or
+                               (ext.get("opportunity") not in ("new",) and ext.get("opportunity") not in alive)):
+        # the user asked for timelines here (or deleted the one the AI picked before): start one rather than ask
+        ext["opportunity"] = "new"
     msg.extraction = _timeline_and_todos(db, msg, ext, todos_too=False, force_timeline=True)
     return bool(msg.extraction.get("opportunity_id"))
 
@@ -223,15 +266,26 @@ def run_task(task_id: uuid.UUID) -> None:
         if task is None or task.status not in ("queued", "running"):
             return
         folder = db.get(Folder, task.folder_id) if task.folder_id else None
-        if folder is None:
+        if folder is None and not (task.query and task.kind != "sort"):
             task.status, task.note, task.finished_at = "failed", "The folder was deleted", datetime.now(UTC)
             db.commit()
             return
         task.status = "running"
-        msgs = _messages(db, task)
+        db.commit()
+        if task.query:
+            try:
+                import_matching(db, task.user_id, task.query)
+                msgs = _messages(db, task)
+            except Exception as exc:  # noqa: BLE001  (a query the search can't run)
+                task.status, task.note, task.finished_at = "failed", str(exc)[:300], datetime.now(UTC)
+                db.commit()
+                return
+        else:
+            msgs = _messages(db, task)
         task.total, task.done, task.changed = len(msgs), 0, 0
         db.commit()
         token = llm.current_task.set(task.id)
+        paced = llm.pace_wait.set(90.0)  # background work waits for a free slot instead of failing
         try:
             unread = 0
             from app.locks import LockBusy, user_lock
@@ -263,6 +317,7 @@ def run_task(task_id: uuid.UUID) -> None:
             task.status, task.note = "failed", f"Something went wrong ({type(exc).__name__}). Nothing was lost; run it again."
         finally:
             llm.current_task.reset(token)
+            llm.pace_wait.reset(paced)
         task.finished_at = datetime.now(UTC)
         tokens = task_tokens(db, task.id)
         what = {"timelines": "mail joined company timelines", "todos": "to-dos made", "sort": "mail moved into subfolders"}[task.kind]

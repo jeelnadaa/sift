@@ -13,7 +13,7 @@ from app.db import get_db
 from app.mail.base import AuthRevoked
 from app.mail.gmail import GmailError
 from app.mail.message import extract_body
-from app.models import GmailAccount, Message, Notification, User
+from app.models import GmailAccount, GroupMember, Message, Notification, User
 from app.security import current_user
 
 router = APIRouter(prefix="/api/v1/messages")
@@ -100,7 +100,11 @@ def _own(db: Session, user: User, message_id: uuid.UUID) -> Message:
 def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     m = _own(db, user, message_id)
     n = db.scalar(select(Notification).where(Notification.message_id == m.id))
-    return message_json(m, db.get(GmailAccount, m.account_id), n)
+    out = message_json(m, db.get(GmailAccount, m.account_id), n)
+    # the group it was put in (when grouping is on), so the apps can open it from the mail
+    g = db.scalar(select(GroupMember.group_id).where(GroupMember.message_id == m.id, GroupMember.added_by != "removed")) if grouping.enabled(db, user.id) else None
+    out["group_id"] = str(g) if g else None
+    return out
 
 
 @router.get("/{message_id}/thread")

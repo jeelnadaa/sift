@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from cryptography.fernet import Fernet
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import accounts, crypto, jobs, scheduler
 from app.mail import google_oauth
@@ -277,3 +277,13 @@ def test_callback_shows_admin_block(client, override_settings):
     state = google_oauth.make_state("owner@gmail.com")
     r = client.get("/api/v1/accounts/oauth/callback", params={"state": state, "error": "admin_policy_enforced"})
     assert "blocked by its administrator" in r.text
+
+
+def test_new_account_imports_its_last_week_quietly_reconnect_does_not(db, user, fake):
+    accounts.connect_account(db, "owner@gmail.com", "code")
+    imports = list(db.scalars(select(Job).where(Job.kind == "catch_up")))
+    assert len(imports) == 1 and imports[0].payload["mode"] == "import"
+    since = datetime.fromisoformat(imports[0].payload["since"])
+    assert abs((datetime.now(UTC) - since) - timedelta(days=accounts.IMPORT_DAYS)) < timedelta(minutes=1)
+    accounts.connect_account(db, "owner@gmail.com", "code")  # reconnect keeps the cursor instead
+    assert db.scalar(select(func.count()).select_from(Job).where(Job.kind == "catch_up")) == 1

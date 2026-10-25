@@ -130,7 +130,13 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
         scope.launch { try { Api.get(context).createTodo(TodoIn(title, due, notes.ifBlank { null })); state = "open"; load() } catch (t: Throwable) { error = t.userMessage() } }
     }
     editingTodo?.let { t ->
-        EditTodoDialog(t, onDismiss = { editingTodo = null }) { title, notes, due ->
+        EditTodoDialog(t, onDismiss = { editingTodo = null }, onDelete = {
+            editingTodo = null
+            scope.launch {
+                try { Api.get(context).deleteTodo(t.id); items = items.filterNot { it.id == t.id }; snackbar.showSnackbar("Deleted: ${t.title}", withDismissAction = true) }
+                catch (e: Throwable) { error = e.userMessage() }
+            }
+        }) { title, notes, due ->
             editingTodo = null
             scope.launch {
                 try { Api.get(context).updateTodo(t.id, TodoPatch(title = title, notes = notes, dueAt = due, clearDue = due == null)); load() }
@@ -230,7 +236,8 @@ fun AddTodoDialog(initialTitle: String = "", onDismiss: () -> Unit, onAdd: (Stri
 
 /** Add a to-do or change one: name, notes, and a deadline at any day and minute. */
 @Composable
-fun EditTodoDialog(todo: TodoDto?, onDismiss: () -> Unit, onSave: (title: String, notes: String, due: String?) -> Unit) {
+fun EditTodoDialog(todo: TodoDto?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (title: String, notes: String, due: String?) -> Unit) {
+    var confirmDelete by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf(todo?.title ?: "") }
     var notes by remember { mutableStateOf(todo?.notes ?: "") }
     var due by remember { mutableStateOf(com.solarquack.sift.ui.parseZoned(todo?.dueAt)) }
@@ -251,7 +258,15 @@ fun EditTodoDialog(todo: TodoDto?, onDismiss: () -> Unit, onSave: (title: String
                 onSave(title.trim(), notes.trim(), due?.let { with(com.solarquack.sift.ui.DateTimeIso) { it.isoString() } })
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
+        dismissButton = {
+            Row {
+                // deleting asks once more: the to-do is gone for good (marking it done keeps it)
+                if (onDelete != null) TextButton(onClick = { if (confirmDelete) onDelete() else confirmDelete = true }) {
+                    Text(if (confirmDelete) "Delete for good" else "Delete", color = Ink.urgent)
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) }
+            }
+        },
         containerColor = Ink.surface, shape = Radius.xl,
     )
 }

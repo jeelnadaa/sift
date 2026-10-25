@@ -1,6 +1,7 @@
 """Phase 2c: opt-in grouping (brief section 21)."""
 import copy
 import uuid
+import time
 
 import pytest
 from sqlalchemy import delete, select
@@ -10,7 +11,7 @@ from app.models import GroupMember, MailGroup, Message, Rule
 from tests.test_pipeline import run, setup  # noqa: F401  (fixtures)
 from tests.test_rule_tools import H
 
-BASE_MS = 1792816881570
+BASE_MS = int(time.time() * 1000) - 60_000  # "now": mail older than 30 min counts as late (pipeline.LATE_AGE)
 DAY_MS = 86_400_000
 
 
