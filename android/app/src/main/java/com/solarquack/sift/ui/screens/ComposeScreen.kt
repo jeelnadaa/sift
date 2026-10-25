@@ -32,8 +32,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -127,6 +129,7 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
     var aiOn by remember { mutableStateOf(false) }
     var aiOpen by remember { mutableStateOf(false) }
     var laterOpen by remember { mutableStateOf(false) }
+    var templatesOpen by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf<OutboxDto?>(null) }
     var needAccess by remember { mutableStateOf<Pair<List<WriteAccessAccount>, suspend () -> Unit>?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
@@ -402,6 +405,7 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             GhostButton("Send later…") { laterOpen = true }
             GhostButton("Attach…") { picker.launch(arrayOf("*/*")) }
+            GhostButton("Templates") { templatesOpen = true }
             if (replying) GhostButton(if (aiOn) "✦ Draft with AI" else "✦ AI (add a key)", color = if (aiOn) Ink.text else Ink.text3) {
                 if (aiOn) aiOpen = true else info = "Add an API key to draft replies with AI (Settings → AI provider)"
             }
@@ -432,6 +436,11 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
         }
     }
     if (laterOpen) SendLaterDialog(onDismiss = { laterOpen = false }) { at -> laterOpen = false; send(at) }
+    if (templatesOpen) ComposeTemplatesDialog(onDismiss = { templatesOpen = false }) { tpl ->
+        body = if (body.isBlank()) tpl else "$body\n\n$tpl"
+        dirty = true
+        templatesOpen = false
+    }
     needAccess?.let { (accts, retry) ->
         WriteAccessDialog(accts, onDismiss = { needAccess = null }, onInfo = { info = it }) {
             needAccess = null
@@ -532,4 +541,93 @@ private fun SendLaterDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Un
             colors = DatePickerDefaults.colors(containerColor = Ink.surface),
         ) { DatePicker(state = state) }
     }
+}
+
+@Composable
+fun ComposeTemplatesDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var items by remember { mutableStateOf<List<com.solarquack.sift.data.ReplyTemplateDto>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    var newTitle by remember { mutableStateOf("") }
+    var newBody by remember { mutableStateOf("") }
+    var newShortcut by remember { mutableStateOf("") }
+
+    val reload: () -> Unit = {
+        scope.launch {
+            loading = true
+            try {
+                items = Api.get(context).templates().templates
+            } catch (t: Throwable) {
+                error = t.userMessage()
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { reload() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (creating) "New Template" else "Reply Templates") },
+        text = {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp)) }
+                if (creating) {
+                    com.solarquack.sift.ui.Field(newTitle, { newTitle = it }, "Title", placeholder = "e.g. Availability")
+                    Spacer(Modifier.height(8.dp))
+                    com.solarquack.sift.ui.Field(newShortcut, { newShortcut = it }, "Shortcut (optional)", placeholder = "e.g. /avail")
+                    Spacer(Modifier.height(8.dp))
+                    com.solarquack.sift.ui.Field(newBody, { newBody = it }, "Body", placeholder = "Write canned reply text...", singleLine = false)
+                } else {
+                    if (loading) {
+                        Text("Loading templates…", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
+                    } else if (items.isEmpty()) {
+                        Text("No reply templates saved yet. Tap '+ New' to create reusable snippets.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        items.forEach { t ->
+                            Column(Modifier.fillMaxWidth().clickable { onSelect(t.body) }.padding(vertical = 8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(t.title, color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                                    t.shortcut?.let { Chip(it, false) {} }
+                                }
+                                Text(t.body, color = Ink.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                            }
+                            HorizontalDivider(color = Ink.line)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (creating) {
+                TextButton(
+                    onClick = {
+                        if (newTitle.isNotBlank() && newBody.isNotBlank()) {
+                            scope.launch {
+                                try {
+                                    Api.get(context).createTemplate(com.solarquack.sift.data.TemplateInDto(newTitle, newBody, newShortcut.ifBlank { null }))
+                                    creating = false
+                                    reload()
+                                } catch (t: Throwable) {
+                                    error = t.userMessage()
+                                }
+                            }
+                        }
+                    },
+                    enabled = newTitle.isNotBlank() && newBody.isNotBlank()
+                ) { Text("Save", color = Ink.normal) }
+            } else {
+                TextButton(onClick = { creating = true }) { Text("+ New", color = Ink.normal) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { if (creating) creating = false else onDismiss() }) { Text("Cancel", color = Ink.text2) }
+        },
+        containerColor = Ink.surface,
+        shape = com.solarquack.sift.ui.theme.Radius.xl,
+    )
 }

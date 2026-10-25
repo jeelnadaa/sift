@@ -283,3 +283,17 @@ export interface Usage {
   sift_ai?: { tokens: number; calls: number; runs: { id: string; text: string; status: string; tokens: number; created_at: string }[] };
 }
 export interface GroupingStatus { grouping_enabled: "not_asked" | "yes" | "no"; prompts: number; should_ask: boolean }
+
+export interface ReplyTemplate {
+  id: string;
+  title: string;
+  body: string;
+  shortcut: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ReplyTemplateListResult {
+  templates: ReplyTemplate[];
+  total: number;
+}

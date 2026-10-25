@@ -179,6 +179,39 @@ object FakeApi {
                 lastReceivedAt = ago(0),
                 sampleSubject = "Acme Corp online assessment",
             )
+            "templates" -> com.solarquack.sift.data.TemplateListResultDto(
+                templates = listOf(
+                    com.solarquack.sift.data.ReplyTemplateDto(
+                        id = "tpl1",
+                        title = "Interview Availability",
+                        body = "I am available on Thursday between 2 PM and 5 PM.",
+                        shortcut = "/avail",
+                        createdAt = ago(2),
+                        updatedAt = ago(2),
+                    )
+                ),
+                total = 1,
+            )
+            "createTemplate" -> {
+                val input = args?.get(0) as? com.solarquack.sift.data.TemplateInDto
+                com.solarquack.sift.data.ReplyTemplateDto(
+                    id = "tpl2",
+                    title = input?.title ?: "New Template",
+                    body = input?.body ?: "Body",
+                    shortcut = input?.shortcut,
+                    createdAt = ago(0),
+                    updatedAt = ago(0),
+                )
+            }
+            "updateTemplate" -> com.solarquack.sift.data.ReplyTemplateDto(
+                id = args?.get(0) as? String ?: "tpl1",
+                title = "Updated Template",
+                body = "Updated Body",
+                shortcut = "/updated",
+                createdAt = ago(2),
+                updatedAt = ago(0),
+            )
+            "deleteTemplate" -> mapOf("ok" to true)
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

@@ -970,3 +970,35 @@ data class AskRunDto(
     val tokens: Int = 0,
     val estimate: Int = 0,  // tokens running may use, said before Run
 )
+
+// ---- Reply Templates (Phase D Item 1) ----
+
+@Serializable
+data class ReplyTemplateDto(
+    val id: String,
+    val title: String,
+    val body: String,
+    val shortcut: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+@Serializable
+data class TemplateInDto(
+    val title: String,
+    val body: String,
+    val shortcut: String? = null,
+)
+
+@Serializable
+data class TemplatePatchDto(
+    val title: String? = null,
+    val body: String? = null,
+    val shortcut: String? = null,
+)
+
+@Serializable
+data class TemplateListResultDto(
+    val templates: List<ReplyTemplateDto> = emptyList(),
+    val total: Int = 0,
+)

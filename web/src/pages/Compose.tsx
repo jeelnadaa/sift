@@ -9,8 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Top, lastPage } from "../App";
-import { ApiError, del, get, post, put, upload, type Account, type AiStatus, type DraftData, type OutboxItem, type ReplyContext, type Settings } from "../api";
-import { Banner, Select, TextField, actionToast, confirmDialog, errorText, toast } from "../components";
+import { ApiError, del, get, patch, post, put, upload, type Account, type AiStatus, type DraftData, type OutboxItem, type ReplyContext, type ReplyTemplate, type ReplyTemplateListResult, type Settings } from "../api";
+import { Banner, Modal, Select, TextField, actionToast, confirmDialog, errorText, toast } from "../components";
 import { withWriteAccess } from "../mailActions";
 import { fullTime } from "../util";
 import { size } from "./Thread";
@@ -70,6 +70,7 @@ export function ComposePage() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   // set when another device (or Gmail) saved this draft since we loaded it: autosave pauses until
   // the user loads their version or keeps this one
@@ -438,6 +439,7 @@ export function ComposePage() {
               { value: "0", label: "No reminder" }, { value: "1", label: "Remind me if no reply in 1 day" }, { value: "2", label: "…in 2 days" },
               { value: "3", label: "…in 3 days" }, { value: "7", label: "…in a week" }]} />
             <button className="btn btn-ghost btn-sm" onClick={() => fileInput.current?.click()} data-tip="Attach files (25 MB in total)">Attach…</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setTemplatesOpen(true)} data-tip="Insert a reusable canned reply snippet">📋 Templates</button>
             <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) attach(files); }} />
             {replying && (
               <button className="btn btn-ghost btn-sm" disabled={aiLocked} onClick={() => setAiOpen((o) => !o)}
@@ -446,8 +448,166 @@ export function ComposePage() {
             <span className="save-state" aria-live="polite">{saveText}</span>
           </div>
         </div>
+        {templatesOpen && (
+          <TemplateDialog
+            onClose={() => setTemplatesOpen(false)}
+            onSelect={(tpl) => {
+              edit(setBody)(body ? `${body}\n\n${tpl}` : tpl);
+              toast("Template inserted");
+            }}
+          />
+        )}
       </section>
     </>
+  );
+}
+
+function TemplateDialog({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (body: string) => void;
+}) {
+  const [list, setList] = useState<ReplyTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<ReplyTemplate | "new" | null>(null);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [shortcut, setShortcut] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    try {
+      const res = await get<ReplyTemplateListResult>("/templates");
+      setList(res.templates);
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const openEditor = (t: ReplyTemplate | "new") => {
+    setEditing(t);
+    if (t === "new") {
+      setTitle("");
+      setBody("");
+      setShortcut("");
+    } else {
+      setTitle(t.title);
+      setBody(t.body);
+      setShortcut(t.shortcut || "");
+    }
+  };
+
+  const save = async () => {
+    if (!title.trim() || !body.trim()) {
+      toast("Title and body are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing === "new") {
+        await post("/templates", { title, body, shortcut: shortcut.trim() || null });
+        toast("Template created");
+      } else if (editing) {
+        await patch(`/templates/${editing.id}`, { title, body, shortcut: shortcut.trim() || null });
+        toast("Template updated");
+      }
+      setEditing(null);
+      load();
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (t: ReplyTemplate) => {
+    if (!(await confirmDialog({ title: `Delete "${t.title}"?`, body: "This canned reply template will be permanently removed.", confirm: "Delete", danger: true }))) return;
+    try {
+      await del(`/templates/${t.id}`);
+      toast("Template deleted");
+      load();
+    } catch (e) {
+      toast(errorText(e));
+    }
+  };
+
+  return (
+    <Modal title={editing ? (editing === "new" ? "New Template" : "Edit Template") : "Reply Templates (Canned Replies)"} onClose={onClose}>
+      {editing ? (
+        <div className="stack" style={{ gap: 14 }}>
+          <div className="field">
+            <label>Title</label>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Interview Availability" autoFocus />
+          </div>
+          <div className="field">
+            <label>Shortcut (optional)</label>
+            <input className="input" value={shortcut} onChange={(e) => setShortcut(e.target.value)} placeholder="e.g. /avail" />
+          </div>
+          <div className="field">
+            <label>Template Body</label>
+            <textarea
+              className="compose-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={8}
+              placeholder="Write the canned reply text here..."
+              style={{ width: "100%", marginTop: 6 }}
+            />
+          </div>
+          <div className="inline" style={{ justifyContent: "flex-end", marginTop: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+            <button className="btn btn-primary btn-sm" disabled={saving || !title.trim() || !body.trim()} onClick={save}>
+              {saving ? "Saving…" : "Save Template"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="stack" style={{ gap: 12 }}>
+          <div className="inline" style={{ justifyContent: "space-between" }}>
+            <span className="dim" style={{ fontSize: 13 }}>Choose a template to insert into your email, or manage templates.</span>
+            <button className="btn btn-primary btn-sm" onClick={() => openEditor("new")}>+ New Template</button>
+          </div>
+          {loading && <div className="card dim">Loading templates…</div>}
+          {!loading && list.length === 0 && (
+            <div className="card dim" style={{ textAlign: "center", padding: "24px 12px" }}>
+              No reply templates saved yet. Create one to insert pre-written replies with a single click.
+            </div>
+          )}
+          {!loading && list.length > 0 && (
+            <div className="list" style={{ maxHeight: 380, overflowY: "auto" }}>
+              {list.map((t) => (
+                <div key={t.id} className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+                  <div className="main" style={{ flex: 1 }}>
+                    <div className="inline" style={{ gap: 8 }}>
+                      <span className="who" style={{ fontWeight: 700 }}>{t.title}</span>
+                      {t.shortcut && <span className="chip" style={{ fontSize: 11, padding: "2px 6px" }}>{t.shortcut}</span>}
+                    </div>
+                    <div className="subj" style={{ whiteSpace: "pre-wrap", maxHeight: 54, overflow: "hidden", textOverflow: "ellipsis", fontSize: 13, marginTop: 4, color: "var(--text-2)" }}>
+                      {t.body}
+                    </div>
+                  </div>
+                  <div className="inline" style={{ gap: 6 }}>
+                    <button className="btn btn-primary btn-sm" onClick={() => { onSelect(t.body); onClose(); }} title="Insert into message">
+                      Insert
+                    </button>
+                    <button className="chip" onClick={() => openEditor(t)} title="Edit template">Edit</button>
+                    <button className="chip" onClick={() => remove(t)} title="Delete template">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 

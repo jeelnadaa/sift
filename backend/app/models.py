@@ -393,6 +393,18 @@ class MailTag(Base):
     added_at: Mapped[datetime] = created()
 
 
+class ReplyTemplate(Base):
+    """Reusable text template (canned reply) for compose and replies."""
+    __tablename__ = "reply_templates"
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = user_fk()
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    shortcut: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = created()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class MailNote(Base):
     __tablename__ = "mail_notes"
     id: Mapped[uuid.UUID] = pk()
