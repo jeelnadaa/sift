@@ -31,6 +31,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import kotlinx.coroutines.launch
 import androidx.compose.ui.viewinterop.AndroidView
 import com.solarquack.sift.data.AddrDto
 import com.solarquack.sift.data.Api
@@ -78,11 +81,57 @@ fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? 
     error?.let { Banner(it, Ink.urgent); return }
     val t = thread ?: run { Text("Loading the conversation…", color = Ink.text3, style = MaterialTheme.typography.bodyMedium); return }
     val blocked = t.messages.sumOf { it.imagesBlocked }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var isMuted by remember(t.threadId, t.isMuted) { mutableStateOf(t.isMuted ?: false) }
+    var muting by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (!images && blocked > 0) {
             Banner("$blocked remote image${if (blocked == 1) "" else "s"} blocked. They can tell the sender you opened the mail. Loading goes through your Sift server.", Ink.warn, "Load images") { images = true }
         }
-        if (t.messages.size > 1) Text("${t.messages.size} messages in this conversation", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (t.messages.size > 1) {
+                Text("${t.messages.size} messages in this conversation", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+            } else {
+                androidx.compose.foundation.layout.Spacer(Modifier.width(1.dp))
+            }
+            val threadKey = t.threadId ?: threadId
+            if (threadKey != null) {
+                Row(
+                    Modifier
+                        .background(if (isMuted) Ink.warn.copy(alpha = 0.15f) else Ink.bg2, Radius.md)
+                        .clickable(enabled = !muting) {
+                            scope.launch {
+                                muting = true
+                                try {
+                                    val api = Api.get(context)
+                                    if (isMuted) {
+                                        api.unmuteThread(threadKey)
+                                        isMuted = false
+                                    } else {
+                                        api.muteThread(threadKey)
+                                        isMuted = true
+                                    }
+                                } catch (_: Exception) {}
+                                finally { muting = false }
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        if (isMuted) "🔕 Muted" else "🔔 Mute thread",
+                        color = if (isMuted) Ink.warn else Ink.text2,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
         t.messages.forEach { m ->
             val acc = t.accountId
             MessageCard(m, expanded = m.gmailId in open, current = m.id == messageId,

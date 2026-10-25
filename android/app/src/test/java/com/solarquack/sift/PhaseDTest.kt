@@ -170,4 +170,72 @@ class PhaseDTest {
         assertEquals("m1", res.items[0].id)
         assertEquals("Acme Corp online assessment: link inside", res.items[0].subject)
     }
+
+    @Test
+    fun testVipAndMutedSerialization() {
+        val sender = com.solarquack.sift.data.SenderItemDto(
+            email = "ceo@partner.example",
+            name = "Executive Officer",
+            domain = "partner.example",
+            totalCount = 42,
+            unreadCount = 2,
+            urgentCount = 1,
+            isVip = true,
+        )
+        val senderJson = Api.json.encodeToString(com.solarquack.sift.data.SenderItemDto.serializer(), sender)
+        assertTrue(senderJson.contains("\"is_vip\":true"))
+        val decodedSender = Api.json.decodeFromString(com.solarquack.sift.data.SenderItemDto.serializer(), senderJson)
+        assertEquals(true, decodedSender.isVip)
+
+        val thread = com.solarquack.sift.data.ThreadDto(
+            messages = emptyList(),
+            accountId = "acc1",
+            threadId = "th_999",
+            isMuted = true,
+        )
+        val threadJson = Api.json.encodeToString(com.solarquack.sift.data.ThreadDto.serializer(), thread)
+        assertTrue(threadJson.contains("\"is_muted\":true"))
+        val decodedThread = Api.json.decodeFromString(com.solarquack.sift.data.ThreadDto.serializer(), threadJson)
+        assertEquals(true, decodedThread.isMuted)
+        assertEquals("th_999", decodedThread.threadId)
+
+        val msg = com.solarquack.sift.data.MessageDto(
+            id = "msg1",
+            accountId = "acc1",
+            isVip = true,
+            isMuted = true,
+        )
+        val msgJson = Api.json.encodeToString(com.solarquack.sift.data.MessageDto.serializer(), msg)
+        assertTrue(msgJson.contains("\"is_vip\":true"))
+        assertTrue(msgJson.contains("\"is_muted\":true"))
+        val decodedMsg = Api.json.decodeFromString(com.solarquack.sift.data.MessageDto.serializer(), msgJson)
+        assertEquals(true, decodedMsg.isVip)
+        assertEquals(true, decodedMsg.isMuted)
+    }
+
+    @Test
+    fun testFakeApiVipAndMuteEndpoints() = runBlocking {
+        val api = Api.testOverride
+        assertNotNull(api)
+
+        val vipRes = api!!.setSenderVip("founder@demo.sift.local")
+        assertEquals(true, vipRes["ok"])
+        assertEquals("founder@demo.sift.local", vipRes["email"])
+        assertEquals(true, vipRes["is_vip"])
+
+        val unvipRes = api.unsetSenderVip("founder@demo.sift.local")
+        assertEquals(true, unvipRes["ok"])
+        assertEquals(false, unvipRes["is_vip"])
+
+        val muteRes = api.muteThread("t_demo_1")
+        assertEquals(true, muteRes["ok"])
+        assertEquals(true, muteRes["muted"])
+
+        val unmuteRes = api.unmuteThread("t_demo_1")
+        assertEquals(true, unmuteRes["ok"])
+        assertEquals(false, unmuteRes["muted"])
+
+        val checkRes = api.checkThreadMuted("t_demo_1")
+        assertEquals(false, checkRes["muted"])
+    }
 }

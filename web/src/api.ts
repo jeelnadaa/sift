@@ -148,6 +148,7 @@ export interface SenderItem {
   attachment_count: number;
   last_received_at: string | null;
   sample_subject: string | null;
+  is_vip?: boolean;
 }
 
 export interface SenderListResult {
@@ -188,6 +189,8 @@ export interface Mail {
   can_unsubscribe?: boolean;
   unsubscribe_url?: string | null;
   unsubscribe_post?: boolean;
+  is_vip?: boolean;
+  is_muted?: boolean;
 }
 
 export interface UnsubscribeResult {

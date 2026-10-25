@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import fcm, folders, grouping, user_settings
+from app import fcm, folders, grouping, user_settings, vip
 from app.models import Device, GmailAccount, Message, Notification
 
 log = logging.getLogger(__name__)
@@ -79,13 +79,21 @@ def payload(n: Notification, msg: Message, account: GmailAccount, last_folder: s
 def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notification | None:
     if msg.priority not in NOTIFY_PRIORITIES:
         return None
+    # Suppress notifications if thread is muted by user
+    if vip.is_thread_muted(db, msg.user_id, msg.thread_id):
+        return None
+
+    # VIP senders elevate to urgent and bypass quiet hours / category mute
+    is_vip_sender = vip.is_vip(db, msg.user_id, msg.sender)
+    eff_priority = "urgent" if is_vip_sender else msg.priority
+
     # Per-folder setting (brief section 18) and muted groups (section 21). Mute never holds back
     # urgent mail; a folder set to "always" raises digest mail to a normal (sounding) notification.
     mode = folders.notify_mode_for(db, msg)
-    if msg.priority != "urgent" and mode != "always" and (mode == "mute" or grouping.is_muted(db, msg)):
+    if eff_priority != "urgent" and mode != "always" and (mode == "mute" or grouping.is_muted(db, msg)):
         return None
 
-    if msg.priority != "urgent":
+    if eff_priority != "urgent":
         user_s = user_settings.get(db, msg.user_id)
         if user_settings.is_in_quiet_hours(user_s):
             return None
@@ -93,7 +101,7 @@ def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notifica
         if msg.category and msg.category in muted_cats:
             return None
 
-    priority = "normal" if mode == "always" and msg.priority == "digest" else msg.priority
+    priority = "urgent" if is_vip_sender else ("normal" if mode == "always" and msg.priority == "digest" else msg.priority)
     stmt = insert(Notification).values(
         user_id=msg.user_id, message_id=msg.id, priority=priority, mail_received_at=msg.received_at,
     ).on_conflict_do_nothing(index_elements=["message_id"]).returning(Notification.id)

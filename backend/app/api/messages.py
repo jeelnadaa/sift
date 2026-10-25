@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import accounts as account_service
+from app import accounts as account_service, vip
 from app import events, grouping, notes as notes_service, reader, rule_tools
 from app import snooze as snooze_service
 from app.db import get_db
@@ -121,6 +121,8 @@ def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: S
         if g.kind == "custom" or on]
     out["groups"] = groups
     out["group_id"] = groups[0]["id"] if groups else None
+    out["is_vip"] = vip.is_vip(db, user.id, m.sender)
+    out["is_muted"] = vip.is_thread_muted(db, user.id, m.thread_id)
     return out
 
 
@@ -167,8 +169,10 @@ def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, 
                     pass
     db.commit()
 
+    is_muted = vip.is_thread_muted(db, user.id, thread_id)
     return {"thread_id": thread_id, "account": account.label or account.email, "account_id": str(account.id),
-            "subject": (msgs[0]["subject"] if msgs else fallback_subject) or "", "images": images, "messages": msgs}
+            "subject": (msgs[0]["subject"] if msgs else fallback_subject) or "", "images": images, "messages": msgs,
+            "is_muted": is_muted}
 
 
 @router.get("/{message_id}/body")

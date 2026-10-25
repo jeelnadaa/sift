@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  del,
   get,
+  post,
   type SenderDetailResult,
   type SenderItem,
   type SenderListResult,
 } from "../api";
-import { Avatar, Dot, Icon, Modal } from "../components";
+import { Avatar, Dot, Icon, Modal, errorText, toast } from "../components";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -33,6 +35,7 @@ export function SendersPage() {
   const [selectedSender, setSelectedSender] = useState<string | null>(null);
   const [senderDetail, setSenderDetail] = useState<SenderDetailResult | null>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   const limit = 40;
 
@@ -65,7 +68,7 @@ export function SendersPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchQuery, sortBy, offset]);
+  }, [searchQuery, sortBy, offset, reloadTick]);
 
   // Load sender detail when selected
   useEffect(() => {
@@ -268,6 +271,28 @@ export function SendersPage() {
             {/* Actions */}
             <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
               <button
+                type="button"
+                className={`btn btn-sm ${s.is_vip ? "btn-primary" : "btn-ghost"}`}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    if (s.is_vip) {
+                      await del(`/senders/${encodeURIComponent(s.email)}/vip`);
+                      toast(`Removed ${s.name || s.email} from VIP`);
+                    } else {
+                      await post(`/senders/${encodeURIComponent(s.email)}/vip`);
+                      toast(`Marked ${s.name || s.email} as VIP`);
+                    }
+                    setReloadTick((t) => t + 1);
+                  } catch (err) {
+                    toast(errorText(err));
+                  }
+                }}
+                title={s.is_vip ? "VIP Sender (always urgent notifications). Click to remove." : "Mark as VIP sender (elevates new mail to urgent)"}
+              >
+                {s.is_vip ? "★ VIP" : "☆ VIP"}
+              </button>
+              <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => setSelectedSender(s.email)}
                 title="View sender activity"
@@ -316,15 +341,40 @@ export function SendersPage() {
           onClose={() => setSelectedSender(null)}
           foot={
             <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setSelectedSender(null);
-                  navigate(`/rules/new`);
-                }}
-              >
-                + Create Rule for Sender
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${senderDetail?.is_vip ? "btn-primary" : "btn-ghost"}`}
+                  onClick={async () => {
+                    if (!selectedSender) return;
+                    try {
+                      if (senderDetail?.is_vip) {
+                        await del(`/senders/${encodeURIComponent(selectedSender)}/vip`);
+                        setSenderDetail({ ...senderDetail, is_vip: false });
+                        toast("Removed from VIP");
+                      } else if (senderDetail) {
+                        await post(`/senders/${encodeURIComponent(selectedSender)}/vip`);
+                        setSenderDetail({ ...senderDetail, is_vip: true });
+                        toast("Marked as VIP sender");
+                      }
+                      setReloadTick((t) => t + 1);
+                    } catch (e) {
+                      toast(errorText(e));
+                    }
+                  }}
+                >
+                  {senderDetail?.is_vip ? "★ VIP Sender" : "☆ Mark VIP"}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setSelectedSender(null);
+                    navigate(`/rules/new`);
+                  }}
+                >
+                  + Rule
+                </button>
+              </div>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {

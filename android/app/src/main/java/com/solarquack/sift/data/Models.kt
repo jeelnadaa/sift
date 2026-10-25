@@ -52,6 +52,8 @@ data class MessageDto(
     val pinned: Boolean = false,
     @SerialName("has_note") val hasNote: Boolean = false,
     @SerialName("notes_count") val notesCount: Int = 0,
+    @SerialName("is_vip") val isVip: Boolean = false,
+    @SerialName("is_muted") val isMuted: Boolean = false,
     val notes: List<MailNoteDto> = emptyList(),
     @SerialName("can_unsubscribe") val canUnsubscribe: Boolean = false,
     @SerialName("unsubscribe_url") val unsubscribeUrl: String? = null,
@@ -134,6 +136,7 @@ data class SenderItemDto(
     @SerialName("attachment_count") val attachmentCount: Int = 0,
     @SerialName("last_received_at") val lastReceivedAt: String? = null,
     @SerialName("sample_subject") val sampleSubject: String? = null,
+    @SerialName("is_vip") val isVip: Boolean = false,
 )
 
 @Serializable
@@ -176,6 +179,7 @@ data class SenderDetailResultDto(
     @SerialName("sample_subject") val sampleSubject: String? = null,
     @SerialName("recent_messages") val recentMessages: List<SenderMessageBriefDto> = emptyList(),
     val rules: List<SenderRuleBriefDto> = emptyList(),
+    @SerialName("is_vip") val isVip: Boolean = false,
 )
 
 @Serializable
@@ -693,8 +697,15 @@ data class ThreadMessageDto(
 )
 
 @Serializable
-data class ThreadDto(val subject: String = "", val account: String? = null, @SerialName("account_id") val accountId: String? = null,
-                     val images: Boolean = false, val messages: List<ThreadMessageDto> = emptyList())
+data class ThreadDto(
+    val subject: String = "",
+    val account: String? = null,
+    @SerialName("account_id") val accountId: String? = null,
+    @SerialName("thread_id") val threadId: String? = null,
+    val images: Boolean = false,
+    val messages: List<ThreadMessageDto> = emptyList(),
+    @SerialName("is_muted") val isMuted: Boolean = false,
+)
 
 // ---- search (Phase 3b) ----
 

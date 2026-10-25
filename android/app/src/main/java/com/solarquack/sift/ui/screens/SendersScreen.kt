@@ -248,6 +248,11 @@ private fun SenderRow(
     item: SenderItemDto,
     onSearch: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isVip by remember(item.email, item.isVip) { mutableStateOf(item.isVip ?: false) }
+    var updatingVip by remember { mutableStateOf(false) }
+
     Row(
         Modifier
             .fillMaxWidth()
@@ -270,6 +275,15 @@ private fun SenderRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (isVip) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "★ VIP",
+                        color = Ink.warn,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 item.domain?.let { dom ->
                     Spacer(Modifier.width(6.dp))
                     Text(
@@ -332,6 +346,29 @@ private fun SenderRow(
         }
 
         Spacer(Modifier.width(8.dp))
+
+        GhostButton(
+            label = if (isVip) "★ VIP" else "☆ VIP",
+            enabled = !updatingVip,
+            onClick = {
+                scope.launch {
+                    updatingVip = true
+                    try {
+                        val api = Api.get(context)
+                        if (isVip) {
+                            api.unsetSenderVip(item.email)
+                            isVip = false
+                        } else {
+                            api.setSenderVip(item.email)
+                            isVip = true
+                        }
+                    } catch (_: Exception) {}
+                    finally { updatingVip = false }
+                }
+            }
+        )
+
+        Spacer(Modifier.width(4.dp))
 
         GhostButton("Search", onClick = onSearch)
     }

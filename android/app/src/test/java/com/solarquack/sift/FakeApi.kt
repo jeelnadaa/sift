@@ -254,6 +254,11 @@ object FakeApi {
                 total = mails.size,
                 chips = emptyList(),
             )
+                        "setSenderVip" -> mapOf("ok" to true, "email" to (args?.get(0) as? String ?: ""), "is_vip" to true)
+            "unsetSenderVip" -> mapOf("ok" to true, "email" to (args?.get(0) as? String ?: ""), "is_vip" to false)
+            "muteThread" -> mapOf("ok" to true, "thread_id" to (args?.get(0) as? String ?: ""), "muted" to true)
+            "unmuteThread" -> mapOf("ok" to true, "thread_id" to (args?.get(0) as? String ?: ""), "muted" to false)
+            "checkThreadMuted" -> mapOf("muted" to false, "thread_id" to (args?.get(0) as? String ?: ""))
             "toString" -> "FakeApi"
             "hashCode" -> 0
             "equals" -> false

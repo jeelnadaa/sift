@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { get } from "../api";
-import { Avatar, Banner, useLoad } from "../components";
+import { del, get, post } from "../api";
+import { Avatar, Banner, errorText, toast, useLoad } from "../components";
 import { fullTime, relativeTime } from "../util";
 
 interface Addr { name: string; email: string }
@@ -10,7 +10,7 @@ interface ThreadMessage {
   gmail_id: string; id: string | null; from: Addr | null; to: Addr[]; cc: Addr[]; subject: string; date: string | null;
   unread: boolean; snippet: string; text: string; html_url: string | null; images_blocked: number; attachments: ThreadAttachment[];
 }
-interface ThreadData { thread_id: string; account: string; account_id: string; subject: string; images: boolean; messages: ThreadMessage[] }
+interface ThreadData { thread_id: string; account: string; account_id: string; subject: string; images: boolean; messages: ThreadMessage[]; is_muted?: boolean }
 
 const who = (a: Addr | null) => (a ? a.name || a.email : "Unknown");
 const list = (xs: Addr[]) => xs.map((x) => x.name ? `${x.name} <${x.email}>` : x.email).join(", ");
@@ -30,6 +30,28 @@ export function Thread({ messageId, accountId, threadId }: { messageId?: string;
   const [open, setOpen] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const d = t.data;
+  const [muted, setMuted] = useState(false);
+
+  useEffect(() => {
+    if (d?.is_muted !== undefined) setMuted(d.is_muted);
+  }, [d?.is_muted]);
+
+  async function toggleMute() {
+    if (!d?.thread_id) return;
+    try {
+      if (muted) {
+        await del(`/threads/${encodeURIComponent(d.thread_id)}/mute`);
+        setMuted(false);
+        toast("Thread unmuted. Notifications enabled.");
+      } else {
+        await post(`/threads/${encodeURIComponent(d.thread_id)}/mute`);
+        setMuted(true);
+        toast("Thread muted. Notifications suppressed.");
+      }
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
   const write = (mode: string, m: ThreadMessage) => navigate(`/compose?mode=${mode}&account=${d?.account_id}&gmail=${m.gmail_id}`);
 
   useEffect(() => {
@@ -45,6 +67,16 @@ export function Thread({ messageId, accountId, threadId }: { messageId?: string;
 
   return (
     <div className="thread">
+      <div className="inline" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+        <button
+          type="button"
+          className={`chip ${muted ? "neg" : ""}`}
+          onClick={toggleMute}
+          data-tip={muted ? "Thread is muted. Notifications are suppressed for replies. Click to unmute." : "Mute this thread to stop push notifications for future replies."}
+        >
+          {muted ? "🔕 Muted Thread" : "🔔 Mute Thread"}
+        </button>
+      </div>
       {!images && blocked > 0 && (
         <Banner tone="warn" action="Load images" onAction={() => setImages(true)}>
           {blocked} remote image{blocked === 1 ? "" : "s"} blocked. They can tell the sender you opened the mail. Loading goes through your Sift server, so the sender never sees your address.

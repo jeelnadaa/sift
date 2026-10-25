@@ -6,6 +6,7 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Message, Rule
+from app import vip
 
 
 def list_senders(
@@ -95,6 +96,7 @@ def list_senders(
         if s_email not in samples and s_subj:
             samples[s_email] = s_subj
 
+    vip_emails = vip.get_vip_emails(db, user_id)
     items = []
     for r in rows:
         email = r.sender
@@ -109,6 +111,7 @@ def list_senders(
             "attachment_count": int(r.attachment_count),
             "last_received_at": r.last_received_at.isoformat() if r.last_received_at else None,
             "sample_subject": samples.get(email),
+            "is_vip": email.lower() in vip_emails,
         })
 
     return items, total
@@ -189,4 +192,5 @@ def get_sender_detail(db: Session, user_id: uuid.UUID, sender_email: str) -> dic
             for m in recent
         ],
         "rules": matched_rules,
+        "is_vip": vip.is_vip(db, user_id, clean_email),
     }

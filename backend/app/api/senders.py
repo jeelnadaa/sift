@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app import senders
+from app import senders, vip
 from app.db import get_db
 from app.models import User
 from app.security import current_user
@@ -49,3 +49,25 @@ def get_sender(
     if not detail:
         raise HTTPException(404, "sender not found")
     return detail
+
+
+@router.post("/{sender_email:path}/vip")
+def set_sender_vip(
+    sender_email: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = vip.add_vip(db, user.id, sender_email)
+    db.commit()
+    return {"email": row.email, "is_vip": True}
+
+
+@router.delete("/{sender_email:path}/vip")
+def unset_sender_vip(
+    sender_email: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    removed = vip.remove_vip(db, user.id, sender_email)
+    db.commit()
+    return {"email": sender_email.strip().lower(), "is_vip": False, "removed": removed}

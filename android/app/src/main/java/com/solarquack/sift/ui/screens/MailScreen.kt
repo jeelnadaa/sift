@@ -100,6 +100,12 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             msg.priority?.let { Tag(it, Ink.tier(it)) }
             msg.category?.takeIf { it != "other" }?.let { Tag(it) }
             msg.company?.let { Tag(it) }
+            if (msg.isVip == true) {
+                Tag("★ VIP", Ink.warn)
+            }
+            if (msg.isMuted == true) {
+                Tag("🔕 Muted", Ink.text3)
+            }
             Spacer(Modifier.weight(1f))
             if (msg.canUnsubscribe) {
                 Chip("🚫 Unsub", false) { unsubConfirm = true }

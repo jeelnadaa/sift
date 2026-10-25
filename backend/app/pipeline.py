@@ -25,7 +25,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import folder_ai, grouping, heuristics, notify, opportunities, outbox, places, rules, todos, user_settings
+from app import folder_ai, grouping, heuristics, notify, opportunities, outbox, places, rules, todos, user_settings, vip
 from app.fingerprint import fingerprint, normalize_subject
 from app.llm import service as llm
 from app.mail.base import AuthRevoked, MailProvider
@@ -257,6 +257,13 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
             msg.extraction = extras or None
             return Outcome(msg.id, msg.priority, "rule")
         # kind == "llm": fall through to the LLM step, skipping heuristics and fingerprints
+
+    # VIP sender: elevate priority to urgent and mark processed
+    if vip.is_vip(db, user_id, meta.sender):
+        msg.priority, msg.status = "urgent", "processed"
+        msg.category = msg.category or "other"
+        msg.extraction = {**(extras or {}), "vip": True}
+        return Outcome(msg.id, "urgent", "vip")
 
     # 6. heuristics (suggest only)
     suggestion = None if match else heuristics.suggest(meta)

@@ -70,6 +70,11 @@ interface SiftApi {
     ): SenderListResultDto
 
     @GET("api/v1/senders/{sender_email}") suspend fun senderDetail(@Path("sender_email") senderEmail: String): SenderDetailResultDto
+    @POST("api/v1/senders/{sender_email}/vip") suspend fun setSenderVip(@Path("sender_email") senderEmail: String): Map<String, Boolean>
+    @DELETE("api/v1/senders/{sender_email}/vip") suspend fun unsetSenderVip(@Path("sender_email") senderEmail: String): Map<String, Boolean>
+    @POST("api/v1/threads/{thread_id}/mute") suspend fun muteThread(@Path("thread_id") threadId: String): Map<String, Boolean>
+    @DELETE("api/v1/threads/{thread_id}/mute") suspend fun unmuteThread(@Path("thread_id") threadId: String): Map<String, Boolean>
+    @GET("api/v1/threads/{thread_id}/muted") suspend fun checkThreadMuted(@Path("thread_id") threadId: String): Map<String, Boolean>
     @POST("api/v1/messages/{id}/unsubscribe") suspend fun unsubscribe(@Path("id") id: String): UnsubscribeResultDto
 
     @GET("api/v1/templates") suspend fun templates(): TemplateListResultDto
