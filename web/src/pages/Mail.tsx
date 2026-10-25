@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { del, get, patch, post, type Draft, type Folder, type FolderTree, type Group, type Mail, type MailNote, type Preview } from "../api";
+import { del, get, patch, post, type Draft, type Folder, type FolderTree, type Group, type Mail, type MailNote, type Preview, type UnsubscribeResult } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Thread } from "./Thread";
 import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailActions";
-import { Avatar, Banner, FolderPicker, Modal, Tag, TextField, errorText, setReadState, toast, useLoad } from "../components";
+import { Avatar, Banner, FolderPicker, Modal, Tag, TextField, confirmDialog, errorText, setReadState, toast, useLoad } from "../components";
 import { findFolder, fullTime, safeUrl } from "../util";
 
 const DECIDED: Record<string, string> = {
@@ -123,6 +123,32 @@ export function MailDetail() {
   const [grouping, setGrouping] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
   const [labelling, setLabelling] = useState(false);
+  async function handleUnsubscribe() {
+    if (!m) return;
+    const ok = await confirmDialog({
+      title: `Unsubscribe from ${m.sender_name || m.sender}?`,
+      body: `Sift will execute one-tap unsubscribe (RFC 8058) and create a rule silencing future emails from ${m.sender || "this sender"}.`,
+      confirm: "Unsubscribe & Silence",
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      const res = await post<UnsubscribeResult>(`/messages/${id}/unsubscribe`);
+      if (res.status === "one_click_posted") {
+        toast(`Unsubscribed from ${m.sender} and silenced future emails.`);
+      } else if (res.unsubscribe_url) {
+        window.open(res.unsubscribe_url, "_blank");
+        toast(`Opened unsubscribe page and silenced future emails from ${m.sender}.`);
+      } else {
+        toast(`Silenced future emails from ${m.sender}.`);
+      }
+      mail.reload();
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+
   async function gmail(action: MailAction, leave = false, label?: string) {
     if (await mailAction({ message_ids: [id] }, action, label)) {
       if (leave) navigate(-1); else mail.reload();
@@ -218,6 +244,16 @@ export function MailDetail() {
               <button className="btn btn-ghost btn-sm" onClick={() => setPicking(true)} data-tip="File this conversation into one of your folders">File in folder</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setGrouping(true)} data-tip="Put this mail in a group of yours (it can be in several)">Add to group…</button>
               <button className="btn btn-ghost btn-sm" onClick={() => { setAddingNote(true); setEditingNoteId(null); }} data-tip="Add a private note to this conversation">📝 Note</button>
+              {m.can_unsubscribe && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: "var(--warn)" }}
+                  onClick={handleUnsubscribe}
+                  data-tip="One-tap unsubscribe and silence future emails from this sender"
+                >
+                  🚫 Unsubscribe
+                </button>
+              )}
               {last && !(inFolders.data ?? []).some((f) => f.id === last.id) && <button className="btn btn-ghost btn-sm" onClick={() => file(last)}>Move to {last.name}</button>}
               {m.status === "silenced" || m.status === "ignored"
                 ? <button className="btn btn-ghost btn-sm" onClick={unsilence} data-tip="Bring it back to the feed and stop silencing mail like it">Not like this</button>

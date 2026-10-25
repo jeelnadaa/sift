@@ -69,6 +69,7 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
     var groupPick by remember { mutableStateOf(false) }
     var companyPick by remember { mutableStateOf(0) }
     var filingRefresh by remember { mutableStateOf(0) }
+    var unsubConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(id) {
@@ -100,6 +101,9 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             msg.category?.takeIf { it != "other" }?.let { Tag(it) }
             msg.company?.let { Tag(it) }
             Spacer(Modifier.weight(1f))
+            if (msg.canUnsubscribe) {
+                Chip("🚫 Unsub", false) { unsubConfirm = true }
+            }
             Chip(if (msg.pinned) "📌 Pinned" else "Pin", msg.pinned) {
                 scope.launch {
                     try {
@@ -229,6 +233,49 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
                 }
             },
             containerColor = Ink.surface, shape = Radius.xl,
+        )
+    }
+
+    if (unsubConfirm) m?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { unsubConfirm = false },
+            title = { Text("Unsubscribe?", color = Ink.text) },
+            text = {
+                Text(
+                    "Unsubscribe from ${msg.senderName ?: msg.sender}?\n\nSift will execute one-tap unsubscribe (RFC 8058) and create a rule silencing future emails from this sender.",
+                    color = Ink.text2
+                )
+            },
+            confirmButton = {
+                PrimaryButton("Unsubscribe & Silence") {
+                    unsubConfirm = false
+                    scope.launch {
+                        try {
+                            val res = Api.get(context).unsubscribe(msg.id)
+                            val toastMsg = if (res.status == "one_click_posted") {
+                                "Unsubscribed and silenced future mail"
+                            } else if (res.unsubscribeUrl != null) {
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(res.unsubscribeUrl))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                                "Opened unsubscribe link and silenced future mail"
+                            } else {
+                                "Silenced future emails from this sender"
+                            }
+                            android.widget.Toast.makeText(context, toastMsg, android.widget.Toast.LENGTH_LONG).show()
+                            m = Api.get(context).message(id)
+                        } catch (t: Throwable) {
+                            error = t.userMessage()
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                GhostButton("Cancel") { unsubConfirm = false }
+            },
+            containerColor = Ink.surface,
+            shape = Radius.xl,
         )
     }
 

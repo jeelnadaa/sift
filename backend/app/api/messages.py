@@ -32,6 +32,8 @@ def message_json(m: Message, account: GmailAccount | None = None, notification: 
         "received_at": m.received_at.isoformat() if m.received_at else None,
         "priority": m.priority, "category": m.category, "status": m.status,
         "has_attachment": m.has_attachment, "pinned": m.pinned, "has_note": notes_count > 0, "notes_count": notes_count,
+        "can_unsubscribe": bool(m.unsubscribe_url or m.unsubscribe_mailto),
+        "unsubscribe_url": m.unsubscribe_url, "unsubscribe_mailto": m.unsubscribe_mailto, "unsubscribe_post": m.unsubscribe_post,
         "unread": "UNREAD" in (m.labels or []),
         "starred": "STARRED" in (m.labels or []), "in_inbox": "INBOX" in (m.labels or []),
         "matched_rule_id": str(m.matched_rule_id) if m.matched_rule_id else None,

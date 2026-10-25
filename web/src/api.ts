@@ -185,6 +185,20 @@ export interface Mail {
   thread_count?: number; thread_unread?: number; starred?: boolean; in_inbox?: boolean;
   groups?: { id: string; title: string; custom: boolean }[];  // the groups it's in (mail detail only)
   notes?: MailNote[];
+  can_unsubscribe?: boolean;
+  unsubscribe_url?: string | null;
+  unsubscribe_post?: boolean;
+}
+
+export interface UnsubscribeResult {
+  status: "one_click_posted" | "url_available" | "mailto_available" | "http_error" | "request_failed";
+  sender: string | null;
+  sender_name: string | null;
+  unsubscribe_url: string | null;
+  unsubscribe_mailto: string | null;
+  is_one_click: boolean;
+  rule_created: boolean;
+  error: string | null;
 }
 
 export interface Group {

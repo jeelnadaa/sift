@@ -124,6 +124,11 @@ object FakeApi {
             "addNote" -> com.solarquack.sift.data.MailNoteDto("n2", "m1", "New note", ago(0), ago(0))
             "updateNote" -> com.solarquack.sift.data.MailNoteDto("n1", "m1", "Updated note", ago(1), ago(0))
             "deleteNote" -> Unit
+            "unsubscribe" -> com.solarquack.sift.data.UnsubscribeResultDto(
+                status = "one_click_posted",
+                sender = "promo@demo-retail.local",
+                ruleCreated = true,
+            )
             "attachments" -> com.solarquack.sift.data.AttachmentListResultDto(
                 items = listOf(
                     com.solarquack.sift.data.AttachmentItemDto(

@@ -11,7 +11,7 @@ from email.utils import getaddresses, parseaddr
 from html.parser import HTMLParser
 
 METADATA_HEADERS = [
-    "From", "To", "Cc", "Subject", "Date", "Message-ID", "List-Id", "List-Unsubscribe",
+    "From", "To", "Cc", "Subject", "Date", "Message-ID", "List-Id", "List-Unsubscribe", "List-Unsubscribe-Post",
     "Precedence", "Auto-Submitted", "Authentication-Results", "ARC-Seal", "Content-Type",
 ]
 # ARC sealers whose forwarded authentication results we accept. Google Groups and Gmail
@@ -37,6 +37,9 @@ class MailMeta:
     list_id: str | None
     has_attachment: bool
     recipients: list[str] = field(default_factory=list)
+    unsubscribe_url: str | None = None
+    unsubscribe_mailto: str | None = None
+    unsubscribe_post: bool = False
 
     def header(self, name: str) -> str | None:
         return self.headers.get(name.lower())
@@ -131,6 +134,9 @@ def parse_metadata(msg: dict) -> MailMeta:
         list_id=(headers.get("list-id") or "").strip() or None,
         has_attachment="multipart/mixed" in content_type,
         recipients=[a.lower() for _, a in getaddresses([headers.get("to", ""), headers.get("cc", "")]) if a],
+        unsubscribe_url=re.findall(r"<(https?://[^>]+)>", headers.get("list-unsubscribe", ""))[0].strip() if re.findall(r"<(https?://[^>]+)>", headers.get("list-unsubscribe", "")) else None,
+        unsubscribe_mailto=re.findall(r"<(mailto:[^>]+)>", headers.get("list-unsubscribe", ""))[0].strip() if re.findall(r"<(mailto:[^>]+)>", headers.get("list-unsubscribe", "")) else None,
+        unsubscribe_post=bool(re.findall(r"<(https?://[^>]+)>", headers.get("list-unsubscribe", "")) and "one-click" in (headers.get("list-unsubscribe-post") or "").lower()),
     )
 
 

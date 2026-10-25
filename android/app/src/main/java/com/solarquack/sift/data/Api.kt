@@ -70,6 +70,7 @@ interface SiftApi {
     ): SenderListResultDto
 
     @GET("api/v1/senders/{sender_email}") suspend fun senderDetail(@Path("sender_email") senderEmail: String): SenderDetailResultDto
+    @POST("api/v1/messages/{id}/unsubscribe") suspend fun unsubscribe(@Path("id") id: String): UnsubscribeResultDto
 
     @GET("api/v1/accounts") suspend fun accounts(): List<AccountDto>
     @GET("api/v1/accounts/connect-url") suspend fun connectUrl(): ConnectUrl

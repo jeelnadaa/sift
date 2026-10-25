@@ -146,6 +146,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
             authenticated_domain=meta.authenticated_domain, subject=meta.subject, snippet=meta.snippet[:300],
             received_at=meta.received_at, labels=meta.labels, list_id=meta.list_id[:320] if meta.list_id else None,
             has_attachment=meta.has_attachment, header_names=sorted(meta.headers), status="duplicate" if duplicate else "processing",
+            unsubscribe_url=meta.unsubscribe_url, unsubscribe_mailto=meta.unsubscribe_mailto, unsubscribe_post=meta.unsubscribe_post,
             priority="silent" if duplicate else None,
         ).on_conflict_do_nothing(index_elements=["account_id", "gmail_id"]).returning(Message.id)
         message_id = db.execute(stmt).scalar()

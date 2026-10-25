@@ -53,6 +53,21 @@ data class MessageDto(
     @SerialName("has_note") val hasNote: Boolean = false,
     @SerialName("notes_count") val notesCount: Int = 0,
     val notes: List<MailNoteDto> = emptyList(),
+    @SerialName("can_unsubscribe") val canUnsubscribe: Boolean = false,
+    @SerialName("unsubscribe_url") val unsubscribeUrl: String? = null,
+    @SerialName("unsubscribe_post") val unsubscribePost: Boolean = false,
+)
+
+@Serializable
+data class UnsubscribeResultDto(
+    val status: String,
+    val sender: String? = null,
+    @SerialName("sender_name") val senderName: String? = null,
+    @SerialName("unsubscribe_url") val unsubscribeUrl: String? = null,
+    @SerialName("unsubscribe_mailto") val unsubscribeMailto: String? = null,
+    @SerialName("is_one_click") val isOneClick: Boolean = false,
+    @SerialName("rule_created") val ruleCreated: Boolean = false,
+    val error: String? = null,
 )
 
 @Serializable

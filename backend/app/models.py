@@ -158,6 +158,9 @@ class Message(Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     labels: Mapped[list | None] = mapped_column(JSONB)
     list_id: Mapped[str | None] = mapped_column(String(320))
+    unsubscribe_url: Mapped[str | None] = mapped_column(Text)
+    unsubscribe_mailto: Mapped[str | None] = mapped_column(String(320))
+    unsubscribe_post: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # Lowercased names of the metadata headers present (not their values), for rule previews.
     header_names: Mapped[list | None] = mapped_column(JSONB)
     has_attachment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)

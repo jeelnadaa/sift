@@ -142,4 +142,32 @@ class PhaseCTest {
         assertEquals("AssessHub", detail.name)
         assertEquals(4, detail.totalCount)
     }
+
+    @Test
+    fun testUnsubscribeSerializationAndFakeEndpoint() = runBlocking {
+        val unsub = com.solarquack.sift.data.UnsubscribeResultDto(
+            status = "one_click_posted",
+            sender = "promo@demo-retail.local",
+            senderName = "Demo Retailer",
+            unsubscribeUrl = "https://demo.local/unsub",
+            isOneClick = true,
+            ruleCreated = true,
+        )
+
+        val json = Api.json.encodeToString(com.solarquack.sift.data.UnsubscribeResultDto.serializer(), unsub)
+        assertTrue(json.contains("\"status\":\"one_click_posted\""))
+        assertTrue(json.contains("\"is_one_click\":true"))
+        assertTrue(json.contains("\"rule_created\":true"))
+
+        val decoded = Api.json.decodeFromString(com.solarquack.sift.data.UnsubscribeResultDto.serializer(), json)
+        assertEquals("one_click_posted", decoded.status)
+        assertTrue(decoded.isOneClick)
+        assertTrue(decoded.ruleCreated)
+
+        val override = Api.testOverride!!
+        val res = override.unsubscribe("m1")
+        assertEquals("one_click_posted", res.status)
+        assertEquals("promo@demo-retail.local", res.sender)
+        assertTrue(res.ruleCreated)
+    }
 }
