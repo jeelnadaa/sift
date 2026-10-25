@@ -192,3 +192,41 @@ def test_new_mail_and_an_ai_task_on_the_same_user_do_not_collide(client, db, set
     names = [n for (n,) in db.execute(select(Opportunity.company).where(Opportunity.user_id == user.id))]
     assert len(names) == len(set(names)), names
     assert db.scalar(select(func.count()).select_from(Message).where(Message.status == "processing")) == 0
+
+def test_concurrent_deduplication_across_accounts_delivers_once(db, setup):
+    user, account1, _, _ = setup
+    from app.models import GmailAccount, Message
+    from app.pipeline import process_message
+    from app import demo
+
+    account2 = GmailAccount(user_id=user.id, email="secondary@demo.sift.local", status="active")
+    db.add(account2)
+    db.commit()
+
+    shared_msg_id = f"<shared-{uuid.uuid4().hex}@domain.com>"
+    m1 = demo._msg("dup1", "Sender <sender@domain.com>", "Same subject", "Same body", ["INBOX"], extra_headers={"Message-ID": shared_msg_id})
+    m2 = demo._msg("dup2", "Sender <sender@domain.com>", "Same subject", "Same body", ["INBOX"], extra_headers={"Message-ID": shared_msg_id})
+
+    outcomes = []
+    errors = []
+
+    def run_worker(acct_id, raw_msg):
+        try:
+            with get_sessionmaker()() as s:
+                p = demo.DemoProvider([raw_msg])
+                a = s.get(GmailAccount, acct_id)
+                outcomes.append(process_message(s, a, p, raw_msg["id"]))
+        except Exception as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=run_worker, args=(account1.id, m1))
+    t2 = threading.Thread(target=run_worker, args=(account2.id, m2))
+    t1.start(); t2.start()
+    t1.join(30); t2.join(30)
+
+    assert errors == []
+    assert len(outcomes) == 2
+    priorities = sorted([o.priority for o in outcomes])
+    assert priorities == ["normal", "silent"], f"One must be normal and one silent duplicate, got {priorities}"
+    decided = sorted([o.decided_by for o in outcomes])
+    assert "duplicate" in decided

@@ -303,8 +303,14 @@ async def add_attachment(account_id: uuid.UUID, draft_id: str, request: Request,
         def work(p):
             raw, thread_id, _ = p.get_draft_raw(draft_id)
             d = compose.parse(raw)
+            if sum(len(a.data) for a in d.attachments) + len(data) > compose.MAX_TOTAL_BYTES:
+                raise HTTPException(413, "Attachments are limited to 25 MB in total")
             d.attachments.append(compose.Attachment(compose.safe_filename(filename), mime, data))
-            updated = p.update_draft(draft_id, compose.build(*name, d), thread_id)
+            try:
+                built = compose.build(*name, d)
+            except compose.ComposeError as exc:
+                raise HTTPException(413, str(exc)) from exc
+            updated = p.update_draft(draft_id, built, thread_id)
             return thread_id, d, (updated.get("message") or {}).get("id")
 
         thread_id, d, version = _gmail(db, account, work)

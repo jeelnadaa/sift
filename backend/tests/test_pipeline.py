@@ -430,3 +430,15 @@ def test_mail_deleted_from_gmail_before_processing_is_skipped(db, setup):
     out = run(db, account, Gone([]), {"id": "deleted-1"})
     assert out.decided_by == "gone" and out.message_id is None
     assert run(db, account, provider, msgs["recruiter"]).notified  # the next mail goes through
+
+def test_subject_line_personal_identifiers_are_redacted_before_llm(db, setup, fake_llm):
+    user, account, provider, msgs = setup
+    with_key(db, user)
+    m = demo._msg("pii", "Acme HR <hr@acme.com>", "Interview for 21BCE1234 call +91 98765 43210", "Interview details", ["INBOX"])
+    run(db, account, demo.DemoProvider([m]), m)
+    assert len(fake_llm.calls) == 1
+    sent_prompt = fake_llm.calls[0]["prompt"]
+    assert "21BCE1234" not in sent_prompt
+    assert "98765 43210" not in sent_prompt
+    assert "[roll]" in sent_prompt
+    assert "[phone]" in sent_prompt

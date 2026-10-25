@@ -1101,7 +1101,7 @@ def _list_todos(db: Session, user_id: uuid.UUID, when: str) -> dict:
     now = datetime.now(tz)
     q = select(Todo).where(Todo.user_id == user_id)
     if when == "done":
-        q = q.where(Todo.done.is_(True)).order_by(Todo.updated_at.desc())
+        q = q.where(Todo.done.is_(True)).order_by(Todo.done_at.desc().nulls_last(), Todo.created_at.desc())
     else:
         q = q.where(Todo.done.is_(False))
         if when == "overdue":

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
+from app.llm import service as llm
 from app.models import LlmCredential, Message, MessageEmbedding, TokenUsage
 from app.search import semantic
 from tests.test_pipeline import fake_llm, run, setup, with_key  # noqa: F401  (fixtures)
@@ -98,7 +99,7 @@ def test_backfill_stops_at_the_daily_cap(db, setup, fake_llm, override_settings)
         add(db, user, account, f"m{i}", f"Interview round {i}", days_ago=i)
     db.commit()
     user_settings.update(db, user.id, {"daily_token_cap": 1})
-    db.add(TokenUsage(user_id=user.id, day=datetime.now(UTC).date(), provider="gemini", model="m", purpose="extract", input_tokens=5, output_tokens=0))
+    db.add(TokenUsage(user_id=user.id, day=llm._today(db, user.id), provider="gemini", model="m", purpose="extract", input_tokens=5, output_tokens=0))
     db.commit()
     assert semantic.backfill(db, user.id) == 0 and getattr(fake_llm, "embed_calls", []) == []
 

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -135,6 +135,8 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
     user_id = account.user_id
 
     if existing is None:
+        if meta.message_id:
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"msgid:{user_id}:{meta.message_id}"})
         duplicate = bool(meta.message_id) and db.scalar(
             select(Message.id).where(Message.user_id == user_id, Message.message_id_header == meta.message_id, Message.account_id != account.id)
         )
@@ -275,7 +277,7 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         body = redact(clean_body(load_body()))
         opp_text, opp_keys = opportunities.prompt_list(opportunities.active(db, user_id))
         place_text, place_keys = places.prompt_block(places.load(db, user_id))  # described groups/folders, same call
-        extraction = llm.extract(db, user_id, account.id, meta.sender, meta.subject, body, meta.received_at, opp_text, list(opp_keys),
+        extraction = llm.extract(db, user_id, account.id, meta.sender, redact(meta.subject), body, meta.received_at, opp_text, list(opp_keys),
                                  place_text, place_keys)
         llm_called = extraction is not None and extraction.get("source") == "llm"
         if llm_called:

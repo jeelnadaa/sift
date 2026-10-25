@@ -328,3 +328,16 @@ def test_plans_in_the_args_format_the_model_uses(client, db, world, auth, fake):
     assert parse_args("q='company:\"Acme Corp\"' ; at=2026-10-26T09:00:00+05:30 ; bogus=1") == {"q": 'company:"Acme Corp"', "at": "2026-10-26T09:00:00+05:30"}
     body = ask(client, auth, "todo", {"reply": "", "steps": [{"action": "add_todo", "args": 'title="Print CV" ; at="2026-11-02T09:00:00+05:30"'}]}, fake).json()
     assert body["steps"][0]["error"] is None and "Print CV" in body["steps"][0]["preview"] and "02 Nov" in body["steps"][0]["preview"]
+
+def test_list_todos_when_done_and_overdue(db, world):
+    from app.assistant import _list_todos
+    from app.models import Todo
+    user, _ = world
+    t1 = Todo(user_id=user.id, title="Finished task", done=True, done_at=datetime.now(UTC))
+    t2 = Todo(user_id=user.id, title="Open task", done=False, due_at=datetime.now(UTC) - timedelta(hours=2))
+    db.add_all([t1, t2])
+    db.commit()
+    done_res = _list_todos(db, user.id, "done")
+    assert done_res["text"] == "1 to-do done" and len(done_res["todos"]) == 1
+    overdue_res = _list_todos(db, user.id, "overdue")
+    assert overdue_res["text"] == "1 to-do overdue" and len(overdue_res["todos"]) == 1
