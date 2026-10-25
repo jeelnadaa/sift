@@ -38,6 +38,60 @@ export function fullTime(iso: string | null | undefined): string {
   return isNaN(t.getTime()) ? "" : t.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
+export interface CalendarEventParams {
+  title: string;
+  deadlineIso?: string | null;
+  startIso?: string | null;
+  endIso?: string | null;
+  details?: string | null;
+  location?: string | null;
+}
+
+/**
+ * Generate a Google Calendar event template URL.
+ * Format: https://calendar.google.com/calendar/render?action=TEMPLATE&text={title}&dates={startUTC}/{endUTC}&details={details}&location={location}
+ * Formats dates as basic ISO 8601 UTC string: YYYYMMDDTHHmmssZ
+ */
+export function googleCalendarUrl(opts: CalendarEventParams): string | null {
+  let startMs: number;
+  let endMs: number;
+
+  if (opts.endIso) {
+    endMs = new Date(opts.endIso).getTime();
+    startMs = opts.startIso ? new Date(opts.startIso).getTime() : endMs - 60 * 60 * 1000;
+  } else if (opts.deadlineIso) {
+    endMs = new Date(opts.deadlineIso).getTime();
+    startMs = opts.startIso ? new Date(opts.startIso).getTime() : endMs - 60 * 60 * 1000;
+  } else if (opts.startIso) {
+    startMs = new Date(opts.startIso).getTime();
+    endMs = startMs + 60 * 60 * 1000;
+  } else {
+    return null;
+  }
+
+  if (isNaN(startMs) || isNaN(endMs) || endMs < startMs) return null;
+
+  const toBasicIso = (ms: number): string => {
+    return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  };
+
+  const dates = `${toBasicIso(startMs)}/${toBasicIso(endMs)}`;
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: opts.title || "Event from Sift",
+    dates,
+  });
+
+  if (opts.details) {
+    params.set("details", opts.details);
+  }
+  if (opts.location) {
+    params.set("location", opts.location);
+  }
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 /** Only http(s) links from mail are ever opened. */
 export function safeUrl(url: string | null | undefined): string | null {
   if (!url) return null;

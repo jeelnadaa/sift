@@ -128,7 +128,7 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
             Text("Nothing on this timeline yet. Mail about ${d.company} lands here, or add a section.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
         }
         d.timeline.forEachIndexed { i, e ->
-            TimelineItem(e, last = i == d.timeline.lastIndex, onOpenMail = onOpenMail, onEdit = { section = e }, onRemove = { removing = e })
+            TimelineItem(d.company, e, last = i == d.timeline.lastIndex, onOpenMail = onOpenMail, onEdit = { section = e }, onRemove = { removing = e })
         }
 
         Spacer(Modifier.height(12.dp))
@@ -182,7 +182,7 @@ fun OpportunityScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Un
 }
 
 @Composable
-private fun TimelineItem(e: TimelineEventDto, last: Boolean, onOpenMail: (String) -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
+private fun TimelineItem(company: String, e: TimelineEventDto, last: Boolean, onOpenMail: (String) -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
     val context = LocalContext.current
     // the connector runs exactly to the next item, whatever this item's height
     Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
@@ -205,7 +205,18 @@ private fun TimelineItem(e: TimelineEventDto, last: Boolean, onOpenMail: (String
                 e.note?.let { Text(it, color = Ink.text2, style = MaterialTheme.typography.bodySmall) }
                 Text("Added by you" + if (e.remind) " · reminds you" else "", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
             } else Text(listOfNotNull(e.senderName, e.account).joinToString(" · "), color = Ink.text3, style = MaterialTheme.typography.bodySmall)
-            if (isFuture(e.deadline)) Text("Deadline ${fullTime(e.deadline)}", color = Ink.warn, style = MaterialTheme.typography.bodySmall)
+            if (isFuture(e.deadline)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Text("Deadline ${fullTime(e.deadline)}", color = Ink.warn, style = MaterialTheme.typography.bodySmall)
+                    Text("📅 Calendar", color = Ink.normal, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable {
+                        CalendarIntent.open(context, "$company: ${(if (e.manual) e.title else null) ?: e.summary ?: e.subject ?: "Event"}", e.deadline!!, e.note ?: "From $company timeline in Sift")
+                    })
+                }
+            }
             e.links.firstOrNull()?.let { link ->
                 Text("${link.label} ↗", color = Ink.signal, style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(top = 4.dp).clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link.url))) })

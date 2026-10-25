@@ -5,7 +5,7 @@ import { Top, foldersChanged } from "../App";
 import { Thread } from "./Thread";
 import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailActions";
 import { Avatar, Banner, FolderPicker, Modal, Tag, TextField, confirmDialog, errorText, setReadState, toast, useLoad } from "../components";
-import { findFolder, fullTime, safeUrl } from "../util";
+import { findFolder, fullTime, googleCalendarUrl, safeUrl } from "../util";
 
 const DECIDED: Record<string, string> = {
   rule: "one of your rules", llm: "the AI", heuristic: "Sift's built-in checks", fingerprint: "a template you silenced before",
@@ -217,7 +217,33 @@ export function MailDetail() {
               <div className="card">
                 <div className="field"><label>Extracted</label></div>
                 {m.summary && <p style={{ marginTop: 6 }}>{m.summary}</p>}
-                {m.deadline && <p style={{ color: "var(--warn)", fontWeight: 700, marginTop: 6 }}>Deadline {fullTime(m.deadline)}</p>}
+                {m.deadline && (
+                  <div className="inline" style={{ marginTop: 6 }}>
+                    <p style={{ color: "var(--warn)", fontWeight: 700, margin: 0 }}>Deadline {fullTime(m.deadline)}</p>
+                    {googleCalendarUrl({
+                      title: [m.company, m.summary || m.subject].filter(Boolean).join(": "),
+                      deadlineIso: m.deadline,
+                      details: [m.summary || m.subject, m.sender_name && `From ${m.sender_name}`].filter(Boolean).join("\n"),
+                      location: m.links[0]?.url,
+                    }) && (
+                      <a
+                        className="link"
+                        style={{ marginLeft: 8 }}
+                        href={googleCalendarUrl({
+                          title: [m.company, m.summary || m.subject].filter(Boolean).join(": "),
+                          deadlineIso: m.deadline,
+                          details: [m.summary || m.subject, m.sender_name && `From ${m.sender_name}`].filter(Boolean).join("\n"),
+                          location: m.links[0]?.url,
+                        })!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Add this deadline to Google Calendar"
+                      >
+                        📅 Add to Google Calendar ↗
+                      </a>
+                    )}
+                  </div>
+                )}
                 <div className="inline" style={{ marginTop: 10 }}>
                   {m.links.map((l) => { const u = safeUrl(l.url); return u && <a key={u} className="btn btn-primary btn-sm" href={u} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>; })}
                 </div>

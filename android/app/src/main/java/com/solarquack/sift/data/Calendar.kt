@@ -31,4 +31,20 @@ object CalendarIntent {
             Toast.makeText(context, "No calendar app found", Toast.LENGTH_SHORT).show()
         }
     }
+
+    fun googleCalendarUrl(title: String, deadlineIso: String, description: String? = null): String? {
+        val endMs = runCatching { OffsetDateTime.parse(deadlineIso).toInstant().toEpochMilli() }.getOrNull() ?: return null
+        val startMs = endMs - 60 * 60 * 1000
+        val toBasic = { ms: Long ->
+            java.time.Instant.ofEpochMilli(ms).toString().replace("-", "").replace(":", "").replace(Regex("\\.\\d{3}"), "")
+        }
+        val dates = "${toBasic(startMs)}/${toBasic(endMs)}"
+        val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+        val encodedDates = java.net.URLEncoder.encode(dates, "UTF-8")
+        var url = "https://calendar.google.com/calendar/render?action=TEMPLATE&text=$encodedTitle&dates=$encodedDates"
+        if (description != null) {
+            url += "&details=" + java.net.URLEncoder.encode(description, "UTF-8")
+        }
+        return url
+    }
 }

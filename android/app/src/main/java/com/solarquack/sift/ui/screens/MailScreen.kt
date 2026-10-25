@@ -130,7 +130,23 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             SiftCard {
                 SectionLabel("Extracted")
                 msg.summary?.let { Text(it, color = Ink.text, style = MaterialTheme.typography.bodyLarge) }
-                msg.deadline?.let { Text("Deadline ${fullTime(it)}", color = Ink.warn, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp)) }
+                msg.deadline?.let { deadline ->
+                    Row(
+                        Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Deadline ${fullTime(deadline)}", color = Ink.warn, style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "📅 Calendar",
+                            color = Ink.normal,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.clickable {
+                                CalendarIntent.open(context, listOfNotNull(msg.company, msg.summary ?: msg.subject).joinToString(": "), deadline)
+                            }
+                        )
+                    }
+                }
                 msg.platform?.let { Text("Platform: $it", color = Ink.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp)) }
                 msg.links.forEach { link ->
                     Spacer(Modifier.height(10.dp))

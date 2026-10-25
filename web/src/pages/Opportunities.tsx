@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Opportunity, type OpportunityDetail, type TimelineEvent } from "../api";
 import { Top } from "../App";
 import { Avatar, Banner, confirmDialog, errorText, inputDialog, Modal, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
-import { fullTime, humanize, safeUrl, toLocalInput } from "../util";
+import { fullTime, googleCalendarUrl, humanize, safeUrl, toLocalInput } from "../util";
 
 export const STAGES: { value: string; label: string }[] = [
   { value: "announcement", label: "Announcement" }, { value: "registration", label: "Registration" }, { value: "assessment", label: "Test" },
@@ -78,7 +78,22 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
       </div>
       <div className="muted" style={{ marginBottom: 24 }}>
         {d.aliases.length > 0 && <>Aliases: {d.aliases.join(", ")} · </>}
-        {d.deadline ? <>Deadline <b style={{ color: "var(--warn)" }}>{fullTime(d.deadline)}</b></> : "No deadline"}
+        {d.deadline ? (
+          <>
+            Deadline <b style={{ color: "var(--warn)" }}>{fullTime(d.deadline)}</b>
+            {googleCalendarUrl({ title: `${d.company} deadline`, deadlineIso: d.deadline, details: `From your ${d.company} timeline in Sift` }) && (
+              <a
+                className="link"
+                style={{ marginLeft: 8 }}
+                href={googleCalendarUrl({ title: `${d.company} deadline`, deadlineIso: d.deadline, details: `From your ${d.company} timeline in Sift` })!}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                📅 Add to Google Calendar ↗
+              </a>
+            )}
+          </>
+        ) : "No deadline"}
       </div>
       <div style={{ borderLeft: "2px solid var(--line-2)", marginLeft: 10, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 26 }}>
         {d.timeline.length === 0 && <p className="dim">Nothing on this timeline yet. Mail about {d.company} lands here, or add a section.</p>}
@@ -96,7 +111,33 @@ function Timeline({ id, onChanged }: { id: string; onChanged: () => void }) {
             {e.manual && e.note && <div className="muted" style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{e.note}</div>}
             <div className="muted" style={{ fontSize: 14 }}>
               {e.sender_name && <>From {e.sender_name}{e.account ? ` · ${e.account}` : ""}</>}
-              {e.deadline && <> · Deadline {fullTime(e.deadline)}</>}
+              {e.deadline && (
+                <>
+                  {" "}· Deadline {fullTime(e.deadline)}
+                  {googleCalendarUrl({
+                    title: `${d.company}: ${e.manual ? e.title : (e.summary || e.subject)}`,
+                    deadlineIso: e.deadline,
+                    details: e.note || `Stage: ${e.kind}\nFrom: ${e.sender_name || e.account || d.company}\nTimeline in Sift`,
+                    location: e.links[0]?.url,
+                  }) && (
+                    <a
+                      className="link"
+                      style={{ marginLeft: 6 }}
+                      href={googleCalendarUrl({
+                        title: `${d.company}: ${e.manual ? e.title : (e.summary || e.subject)}`,
+                        deadlineIso: e.deadline,
+                        details: e.note || `Stage: ${e.kind}\nFrom: ${e.sender_name || e.account || d.company}\nTimeline in Sift`,
+                        location: e.links[0]?.url,
+                      })!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Add this timeline event to Google Calendar"
+                    >
+                      📅 Calendar ↗
+                    </a>
+                  )}
+                </>
+              )}
               {e.links.map((l) => { const u = safeUrl(l.url); return u && <span key={u}> · <a className="link" href={u} target="_blank" rel="noopener noreferrer">{l.label} ↗</a></span>; })}
               {e.message_id && <> · <a className="link dim" onClick={() => navigate(`/mail/${e.message_id}`)} data-tip="Open the mail this came from">Open mail</a></>}
             </div>

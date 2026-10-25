@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.solarquack.sift.data.Api
+import com.solarquack.sift.data.CalendarIntent
 import com.solarquack.sift.data.TodoDto
 import androidx.compose.foundation.verticalScroll
 import com.solarquack.sift.data.TodoIn
@@ -172,7 +173,14 @@ private fun TodoRow(t: TodoDto, onToggle: () -> Unit, onOpen: () -> Unit, onEdit
             if (meta.isNotEmpty()) Text(meta, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
             t.notes?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ink.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
-        if (!t.done) dueLabel(t.dueAt)?.let { Tag(it.first, it.second) }
+        if (!t.done) dueLabel(t.dueAt)?.let {
+            val context = LocalContext.current
+            Box(Modifier.clickable {
+                t.dueAt?.let { due -> CalendarIntent.open(context, t.title, due, t.notes ?: "To-do from Sift") }
+            }) {
+                Tag(it.first, it.second)
+            }
+        }
         Text("Edit", color = Ink.signal, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onEdit).padding(horizontal = 8.dp, vertical = 10.dp))
     }
     HorizontalDivider(color = Ink.line)

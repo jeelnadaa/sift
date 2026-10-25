@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { del, get, patch, post, type Opportunity, type Todo } from "../api";
 import { Top } from "../App";
 import { Banner, confirmDialog, errorText, Modal, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
-import { fullTime, toLocalInput } from "../util";
+import { fullTime, googleCalendarUrl, toLocalInput } from "../util";
 
 function dueTone(iso: string | null): string {
   if (!iso) return "";
@@ -42,7 +42,23 @@ export function Todos() {
                 <div className="subj">{[t.company, t.sender_name && `from ${t.sender_name}`, t.source === "manual" ? "manual" : null].filter(Boolean).join(" · ")}</div>
               </div>
               {t.message_id && <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/mail/${t.message_id}`)} data-tip="Open the mail this came from">Open mail</button>}
-              {t.due_at && <Tag tone={t.done ? "ok" : dueTone(t.due_at)} tip="Due. Reminders come 24 h and 2 h before">{fullTime(t.due_at)}</Tag>}
+              {t.due_at && (
+                <span className="inline" style={{ gap: 6 }}>
+                  <Tag tone={t.done ? "ok" : dueTone(t.due_at)} tip="Due. Reminders come 24 h and 2 h before">{fullTime(t.due_at)}</Tag>
+                  {!t.done && googleCalendarUrl({ title: t.title, deadlineIso: t.due_at, details: t.notes || (t.company ? `Company: ${t.company}` : "To-do from Sift") }) && (
+                    <a
+                      className="link dim"
+                      style={{ fontSize: 13 }}
+                      href={googleCalendarUrl({ title: t.title, deadlineIso: t.due_at, details: t.notes || (t.company ? `Company: ${t.company}` : "To-do from Sift") })!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Add to Google Calendar"
+                    >
+                      📅
+                    </a>
+                  )}
+                </span>
+              )}
               <button className="chip" onClick={() => setEditing(t)} data-tip="Rename, change the deadline, notes or company">Edit</button>
               <button className="chip" onClick={async () => {
                 if (!(await confirmDialog({ title: "Delete this to-do?", body: `"${t.title}" and its reminders go. The mail stays.`, confirm: "Delete", danger: true }))) return;

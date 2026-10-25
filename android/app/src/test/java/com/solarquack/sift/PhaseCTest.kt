@@ -170,4 +170,21 @@ class PhaseCTest {
         assertEquals("promo@demo-retail.local", res.sender)
         assertTrue(res.ruleCreated)
     }
+
+    @Test
+    fun testCalendarHelpers() {
+        val url = com.solarquack.sift.data.CalendarIntent.googleCalendarUrl(
+            title = "Final Interview",
+            deadlineIso = "2026-10-28T18:00:00Z",
+            description = "Google Assessment"
+        )
+        assertNotNull(url)
+        assertTrue(url!!.startsWith("https://calendar.google.com/calendar/render?action=TEMPLATE"))
+        assertTrue(url.contains("Final+Interview") || url.contains("Final%20Interview"))
+        assertTrue(url.contains("20261028T170000Z") && url.contains("20261028T180000Z"))
+        assertTrue(url.contains("Google+Assessment") || url.contains("Google%20Assessment"))
+
+        val badUrl = com.solarquack.sift.data.CalendarIntent.googleCalendarUrl("Bad", "invalid-date")
+        org.junit.Assert.assertNull(badUrl)
+    }
 }
