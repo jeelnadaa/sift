@@ -28,27 +28,33 @@ import java.time.OffsetDateTime
 object FakeApi {
     private fun ago(hours: Long) = OffsetDateTime.now().minusHours(hours).toString()
     private fun ahead(hours: Long) = OffsetDateTime.now().plusHours(hours).toString()
+    private val tonight = OffsetDateTime.now().withHour(23).withMinute(59).withSecond(0).withNano(0).toString()
 
+    // fictional sample data (also used for the launch video): no real people, brands or accounts
     val mails = listOf(
-        MessageDto("m1", "a1", account = "jeelnadaa", accountColor = "#e8c547", sender = "noreply@hirepro.in", senderName = "HirePro",
-            subject = "Acme Corp online assessment: link inside", snippet = "Your test link is live", receivedAt = ago(1), priority = "urgent",
+        MessageDto("m1", "a2", account = "College", accountColor = "#6ea8ff", sender = "noreply@assesshub.example", senderName = "AssessHub",
+            subject = "Acme Corp online assessment: link inside", snippet = "Your test link is live", receivedAt = ago(0), priority = "urgent",
             category = "assessment_link", status = "processed", unread = true, summary = "Acme Corp online test, closes tonight 11:59 PM",
-            company = "Acme Corp", platform = "HirePro", deadline = ahead(9), links = listOf(LinkDto("https://assess.hirepro.in/t/1", "Start test")),
-            actionNeeded = true, opportunityId = "o1"),
-        MessageDto("m2", "a1", account = "jeelnadaa", accountColor = "#e8c547", sender = "placement@univ.edu", senderName = "Placement Cell",
-            subject = "Globex campus drive: register by Friday", snippet = "Globex is visiting", receivedAt = ago(3), priority = "normal",
-            category = "placement_announcement", status = "processed", company = "Globex", opportunityId = "o2"),
-        MessageDto("m3", "a1", account = "jeelnadaa", accountColor = "#e8c547", sender = "alerts@slice.bank.in", senderName = "slice",
-            subject = "₹217 debited from your slice account to Zepto", snippet = "UPI", receivedAt = ago(5), priority = "normal",
-            category = "fyi", status = "processed"),
-        MessageDto("m4", "a1", account = "jeelnadaa", accountColor = "#e8c547", sender = "news@linkedin.com", senderName = "LinkedIn",
-            subject = "Naveen S reacted to this post", snippet = "I'm happy to share that I've started a new position", receivedAt = ago(7),
-            priority = "digest", category = "other", status = "processed"),
+            company = "Acme Corp", platform = "AssessHub", deadline = tonight, links = listOf(LinkDto("https://assess.example/t/1", "Start test")),
+            actionNeeded = true, opportunityId = "o1", decidedBy = "llm"),
+        MessageDto("m2", "a1", account = "Personal", accountColor = "#e8c547", sender = "alerts@northbank.example", senderName = "Northbank",
+            subject = "Card blocked due to suspicious activity", receivedAt = ago(1), priority = "urgent", category = "action_needed",
+            status = "processed", unread = true, summary = "Card blocked after a ₹18,500 attempt. Call the bank if it wasn't you"),
+        MessageDto("m3", "a2", account = "College", accountColor = "#6ea8ff", sender = "placement@college.example", senderName = "Placement Cell",
+            subject = "Globex campus drive: register by Friday", receivedAt = ago(2), priority = "normal", category = "placement_announcement",
+            status = "processed", unread = true, summary = "Globex campus drive, register by Friday 6 PM", company = "Globex", opportunityId = "o2"),
+        MessageDto("m4", "a1", account = "Personal", accountColor = "#e8c547", sender = "riya@globex.example", senderName = "Riya at Globex",
+            subject = "Backend role at Globex: quick chat?", receivedAt = ago(3), priority = "normal", category = "recruiter",
+            status = "processed", unread = true, summary = "Riya wants a 15-minute call about the backend role", company = "Globex"),
+        MessageDto("m5", "a2", account = "College", accountColor = "#6ea8ff", sender = "news@college.example", senderName = "Campus Weekly",
+            subject = "This week on campus", receivedAt = ago(6), priority = "digest", category = "fyi", status = "processed",
+            summary = "Fest dates, library hours, hostel notice"),
     )
 
     private val api: Any = Proxy.newProxyInstance(SiftApi::class.java.classLoader, arrayOf(SiftApi::class.java)) { _, method, args ->
         when (method.name) {
-            "accounts" -> listOf(AccountDto("a1", "jeelnadaa@gmail.com", "active", color = "#e8c547", canModify = true, lastCheckOkAt = ago(0)))
+            "accounts" -> listOf(AccountDto("a1", "you@personal.sift.test", "active", label = "Personal", color = "#e8c547", canModify = true, lastCheckOkAt = ago(0)),
+                AccountDto("a2", "you@college.sift.test", "active", label = "College", color = "#6ea8ff", canModify = true, lastCheckOkAt = ago(0)))
             "messages" -> MessagePage(mails)
             "groupedFeed" -> GroupedPage(mails.map { m ->
                 JsonObject(Api.json.encodeToJsonElement(MessageDto.serializer(), m).jsonObject + ("type" to JsonPrimitive("mail")))
@@ -56,19 +62,19 @@ object FakeApi {
             "grouping" -> GroupingStatus("yes")
             "ai" -> AiStatus(true, "valid", "gemini", "gemini-2.5-flash", "a91f", 1240, 50000)
             "message" -> mails.first { it.id == args?.get(0) }
-            "thread" -> ThreadDto("Acme Corp online assessment: link inside", "jeelnadaa", "a1", messages = listOf(
-                ThreadMessageDto("g1", "m1", AddrDto("HirePro", "noreply@hirepro.in"), listOf(AddrDto("Jeel", "jeelnadaa@gmail.com")),
-                    subject = "Acme Corp online assessment", date = ago(1), snippet = "Your test link is live",
-                    text = "Hi,\n\nYour Acme Corp online assessment is live. Start before 11:59 PM tonight.\n\nHirePro"),
+            "thread" -> ThreadDto("Acme Corp online assessment: link inside", "College", "a2", messages = listOf(
+                ThreadMessageDto("g1", "m1", AddrDto("AssessHub", "noreply@assesshub.example"), listOf(AddrDto("You", "you@college.sift.test")),
+                    subject = "Acme Corp online assessment", date = ago(0), snippet = "Your test link is live",
+                    text = "Hi,\n\nYour Acme Corp online assessment is ready. It closes tonight at 11:59 PM.\n\nDuration: 60 minutes\n\nAll the best,\nAssessHub"),
             ))
             "opportunities" -> listOf(OpportunityDto("o1", "Acme Corp", deadline = ahead(9), events = 3, lastKind = "assessment"),
                 OpportunityDto("o2", "Globex", events = 1, lastKind = "announcement"))
             "opportunity" -> OpportunityDetail("o1", "Acme Corp", aliases = listOf("ACME"), deadline = ahead(9), timeline = listOf(
-                TimelineEventDto("e1", "announcement", "name", ago(72), summary = "Acme Corp campus drive announced", subject = "Campus drive", senderName = "Placement Cell", account = "jeelnadaa"),
-                TimelineEventDto("e2", "registration", "user", ago(48), title = "Registered on the portal", note = "Used roll number login", manual = true),
-                TimelineEventDto("e3", "assessment", "ai", ago(1), deadline = ahead(9), summary = "Online test, closes tonight", senderName = "HirePro", account = "jeelnadaa",
-                    platform = "HirePro", messageId = "m1", links = listOf(LinkDto("https://assess.hirepro.in/t/1", "Start test"))),
-                TimelineEventDto("e4", "interview", "user", ahead(72), title = "Technical interview, round 1", note = "Room 204, bring two CV copies", remind = true, manual = true),
+                TimelineEventDto("e1", "announcement", "name", ago(72), summary = "Acme Corp campus drive announced", subject = "Campus drive", senderName = "Placement Cell", account = "College"),
+                TimelineEventDto("e2", "registration", "user", ago(48), title = "Registered on the portal", note = "Roll number login", manual = true),
+                TimelineEventDto("e3", "assessment", "ai", ago(1), deadline = tonight, summary = "Online test, closes tonight", senderName = "AssessHub", account = "College",
+                    platform = "AssessHub", messageId = "m1", links = listOf(LinkDto("https://assess.example/t/1", "Start test"))),
+                TimelineEventDto("e4", "interview", "user", ahead(72), title = "Technical interview, round 2", note = "Room 204, bring two CV copies", remind = true, manual = true),
             ))
             "todos" -> listOf(
                 TodoDto("t1", "Acme Corp: finish the online test", dueAt = ahead(9), source = "ai", messageId = "m1", company = "Acme Corp"),
