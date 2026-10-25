@@ -59,6 +59,7 @@ import com.solarquack.sift.ui.Tag
 import com.solarquack.sift.ui.theme.Ink
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 private val AI_FEATURES = "AI classification, deadlines and links, plain-English rules, company matching, summaries, reply drafts"
@@ -218,28 +219,101 @@ fun SettingsScreen(onSignedOut: () -> Unit, onSilenced: () -> Unit) {
                 Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(2, 5, 10).forEach { m -> com.solarquack.sift.ui.Chip("$m min", s.resendAfterMinutes == m) { patch("resend_after_minutes", m) } }
                 }
+
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Quiet hours", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                        Text("Silence non-urgent notifications during scheduled hours", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    }
+                    com.solarquack.sift.ui.SiftSwitch(checked = s.quietHoursEnabled, onCheckedChange = { patch("quiet_hours_enabled", it) })
+                }
+                if (s.quietHoursEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    var startVal by remember(s.quietHoursStart) { mutableStateOf(s.quietHoursStart) }
+                    var endVal by remember(s.quietHoursEnd) { mutableStateOf(s.quietHoursEnd) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            Field(startVal, { startVal = it; if (it.matches(Regex("^\\d{2}:\\d{2}$"))) patch("quiet_hours_start", it) }, "Start (HH:MM)")
+                        }
+                        Text("to", color = Ink.text3, style = MaterialTheme.typography.bodyMedium)
+                        Box(Modifier.weight(1f)) {
+                            Field(endVal, { endVal = it; if (it.matches(Regex("^\\d{2}:\\d{2}$"))) patch("quiet_hours_end", it) }, "End (HH:MM)")
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text("Mute notification categories", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                Text("Silence non-urgent notifications for selected categories", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val allCats = listOf("fyi" to "FYI", "placement_announcement" to "Placement drive", "registration" to "Registration", "assessment_link" to "Online test", "interview" to "Interview", "result" to "Result", "recruiter" to "Recruiter", "action_needed" to "Needs action")
+                    allCats.forEach { (catKey, label) ->
+                        val muted = s.mutedCategories.contains(catKey)
+                        com.solarquack.sift.ui.Chip(label, muted) {
+                            val next = if (muted) s.mutedCategories - catKey else s.mutedCategories + catKey
+                            scope.launch {
+                                try {
+                                    val arr = buildJsonArray { next.forEach { add(JsonPrimitive(it)) } }
+                                    settings = Api.get(context).patchSettings(buildJsonObject { put("muted_categories", arr) })
+                                } catch (t: Throwable) { error = t.userMessage() }
+                            }
+                        }
+                    }
+                }
             }
         }
 
         settings?.let { s ->
             SectionLabel("Writing mail")
             SiftCard {
-                var name by remember(s.senderName) { mutableStateOf(s.senderName) }
-                var sig by remember(s.signature) { mutableStateOf(s.signature) }
-                com.solarquack.sift.ui.Field(name, { name = it.take(100) }, "Your name", placeholder = "Shown next to your address")
+                var selectedAccountId by remember { mutableStateOf<String?>(null) }
+                var accountSettings by remember { mutableStateOf<SettingsDto?>(null) }
+                var accountsList by remember { mutableStateOf<List<com.solarquack.sift.data.AccountDto>>(emptyList()) }
+
+                LaunchedEffect(Unit) {
+                    runCatching { accountsList = Api.get(context).accounts() }
+                }
+                LaunchedEffect(selectedAccountId) {
+                    if (selectedAccountId != null) {
+                        runCatching { accountSettings = Api.get(context).settings(selectedAccountId) }
+                    } else {
+                        accountSettings = null
+                    }
+                }
+
+                val activeSettings = accountSettings ?: s
+                var name by remember(activeSettings.senderName, selectedAccountId) { mutableStateOf(activeSettings.senderName) }
+                var sig by remember(activeSettings.signature, selectedAccountId) { mutableStateOf(activeSettings.signature) }
+
+                if (accountsList.isNotEmpty()) {
+                    Text("Profile for", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                    Text("Customize name and signature per account, or default for all", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 6.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        com.solarquack.sift.ui.Chip("All accounts (default)", selectedAccountId == null) { selectedAccountId = null }
+                        accountsList.forEach { a ->
+                            com.solarquack.sift.ui.Chip(a.email, selectedAccountId == a.id) { selectedAccountId = a.id }
+                        }
+                    }
+                }
+
+                com.solarquack.sift.ui.Field(name, { name = it.take(100) }, "Your name", placeholder = if (selectedAccountId != null && s.senderName.isNotBlank()) s.senderName else "Shown next to your address")
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.OutlinedTextField(
                     value = sig, onValueChange = { sig = it.take(2000) }, label = { Text("Signature") }, minLines = 3, maxLines = 8,
+                    placeholder = { if (selectedAccountId != null && s.signature.isNotBlank()) Text(s.signature) },
                     modifier = Modifier.fillMaxWidth(), shape = com.solarquack.sift.ui.theme.Radius.md,
                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = Ink.signal, unfocusedBorderColor = Ink.line2,
                         focusedLabelColor = Ink.signal, unfocusedLabelColor = Ink.text3, cursorColor = Ink.signal, focusedContainerColor = Ink.bg2, unfocusedContainerColor = Ink.bg2),
                 )
-                if (name.trim() != s.senderName || sig != s.signature) {
+                if (name.trim() != activeSettings.senderName || sig != activeSettings.signature) {
                     Spacer(Modifier.height(8.dp))
                     PrimaryButton("Save") {
                         scope.launch {
                             try {
-                                settings = Api.get(context).patchSettings(buildJsonObject { put("sender_name", JsonPrimitive(name.trim())); put("signature", JsonPrimitive(sig)) })
+                                val patchBody = buildJsonObject { put("sender_name", JsonPrimitive(name.trim())); put("signature", JsonPrimitive(sig)) }
+                                val updated = Api.get(context).patchSettings(patchBody, accountId = selectedAccountId)
+                                if (selectedAccountId != null) accountSettings = updated else settings = updated
                             } catch (t: Throwable) { error = t.userMessage() }
                         }
                     }

@@ -49,7 +49,26 @@ data class MessageDto(
     @SerialName("group_id") val groupId: String? = null,
     val groups: List<MailGroupRef> = emptyList(),  // every group it's in (mail detail)
     @SerialName("company_question") val companyQuestion: List<CompanyChoice>? = null,
+    val pinned: Boolean = false,
+    @SerialName("has_note") val hasNote: Boolean = false,
+    @SerialName("notes_count") val notesCount: Int = 0,
+    val notes: List<MailNoteDto> = emptyList(),
 )
+
+@Serializable
+data class MailNoteDto(
+    val id: String,
+    @SerialName("message_id") val messageId: String,
+    val content: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String,
+)
+
+@Serializable
+data class NoteIn(val content: String)
+
+@Serializable
+data class PinResult(val id: String, val pinned: Boolean)
 
 @Serializable
 data class MessagePage(val items: List<MessageDto>, @SerialName("next_before") val nextBefore: String? = null)
@@ -127,6 +146,10 @@ data class SettingsDto(
     @SerialName("sender_name") val senderName: String = "",
     val signature: String = "",
     @SerialName("undo_send_seconds") val undoSendSeconds: Int = 10,
+    @SerialName("quiet_hours_enabled") val quietHoursEnabled: Boolean = false,
+    @SerialName("quiet_hours_start") val quietHoursStart: String = "22:00",
+    @SerialName("quiet_hours_end") val quietHoursEnd: String = "07:00",
+    @SerialName("muted_categories") val mutedCategories: List<String> = emptyList(),
 )
 
 @Serializable

@@ -72,6 +72,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     var next by remember { mutableStateOf<String?>(null) }
     var grouped by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
+    var pinnedOnly by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     suspend fun page(before: String?): Pair<List<FeedItem>, String?> {
@@ -207,7 +208,8 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
         if (!silenced) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Chip("All", priority == null) { priority = null }
+                Chip("All", priority == null && !pinnedOnly) { priority = null; pinnedOnly = false }
+                Chip("📌 Pinned", pinnedOnly) { pinnedOnly = !pinnedOnly }
                 listOf("urgent", "normal", "digest").forEach { p -> Chip(p, priority == p, dot = Ink.tier(p)) { priority = if (priority == p) null else p } }
             }
         } else {
@@ -224,7 +226,8 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                         )
                     }
                 }
-                items(items, key = { it.key }) { item ->
+                val displayItems = if (pinnedOnly) items.filter { it is MailItem && it.m.pinned } else items
+                items(displayItems, key = { it.key }) { item ->
                     when (item) {
                         is MailItem -> MailRow(item.m, onLongPress = { toggleRead(item.m) }) { onOpen(item.m.id) }
                         is GroupItem -> GroupRow(item.g) { onOpenGroup(item.g.id) }
@@ -263,6 +266,8 @@ fun MailRow(m: MessageDto, onLongPress: (() -> Unit)? = null, onClick: () -> Uni
             Text(m.summary ?: m.subject ?: "(no subject)", color = if (m.unread) Ink.text else Ink.text3, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             // tags sit with the account on the last line, so a long category never squeezes the sender
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (m.pinned) Text("📌", style = MaterialTheme.typography.bodySmall)
+                if (m.hasNote || m.notesCount > 0) Text("📝", style = MaterialTheme.typography.bodySmall)
                 m.category?.takeIf { it != "other" }?.let { Tag(it, Ink.tier(m.priority)) }
                 m.company?.let { Tag(it) }
                 m.account?.let { Text(it, color = accountColor(m.accountColor, m.accountId), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }

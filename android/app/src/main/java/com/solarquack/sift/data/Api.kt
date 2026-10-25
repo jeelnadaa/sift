@@ -42,6 +42,11 @@ interface SiftApi {
     @GET("api/v1/messages/{id}") suspend fun message(@Path("id") id: String): MessageDto
     @GET("api/v1/messages/{id}/body") suspend fun body(@Path("id") id: String): BodyDto
     @GET("api/v1/messages/{id}/thread") suspend fun thread(@Path("id") id: String, @Query("images") images: Boolean? = null): ThreadDto
+    @POST("api/v1/messages/{id}/pin") suspend fun pinMessage(@Path("id") id: String, @Query("pinned") pinned: Boolean): PinResult
+    @GET("api/v1/messages/{id}/notes") suspend fun notes(@Path("id") messageId: String): List<MailNoteDto>
+    @POST("api/v1/messages/{id}/notes") suspend fun addNote(@Path("id") messageId: String, @Body body: NoteIn): MailNoteDto
+    @PATCH("api/v1/messages/{id}/notes/{note_id}") suspend fun updateNote(@Path("id") messageId: String, @Path("note_id") noteId: String, @Body body: NoteIn): MailNoteDto
+    @DELETE("api/v1/messages/{id}/notes/{note_id}") suspend fun deleteNote(@Path("id") messageId: String, @Path("note_id") noteId: String)
 
     @GET("api/v1/accounts") suspend fun accounts(): List<AccountDto>
     @GET("api/v1/accounts/connect-url") suspend fun connectUrl(): ConnectUrl
@@ -70,8 +75,8 @@ interface SiftApi {
     @DELETE("api/v1/categories/{id}") suspend fun deleteCategory(@Path("id") id: String)
     @GET("api/v1/usage") suspend fun usage(@Query("days") days: Int = 30): UsageDto
 
-    @GET("api/v1/settings") suspend fun settings(): SettingsDto
-    @PATCH("api/v1/settings") suspend fun patchSettings(@Body changes: JsonObject): SettingsDto
+    @GET("api/v1/settings") suspend fun settings(@Query("account_id") accountId: String? = null): SettingsDto
+    @PATCH("api/v1/settings") suspend fun patchSettings(@Body changes: JsonObject, @Query("account_id") accountId: String? = null): SettingsDto
 
     // ---- writing mail (Phase 4) ----
     @GET("api/v1/compose/context") suspend fun replyContext(

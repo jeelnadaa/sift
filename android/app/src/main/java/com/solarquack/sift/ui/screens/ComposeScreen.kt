@@ -141,25 +141,33 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
         try {
             val api = Api.get(context)
             accounts = api.accounts()
-            val s = api.settings()
-            undoSeconds = s.undoSendSeconds
-            aiOn = runCatching { api.ai().aiEnabled }.getOrDefault(false)
-            val sig = if (s.signature.isNotBlank()) "\n\n-- \n${s.signature}" else ""
+            var targetAcc = ""
+            var replyBody = ""
             if (args.draft != null) {
                 val (acc, did) = args.draft.split(":", limit = 2)
+                targetAcc = acc
                 val d = api.draft(acc, did)
                 draft = d; accountId = d.accountId; to = d.to.joinToString(", "); cc = d.cc.joinToString(", "); bcc = d.bcc.joinToString(", ")
                 showCc = d.cc.isNotEmpty() || d.bcc.isNotEmpty(); subject = d.subject; body = d.body; threadId = d.threadId
                 inReplyTo = d.inReplyTo; references = d.references; scheduled = d.outbox
             } else if (args.mode != "new") {
                 val c = api.replyContext(args.mode, args.messageId, args.accountId, args.gmailId)
+                targetAcc = c.accountId
+                replyBody = c.body
                 accountId = c.accountId; to = c.to.joinToString(", "); cc = c.cc.joinToString(", "); showCc = c.cc.isNotEmpty()
-                subject = c.subject; body = sig + c.body; threadId = c.threadId; inReplyTo = c.inReplyTo; references = c.references
+                subject = c.subject; threadId = c.threadId; inReplyTo = c.inReplyTo; references = c.references
                 forwardGmailId = c.forwardGmailId
                 if (args.mode == "forward") dirty = true  // save at once so the original's attachments come along
             } else {
-                accountId = accounts.firstOrNull { it.status == "active" && !it.email.endsWith("@demo.sift.local") }?.id ?: ""
-                body = sig
+                targetAcc = accounts.firstOrNull { it.status == "active" && !it.email.endsWith("@demo.sift.local") }?.id ?: ""
+                accountId = targetAcc
+            }
+            val s = api.settings(targetAcc.takeIf { it.isNotBlank() })
+            undoSeconds = s.undoSendSeconds
+            aiOn = runCatching { api.ai().aiEnabled }.getOrDefault(false)
+            val sig = if (s.signature.isNotBlank()) "\n\n-- \n${s.signature}" else ""
+            if (args.draft == null) {
+                body = if (args.mode != "new") sig + replyBody else sig
             }
             ready = true
         } catch (t: Throwable) { loadError = t.userMessage() }
@@ -321,7 +329,29 @@ fun ComposeScreen(args: ComposeArgs, onDone: (String?) -> Unit) {
             Text(accounts.firstOrNull { it.id == accountId }?.email ?: "", color = Ink.text, style = MaterialTheme.typography.bodyLarge)
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                usable.forEach { a -> Chip(a.email, a.id == accountId) { accountId = a.id; dirty = true } }
+                usable.forEach { a ->
+                    Chip(a.email, a.id == accountId) {
+                        if (a.id != accountId) {
+                            val oldAcc = accountId
+                            accountId = a.id
+                            dirty = true
+                            scope.launch {
+                                runCatching {
+                                    val api = Api.get(context)
+                                    val oldS = api.settings(oldAcc.takeIf { it.isNotBlank() })
+                                    val newS = api.settings(a.id)
+                                    val prevSig = if (oldS.signature.isNotBlank()) "\n\n-- \n${oldS.signature}" else ""
+                                    val newSig = if (newS.signature.isNotBlank()) "\n\n-- \n${newS.signature}" else ""
+                                    if (prevSig.isNotEmpty() && body.endsWith(prevSig)) {
+                                        body = body.removeSuffix(prevSig) + newSig
+                                    } else if (body.isEmpty() || body == prevSig) {
+                                        body = newSig
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(12.dp))

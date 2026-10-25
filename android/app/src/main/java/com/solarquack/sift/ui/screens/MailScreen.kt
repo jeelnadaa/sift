@@ -95,10 +95,21 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
         error?.let { Banner(it, Ink.urgent) }
         val msg = m ?: return@Column
         Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             msg.priority?.let { Tag(it, Ink.tier(it)) }
             msg.category?.takeIf { it != "other" }?.let { Tag(it) }
             msg.company?.let { Tag(it) }
+            Spacer(Modifier.weight(1f))
+            Chip(if (msg.pinned) "📌 Pinned" else "Pin", msg.pinned) {
+                scope.launch {
+                    try {
+                        Api.get(context).pinMessage(msg.id, !msg.pinned)
+                        m = Api.get(context).message(msg.id)
+                    } catch (t: Throwable) {
+                        error = t.userMessage()
+                    }
+                }
+            }
         }
         Text(msg.subject ?: "(no subject)", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(vertical = 10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -171,6 +182,9 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
         }
 
         FilingSection(msg.id, buttons = false, pickRequest = folderPick, refreshKey = filingRefresh) { r -> RuleEditorSeed.clear(); RuleEditorSeed.draft = r.draft; RuleEditorSeed.origin = "one_tap"; onEditRule() }
+
+        Spacer(Modifier.height(14.dp))
+        PrivateNotesSection(msg.id, msg.notes, onChanged = reload)
 
         SectionLabel("Conversation")
         ThreadView(id)
@@ -345,4 +359,111 @@ fun GroupPickerDialog(messageId: String, exclude: Set<String>, onDismiss: () -> 
         dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel", color = Ink.text2) } },
         containerColor = Ink.surface, shape = com.solarquack.sift.ui.theme.Radius.xl,
     )
+}
+
+
+@Composable
+private fun PrivateNotesSection(messageId: String, notes: List<com.solarquack.sift.data.MailNoteDto>, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var editingNoteId by remember { mutableStateOf<String?>(null) }
+    var noteText by remember { mutableStateOf("") }
+    var isAdding by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+
+    SiftCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("📝 Private Notes", color = Ink.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            if (!isAdding && editingNoteId == null) {
+                GhostButton("+ Add note") {
+                    noteText = ""
+                    isAdding = true
+                }
+            }
+        }
+        if (notes.isEmpty() && !isAdding) {
+            Text("No notes yet. Add private thoughts or action items visible only to you.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+        } else {
+            notes.forEach { note ->
+                Spacer(Modifier.height(8.dp))
+                if (editingNoteId == note.id) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = noteText,
+                        onValueChange = { noteText = it.take(2000) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        shape = Radius.md,
+                    )
+                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PrimaryButton("Save", enabled = !busy && noteText.isNotBlank()) {
+                            busy = true
+                            scope.launch {
+                                try {
+                                    Api.get(context).updateNote(messageId, note.id, com.solarquack.sift.data.NoteIn(noteText.trim()))
+                                    editingNoteId = null
+                                    onChanged()
+                                } catch (t: Throwable) {
+                                    android.widget.Toast.makeText(context, t.userMessage(), android.widget.Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        }
+                        GhostButton("Cancel") { editingNoteId = null }
+                    }
+                } else {
+                    Column(Modifier.fillMaxWidth().background(Ink.bg2, Radius.sm).padding(10.dp)) {
+                        Text(note.content, color = Ink.text, style = MaterialTheme.typography.bodyMedium)
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(fullTime(note.createdAt), color = Ink.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                            Text("Edit", color = Ink.signal, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable {
+                                editingNoteId = note.id
+                                noteText = note.content
+                                isAdding = false
+                            }.padding(horizontal = 6.dp, vertical = 2.dp))
+                            Text("Delete", color = Ink.urgent, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable {
+                                scope.launch {
+                                    try {
+                                        Api.get(context).deleteNote(messageId, note.id)
+                                        onChanged()
+                                    } catch (t: Throwable) {
+                                        android.widget.Toast.makeText(context, t.userMessage(), android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                    }
+                }
+            }
+        }
+        if (isAdding) {
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = noteText,
+                onValueChange = { noteText = it.take(2000) },
+                placeholder = { Text("Write a private note...") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                shape = Radius.md,
+            )
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrimaryButton("Save note", enabled = !busy && noteText.isNotBlank()) {
+                    busy = true
+                    scope.launch {
+                        try {
+                            Api.get(context).addNote(messageId, com.solarquack.sift.data.NoteIn(noteText.trim()))
+                            isAdding = false
+                            noteText = ""
+                            onChanged()
+                        } catch (t: Throwable) {
+                            android.widget.Toast.makeText(context, t.userMessage(), android.widget.Toast.LENGTH_SHORT).show()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }
+                GhostButton("Cancel") { isAdding = false }
+            }
+        }
+    }
 }
