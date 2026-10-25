@@ -389,12 +389,12 @@ def feed_page(db: Session, user_id: uuid.UUID, base_query, before: datetime | No
     Returns (messages, groups-with-members, next_before, mail rows in all pages, group rows in all pages)."""
     shown = shown_group_ids(db, user_id).subquery()
     in_shown = select(GroupMember.message_id).where(GroupMember.group_id.in_(select(shown.c.id)), GroupMember.added_by != "removed")
-    q = base_query.where(~Message.id.in_(in_shown) | (Message.priority == "urgent"))
+    q = base_query.where(~Message.id.in_(in_shown) | (Message.priority == "urgent") | (Message.pinned.is_(True)))
     mail_total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     group_total = db.scalar(select(func.count()).select_from(shown)) or 0
     if before:
-        q = q.where(Message.received_at < before)
-    rows = list(db.scalars(q.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
+        q = q.where(Message.pinned.is_(False), Message.received_at < before)
+    rows = list(db.scalars(q.order_by(Message.pinned.desc(), Message.received_at.desc().nulls_last()).limit(limit)))
     full = len(rows) == limit and rows[-1].received_at is not None
     lower = rows[-1].received_at if full else None
     groups = []

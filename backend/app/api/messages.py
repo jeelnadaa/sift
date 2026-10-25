@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
-from app import grouping, notes as notes_service, reader, rule_tools
+from app import events, grouping, notes as notes_service, reader, rule_tools
 from app import snooze as snooze_service
 from app.db import get_db
 from app.mail.base import AuthRevoked
@@ -31,7 +31,7 @@ def message_json(m: Message, account: GmailAccount | None = None, notification: 
         "subject": m.subject, "snippet": m.snippet,
         "received_at": m.received_at.isoformat() if m.received_at else None,
         "priority": m.priority, "category": m.category, "status": m.status,
-        "has_attachment": m.has_attachment, "has_note": notes_count > 0, "notes_count": notes_count,
+        "has_attachment": m.has_attachment, "pinned": m.pinned, "has_note": notes_count > 0, "notes_count": notes_count,
         "unread": "UNREAD" in (m.labels or []),
         "starred": "STARRED" in (m.labels or []), "in_inbox": "INBOX" in (m.labels or []),
         "matched_rule_id": str(m.matched_rule_id) if m.matched_rule_id else None,
@@ -75,16 +75,20 @@ def list_messages(
         note_counts = dict(db.execute(select(MailNote.message_id, func.count()).where(MailNote.message_id.in_([m.id for m in rows])).group_by(MailNote.message_id)).all()) if rows else {}
         items = [{"type": "mail", **message_json(m, accounts.get(m.account_id), notes_count=note_counts.get(m.id, 0))} for m in rows]
         items += [grouping.group_json(g, ms) for g, ms in groups]
-        items.sort(key=lambda i: i["received_at"] or "", reverse=True)
+        items.sort(key=lambda i: (bool(i.get("pinned")), i["received_at"] or ""), reverse=True)
         return {"items": items, "next_before": next_before, "grouped": True,
                 "total": mail_total + group_total, "pages": page_count(mail_total, limit)}
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     if before:
-        q = q.where(Message.received_at < before)
-    rows = list(db.scalars(q.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
+        q = q.where(Message.pinned.is_(False), Message.received_at < before)
+    rows = list(db.scalars(q.order_by(Message.pinned.desc(), Message.received_at.desc().nulls_last()).limit(limit)))
     note_counts = dict(db.execute(select(MailNote.message_id, func.count()).where(MailNote.message_id.in_([m.id for m in rows])).group_by(MailNote.message_id)).all()) if rows else {}
     items = [message_json(m, accounts.get(m.account_id), notes_count=note_counts.get(m.id, 0)) for m in rows]
-    return {"items": items, "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None,
+    unpinned = [m for m in rows if not m.pinned]
+    next_before = None
+    if len(rows) == limit:
+        next_before = unpinned[-1].received_at.isoformat() if unpinned and unpinned[-1].received_at else datetime.now(UTC).isoformat()
+    return {"items": items, "next_before": next_before,
             "total": total, "pages": page_count(total, limit)}
 
 
@@ -294,3 +298,34 @@ def delete_note(message_id: uuid.UUID, note_id: uuid.UUID, user: User = Depends(
     except notes_service.NoteError as exc:
         raise HTTPException(exc.status_code, exc.message) from exc
     return {"ok": True}
+
+
+
+class PinIn(BaseModel):
+    pinned: bool | None = None
+
+
+@router.post("/{message_id}/pin")
+def pin_message(message_id: uuid.UUID, body: PinIn = PinIn(), user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    m = _own(db, user, message_id)
+    m.pinned = not m.pinned if body.pinned is None else body.pinned
+    db.commit()
+    events.mail_changed(db, user.id, [m.id])
+    return {"id": str(m.id), "pinned": m.pinned}
+
+
+class BatchPinIn(BaseModel):
+    message_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    pinned: bool
+
+
+@router.post("/pin")
+def batch_pin(body: BatchPinIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    msgs = list(db.scalars(select(Message).where(Message.user_id == user.id, Message.id.in_(body.message_ids))))
+    if len(msgs) != len(set(body.message_ids)):
+        raise HTTPException(404, "message not found")
+    for m in msgs:
+        m.pinned = body.pinned
+    db.commit()
+    events.mail_changed(db, user.id, [m.id for m in msgs])
+    return {"pinned": body.pinned, "count": len(msgs)}

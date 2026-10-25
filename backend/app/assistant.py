@@ -117,6 +117,8 @@ ACTIONS: dict[str, Action] = {
     # mail in Sift
     "tag_mail": A("write", ("q", "tag"), ("q", "tag"), "tag mail matching q"),
     "note_mail": A("write", ("q", "text"), ("q", "text"), "add a private note to mail matching q"),
+    "pin_mail": A("write", ("q",), ("q",), "pin mail matching q to top of feed"),
+    "unpin_mail": A("write", ("q",), ("q",), "unpin mail matching q"),
     "snooze_mail": A("write", ("q", "at"), ("q", "at"), "snooze conversations matching q until at"),
     "set_setting": A("write", ("key", "value"), ("key", "value"),
                      "change a setting: daily_token_cap|undo_send_seconds|load_remote_images|resend_urgent|sender_name|ai_requests_per_minute|ai_requests_per_day"),
@@ -618,6 +620,10 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
     if a == "note_mail":
         ms = _mail(db, user_id, s["q"])
         return P(f"Add note to {_n(len(ms), 'mail')} matching {s['q']}", _mail_targets(ms))
+    if a in ("pin_mail", "unpin_mail"):
+        ms = _mail(db, user_id, s["q"])
+        verb = "Pin" if a == "pin_mail" else "Unpin"
+        return P(f"{verb} {_n(len(ms), 'mail')} matching {s['q']}", _mail_targets(ms))
     if a == "snooze_mail":
         at = _when(db, user_id, s["at"])
         if at is None:
@@ -1038,6 +1044,16 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
         for m in ms:
             notes_service.add_note(db, user_id, m.id, s["text"])
         return {"text": f"Added note to {_n(len(ms), 'mail')}", "link": {"page": "search", "q": "has:note"}}
+    if a in ("pin_mail", "unpin_mail"):
+        from app import events
+        ms = _mail(db, user_id, s["q"])
+        pinned = (a == "pin_mail")
+        for m in ms:
+            m.pinned = pinned
+        db.flush()
+        events.mail_changed(db, user_id, [m.id for m in ms])
+        verb = "Pinned" if pinned else "Unpinned"
+        return {"text": f"{verb} {_n(len(ms), 'mail')}", "link": {"page": "search", "q": "is:pinned" if pinned else s["q"]}}
     if a == "snooze_mail":
         from app import snooze
         ms = _threads(_mail(db, user_id, s["q"]))

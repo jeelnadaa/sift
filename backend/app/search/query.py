@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 
 SIFT_KEYS = {"folder", "group", "tag", "priority", "type", "company", "account", "rule", "saved"}
-SIFT_IS = {"silenced", "grouped", "notified", "acked", "snoozed"}
+SIFT_IS = {"silenced", "grouped", "notified", "acked", "snoozed", "pinned"}
 SIFT_HAS = {"note", "link"}
 PRIORITIES = {"urgent", "normal", "digest", "silent"}
 MAX_QUERY = 1000
@@ -123,7 +123,7 @@ def _sift_filter(token: str) -> Filter | None:
 LABELS = {
     "folder": "In folder", "group": "In group", "tag": "Tag", "priority": "Priority", "type": "Category", "company": "Company",
     "account": "Account", "rule": "Rule", "saved": "Saved search",
-    "is:silenced": "Silenced", "is:grouped": "In a group", "is:snoozed": "Snoozed", "is:notified": "Notified", "is:acked": "Notification delivered",
+    "is:silenced": "Silenced", "is:grouped": "In a group", "is:snoozed": "Snoozed", "is:notified": "Notified", "is:acked": "Notification delivered", "is:pinned": "Pinned",
     "has:note": "Has a note", "has:link": "Has a link",
 }
 

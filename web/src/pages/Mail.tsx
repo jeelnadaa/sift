@@ -40,6 +40,16 @@ export function MailDetail() {
       toast((m.unread ? "Marked read" : "Marked unread") + (r.sift_only.length ? " in Sift (Gmail unchanged: this account is read-only)" : ""));
     } catch (e) { mail.reload(); toast(errorText(e)); }
   }
+  async function togglePin() {
+    const m = mail.data;
+    if (!m) return;
+    const next = !m.pinned;
+    mail.setData({ ...m, pinned: next });
+    try {
+      await post(`/messages/${id}/pin`, { pinned: next });
+      toast(next ? "Pinned to top of feed" : "Unpinned");
+    } catch (e) { mail.reload(); toast(errorText(e)); }
+  }
   const tree = useLoad(() => get<FolderTree>("/folders"), [id]);
   const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id], [...inFoldersLive]);
   const [picking, setPicking] = useState(false);
@@ -196,6 +206,7 @@ export function MailDetail() {
               {m.in_inbox === false
                 ? <button className="btn btn-ghost btn-sm" onClick={() => gmail("unarchive")} data-tip="Put it back in Gmail's inbox">Move to inbox</button>
                 : <button className="btn btn-ghost btn-sm" onClick={() => gmail("archive", true)} data-tip="Archive in Gmail: out of the inbox, still searchable  (Z to undo)">Archive</button>}
+              <button className="btn btn-ghost btn-sm" onClick={togglePin} data-tip={m.pinned ? "Unpin this conversation from top of feed" : "Pin this conversation to top of feed"}>{m.pinned ? "📌 Pinned" : "📌 Pin"}</button>
               <button className="btn btn-ghost btn-sm" onClick={toggleRead} data-tip={m.unread ? "Mark the conversation read  (also in Gmail when the account allows changes)" : "Mark it unread, to come back to it"}>{m.unread ? "Mark read" : "Mark unread"}</button>
               <button className="btn btn-ghost btn-sm" onClick={() => gmail(m.starred ? "unstar" : "star")} data-tip={m.starred ? "Remove the star in Gmail" : "Star it in Gmail"}>{m.starred ? "★ Starred" : "☆ Star"}</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setLabelling(true)} data-tip="Add a Gmail label">Label…</button>

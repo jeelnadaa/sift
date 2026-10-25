@@ -62,6 +62,7 @@ export function Feed() {
             </button>
           ))}
           <button className="chip" onClick={() => navigate("/search?q=is%3Asnoozed")} data-tip="Conversations you snoozed; they come back on their own">Snoozed</button>
+          <button className="chip" onClick={() => navigate("/search?q=is%3Apinned")} data-tip="Conversations pinned to top of feed">📌 Pinned</button>
           <span className="spacer" />
           {(["urgent", "normal", "digest"] as const).map((p) => (
             <button key={p} className={`chip ${priority === p ? "on" : ""}`} onClick={() => setPriority(priority === p ? null : p)} data-tip={priority === p ? "Click again to show every priority" : `Only ${p} mail`}>

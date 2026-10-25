@@ -139,6 +139,14 @@ Rule: commit every change to git, never push (the owner pushes).
   - Sift AI integration: Added `note_mail` action to Ask Sift assistant (`backend/app/assistant.py`) allowing users to add private notes to emails via conversational commands.
   - Web UI: Private Notes card in `web/src/pages/Mail.tsx` with inline note creation, inline note editing, and deletion with toast feedback; added note icon (📝) on `MailRow` in `web/src/components.tsx` across Feed, Folders, Groups, and Search.
   - Full test verification: 5 new tests in `backend/tests/test_notes.py` (CRUD lifecycle, input validation, multi-user isolation, `has:note` search engine matching, Ask Sift `note_mail` action). Full backend test suite 435 passed; web TypeScript build & 6 Vitest tests passed.
+- 2026-10-26 — Phase B (Pinned Mail / Top-of-Feed Priority):
+  - Database schema & migration `0013_pinned_messages.py`: Added `pinned: Mapped[bool]` to `messages` with index `ix_messages_user_pinned`.
+  - Feed ordering & cursor pagination: Updated `list_messages` and `grouping.feed_page()` to prioritize `Message.pinned.desc()`, sorting pinned conversations to the top. Excludes pinned conversations from page 2+ cursor queries so they appear once on page 1 and are not repeated on subsequent pages.
+  - REST endpoints added in `backend/app/api/messages.py`: `POST /api/v1/messages/{id}/pin` (toggle / explicit pin) and `POST /api/v1/messages/pin` (batch pin). Emits `events.mail_changed()` for instant multi-device sync.
+  - Search engine: Added `is:pinned` and `-is:pinned` filters in `backend/app/search/query.py` and `backend/app/search/engine.py`.
+  - Sift AI integration: Added `pin_mail` and `unpin_mail` actions to Ask Sift assistant (`backend/app/assistant.py`) with preview and execution.
+  - Web UI: Pin/unpin button (📌 Pin / 📌 Pinned) in `web/src/pages/Mail.tsx` toolbar, pin indicator (📌) on `MailRow` in `web/src/components.tsx`, and "Pinned" quick filter chip in `web/src/pages/Feed.tsx`.
+  - Full test verification: 7 new tests in `backend/tests/test_pinned.py` (single toggle & explicit pin, batch pin/unpin, feed sort order, pagination cursor exclusion, `is:pinned` / `-is:pinned` search, Ask Sift actions, user isolation). Full backend test suite 442 passed; web TypeScript build & 6 Vitest tests passed.
 
 ## Decisions
 - **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.

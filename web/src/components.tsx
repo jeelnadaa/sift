@@ -211,7 +211,7 @@ export function MailRow({ m, onOpen, extra, draggable = true, n, highlight, lead
     try { await setReadState([m.id], next); } catch (err) { setUnread(!next); toast(errorText(err)); }
   }
   return (
-    <div className={`row ${unread ? "unread" : "read"} ${onOpen ? "click" : ""} ${dragging ? "dragging" : ""}`} onClick={onOpen}
+    <div className={`row ${unread ? "unread" : "read"} ${m.pinned ? "pinned" : ""} ${onOpen ? "click" : ""} ${dragging ? "dragging" : ""}`} onClick={onOpen}
       draggable={draggable}
       onDragStart={(e) => { e.dataTransfer.setData("application/x-sift-mail", m.id); e.dataTransfer.effectAllowed = "copy"; setDragging(true); }}
       onDragEnd={() => setDragging(false)}>
@@ -225,6 +225,7 @@ export function MailRow({ m, onOpen, extra, draggable = true, n, highlight, lead
           {m.category && m.category !== "other" && <Tag tone={m.priority ?? undefined} tip="Category Sift gave this mail">{m.category}</Tag>}
           {m.company && <Tag tip={`On the ${m.company} company timeline`}>{m.company}</Tag>}
           {m.has_attachment && <span className="dim" data-tip="Has an attachment">📎</span>}
+          {m.pinned && <span className="dim" data-tip="Pinned to top of feed">📌</span>}
           {(m.has_note || (m.notes_count ?? 0) > 0) && <span className="dim" data-tip="Has a private note">📝</span>}
         </div>
         <div className="subj" data-tip={m.summary && m.subject ? `Subject: ${m.subject}` : undefined}><Highlight text={m.summary || m.subject || "(no subject)"} words={highlight} /></div>

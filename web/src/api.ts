@@ -112,7 +112,7 @@ export interface Mail {
   id: string; account_id: string; account: string | null; account_color: string | null;
   thread_id: string; sender: string | null; sender_name: string | null; subject: string | null; snippet: string | null;
   received_at: string | null; priority: Priority | null; category: string | null; status: string;
-  has_attachment: boolean; has_note?: boolean; notes_count?: number; unread: boolean; matched_rule_id: string | null; summary: string | null;
+  has_attachment: boolean; pinned?: boolean; has_note?: boolean; notes_count?: number; unread: boolean; matched_rule_id: string | null; summary: string | null;
   company: string | null; platform: string | null; deadline: string | null; links: Link[]; action_needed: boolean;
   opportunity_id: string | null; todo_id: string | null; decided_by: string | null;
   notified_at?: string | null; delivered_at?: string | null;

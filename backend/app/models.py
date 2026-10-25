@@ -140,6 +140,7 @@ class Message(Base):
         Index("ix_messages_user_msgid", "user_id", "message_id_header"),
         Index("ix_messages_user_received", "user_id", "received_at"),
         Index("ix_messages_account_thread", "account_id", "thread_id"),
+        Index("ix_messages_user_pinned", "user_id", "pinned"),
         CheckConstraint(f"priority IS NULL OR {_in('priority', PRIORITIES)}", name="priority_valid"),
     )
     id: Mapped[uuid.UUID] = pk()
@@ -159,6 +160,7 @@ class Message(Base):
     # Lowercased names of the metadata headers present (not their values), for rule previews.
     header_names: Mapped[list | None] = mapped_column(JSONB)
     has_attachment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     category: Mapped[str | None] = mapped_column(String(80))
     priority: Mapped[str | None] = mapped_column(String(10))
     matched_rule_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("rules.id", ondelete="SET NULL"))

@@ -116,6 +116,8 @@ def _condition(db: Session, user_id: uuid.UUID, f: Filter, accounts: list[GmailA
         c = active_condition()
     elif f.key == "is" and v == "acked":
         c = exists().where(Notification.message_id == Message.id, Notification.acknowledged_at.is_not(None))
+    elif f.key == "is" and v == "pinned":
+        c = Message.pinned.is_(True)
     elif f.key == "has" and v == "note":
         c = exists().where(MailNote.message_id == Message.id)
     elif f.key == "has" and v == "link":
