@@ -11,25 +11,62 @@ from app.config import get_settings
 from app.db import get_db
 from app.llm import service as llm
 from app.llm.base import LlmError
-from app.models import AiTask, TokenUsage, User
+import uuid
+from app.models import AiTask, GmailAccount, TokenUsage, User
 from app.security import current_user
 
 router = APIRouter(prefix="/api/v1")
 
 
 @router.get("/settings")
-def get_user_settings(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    return user_settings.get(db, user.id)
+def get_user_settings(
+    account_id: uuid.UUID | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if account_id:
+        acc = db.get(GmailAccount, account_id)
+        if acc is None or acc.user_id != user.id:
+            raise HTTPException(404, "account not found")
+    return user_settings.get(db, user.id, account_id)
 
 
 @router.patch("/settings")
-def patch_settings(changes: dict, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+def patch_settings(
+    changes: dict,
+    account_id: uuid.UUID | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if account_id:
+        acc = db.get(GmailAccount, account_id)
+        if acc is None or acc.user_id != user.id:
+            raise HTTPException(404, "account not found")
     try:
-        result = user_settings.update(db, user.id, changes)
+        result = user_settings.update(db, user.id, changes, account_id)
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, str(exc)) from exc
     db.commit()
     return result
+
+
+@router.get("/accounts/{account_id}/settings")
+def get_account_settings(
+    account_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return get_user_settings(account_id, user, db)
+
+
+@router.patch("/accounts/{account_id}/settings")
+def patch_account_settings(
+    account_id: uuid.UUID,
+    changes: dict,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return patch_settings(changes, account_id, user, db)
 
 
 @router.get("/backup")

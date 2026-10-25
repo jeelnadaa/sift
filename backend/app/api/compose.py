@@ -83,7 +83,7 @@ def _lock(db: Session, account_id: uuid.UUID, draft_id: str) -> None:
 
 
 def _from(db: Session, user: User, account: GmailAccount) -> tuple[str, str]:
-    return account.email, user_settings.get(db, user.id)["sender_name"]
+    return account.email, user_settings.get(db, user.id, account.id)["sender_name"]
 
 
 def _draft_json(account: GmailAccount, draft_id: str, thread_id: str | None, d: compose.Draft, version: str | None = None) -> dict:
@@ -487,7 +487,7 @@ def ai_draft(body: AiDraftIn, user: User = Depends(current_user), db: Session = 
     text_ = _gmail(db, account, thread_text)
     try:
         draft = llm.reply_draft(db, user.id, account.id, redact(text_), body.instructions,
-                                user_settings.get(db, user.id)["sender_name"])
+                                user_settings.get(db, user.id, account.id)["sender_name"])
     except LlmError as exc:
         db.commit()
         raise HTTPException(409 if "API key" in str(exc) or "cap" in str(exc) else 502, str(exc)) from exc

@@ -87,13 +87,13 @@ export function ComposePage() {
   useEffect(() => {
     (async () => {
       try {
-        const [accs, s] = await Promise.all([get<Account[]>("/accounts"), get<Settings>("/settings")]);
+        const accs = await get<Account[]>("/accounts");
         setAccounts(accs);
-        setSettings(s);
-        get<AiStatus>("/ai").then(setAi).catch(() => {});
-        const sig = s.signature ? `\n\n-- \n${s.signature}` : "";
+        let targetAcc = "";
+        let replyBody = "";
         if (draftParam) {
           const [acc, did] = draftParam.split(":");
+          targetAcc = acc;
           const d = await get<DraftData>(`/compose/drafts/${acc}/${did}`);
           setDraft(d); setAccountId(d.account_id); setTo(d.to); setCc(d.cc); setBcc(d.bcc); setShowCc(d.cc.length + d.bcc.length > 0);
           setSubject(d.subject); setBody(d.body); setScheduled(d.outbox ?? null);
@@ -101,17 +101,25 @@ export function ComposePage() {
           setState("saved");
         } else if (mode !== "new") {
           const ctx = await get<ReplyContext>("/compose/context", { mode, message_id: original.message ?? undefined, account_id: original.account ?? undefined, gmail_id: original.gmail ?? undefined });
+          targetAcc = ctx.account_id;
+          replyBody = ctx.body;
           setAccountId(ctx.account_id); setTo(ctx.to); setCc(ctx.cc); setShowCc(ctx.cc.length > 0); setSubject(ctx.subject);
-          setBody(sig + ctx.body);
           setThreading({ thread_id: ctx.thread_id, in_reply_to: ctx.in_reply_to, references: ctx.references, forward_gmail_id: ctx.forward_gmail_id });
           setForwardFiles(ctx.attachments);
           if (mode === "forward") setDirty(true); // save at once so the original's attachments are attached
         } else {
           const usable = accs.filter((a) => a.status === "active" && !isDemo(a));
-          setAccountId(params.get("from") ?? usable[0]?.id ?? "");
+          targetAcc = params.get("from") ?? usable[0]?.id ?? "";
+          setAccountId(targetAcc);
           const preset = params.get("to");
           if (preset) setTo([preset]);
-          setBody(sig);
+        }
+        const s = await get<Settings>("/settings", targetAcc ? { account_id: targetAcc } : undefined);
+        setSettings(s);
+        get<AiStatus>("/ai").then(setAi).catch(() => {});
+        const sig = s.signature ? `\n\n-- \n${s.signature}` : "";
+        if (!draftParam) {
+          setBody(mode !== "new" ? sig + replyBody : sig);
         }
         setReady(true);
       } catch (e) { setLoadError(errorText(e)); }
@@ -212,6 +220,20 @@ export function ComposePage() {
     }
     setAccountId(id);
     setDirty(true);
+    try {
+      const accSettings = await get<Settings>("/settings", { account_id: id });
+      const prevSig = settings?.signature ? `\n\n-- \n${settings.signature}` : "";
+      const newSig = accSettings.signature ? `\n\n-- \n${accSettings.signature}` : "";
+      setSettings(accSettings);
+      setBody((b) => {
+        if (prevSig && b.endsWith(prevSig)) {
+          return b.slice(0, b.length - prevSig.length) + newSig;
+        } else if (!b || b === prevSig) {
+          return newSig;
+        }
+        return b;
+      });
+    } catch { /* keep current settings */ }
   }
 
   // ---- attachments ---------------------------------------------------------------------------

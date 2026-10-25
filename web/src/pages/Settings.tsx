@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { clearSaved, savedSize } from "../offline";
-import { del, get, patch, post, put, type AiStatus, type GroupingStatus, type Settings } from "../api";
+import { del, get, patch, post, put, type Account, type AiStatus, type GroupingStatus, type Settings } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Banner, confirmDialog, errorText, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
 
@@ -8,6 +8,7 @@ export function SettingsPage() {
   const ai = useLoad(() => get<AiStatus>("/ai"));
   const settings = useLoad(() => get<Settings>("/settings"));
   const grouping = useLoad(() => get<GroupingStatus>("/grouping"));
+  const accounts = useLoad(() => get<Account[]>("/accounts"));
   const [model, setModel] = useState<string | null>(null);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -104,7 +105,7 @@ export function SettingsPage() {
           )}
         </div>
 
-        {s && <WritingSettings s={s} change={change} />}
+        {s && <WritingSettings s={s} change={change} accounts={accounts.data ?? []} />}
 
         <div className="settings-sec"><h2>Data</h2>
           <div className="set-row"><div>Export folders, rules, tags, categories &amp; settings<small>One JSON file. No mail, tokens or keys.</small></div>
@@ -120,17 +121,61 @@ export function SettingsPage() {
 }
 
 /** Name shown to recipients, signature added to new mail, and the undo window after Send. */
-function WritingSettings({ s, change }: { s: Settings; change: (c: Partial<Settings>) => void }) {
+function WritingSettings({ s, change, accounts }: { s: Settings; change: (c: Partial<Settings>) => void; accounts: Account[] }) {
+  const [selectedAccId, setSelectedAccId] = useState<string | null>(null);
+  const [accSettings, setAccSettings] = useState<Settings | null>(null);
   const [name, setName] = useState<string | null>(null);
   const [sig, setSig] = useState<string | null>(null);
+
+  useEffect(() => {
+    setName(null);
+    setSig(null);
+    if (!selectedAccId) {
+      setAccSettings(null);
+      return;
+    }
+    get<Settings>("/settings", { account_id: selectedAccId })
+      .then(setAccSettings)
+      .catch((e) => toast(errorText(e)));
+  }, [selectedAccId]);
+
+  const activeSettings = selectedAccId ? (accSettings ?? s) : s;
+
+  async function handleFieldChange(fieldChanges: Partial<Settings>) {
+    if (!selectedAccId) {
+      change(fieldChanges);
+    } else {
+      try {
+        const updated = await patch<Settings>("/settings", fieldChanges, { account_id: selectedAccId });
+        setAccSettings(updated);
+      } catch (e) {
+        toast(errorText(e));
+      }
+    }
+  }
+
   return (
     <div className="settings-sec"><h2>Writing mail</h2>
+      {accounts.length > 0 && (
+        <div className="set-row"><div>Profile for<small>Customize name and signature per account, or set defaults for all</small></div>
+          <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
+            <button type="button" className={`chip ${selectedAccId === null ? "on" : ""}`} onClick={() => setSelectedAccId(null)}>
+              All accounts (default)
+            </button>
+            {accounts.map((a) => (
+              <button type="button" key={a.id} className={`chip ${selectedAccId === a.id ? "on" : ""}`} onClick={() => setSelectedAccId(a.id)}>
+                {a.email}
+              </button>
+            ))}
+          </div></div>
+      )}
       <div className="set-row"><div>Your name<small>Shown to people you write to, next to your address</small></div>
-        <div style={{ width: 280 }}><TextField value={name ?? s.sender_name} onChange={setName} maxLength={100} ariaLabel="Your name" placeholder="e.g. Asha Rao"
-          onBlur={() => { if (name !== null && name.trim() !== s.sender_name) change({ sender_name: name.trim() }); setName(null); }} /></div></div>
+        <div style={{ width: 280 }}><TextField value={name ?? activeSettings.sender_name} onChange={setName} maxLength={100} ariaLabel="Your name" placeholder={selectedAccId ? (s.sender_name || "e.g. Asha Rao") : "e.g. Asha Rao"}
+          onBlur={() => { if (name !== null && name.trim() !== activeSettings.sender_name) handleFieldChange({ sender_name: name.trim() }); setName(null); }} /></div></div>
       <div className="set-row" style={{ alignItems: "flex-start" }}><div>Signature<small>Added below new mail, replies and forwards. Plain text.</small></div>
-        <textarea className="input" style={{ width: 280, minHeight: 90, resize: "vertical" }} value={sig ?? s.signature} maxLength={2000} aria-label="Signature"
-          onChange={(e) => setSig(e.target.value)} onBlur={() => { if (sig !== null && sig !== s.signature) change({ signature: sig }); setSig(null); }} /></div>
+        <textarea className="input" style={{ width: 280, minHeight: 90, resize: "vertical" }} value={sig ?? activeSettings.signature} maxLength={2000} aria-label="Signature"
+          placeholder={selectedAccId ? (s.signature || "Default signature…") : ""}
+          onChange={(e) => setSig(e.target.value)} onBlur={() => { if (sig !== null && sig !== activeSettings.signature) handleFieldChange({ signature: sig }); setSig(null); }} /></div>
       <div className="set-row"><div>Undo send<small>How long you can take a mail back after pressing Send</small></div>
         <div className="inline">{[0, 5, 10, 20, 30].map((n) => (
           <button key={n} className={`chip ${s.undo_send_seconds === n ? "on" : ""}`} onClick={() => change({ undo_send_seconds: n })}>{n ? `${n} s` : "Off"}</button>

@@ -73,7 +73,7 @@ export async function request<T>(method: string, path: string, body?: unknown, q
 export const get = <T,>(path: string, query?: Record<string, unknown>) => request<T>("GET", path, undefined, query);
 export const post = <T,>(path: string, body?: unknown) => request<T>("POST", path, body ?? {});
 export const put = <T,>(path: string, body: unknown) => request<T>("PUT", path, body);
-export const patch = <T,>(path: string, body: unknown) => request<T>("PATCH", path, body);
+export const patch = <T,>(path: string, body: unknown, query?: Record<string, unknown>) => request<T>("PATCH", path, body, query);
 export const del = <T,>(path: string, query?: Record<string, unknown>) => request<T>("DELETE", path, undefined, query);
 
 /** Sends a file as the raw request body (its type in Content-Type), e.g. a mail attachment. */
