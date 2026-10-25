@@ -7,13 +7,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service
-from app import grouping, reader, rule_tools
+from app import grouping, notes as notes_service, reader, rule_tools
 from app import snooze as snooze_service
 from app.db import get_db
 from app.mail.base import AuthRevoked
 from app.mail.gmail import GmailError
 from app.mail.message import extract_body
-from app.models import GmailAccount, GroupMember, Message, Notification, User
+from app.models import GmailAccount, GroupMember, MailNote, Message, Notification, User
 from app.security import current_user
 
 router = APIRouter(prefix="/api/v1/messages")
@@ -21,7 +21,7 @@ FEED_STATUSES = ("processed",)
 SILENCED_STATUSES = ("silenced", "ignored")
 
 
-def message_json(m: Message, account: GmailAccount | None = None, notification: Notification | None = None) -> dict:
+def message_json(m: Message, account: GmailAccount | None = None, notification: Notification | None = None, notes_count: int = 0) -> dict:
     ext = m.extraction or {}
     return {
         "id": str(m.id), "account_id": str(m.account_id),
@@ -31,7 +31,8 @@ def message_json(m: Message, account: GmailAccount | None = None, notification: 
         "subject": m.subject, "snippet": m.snippet,
         "received_at": m.received_at.isoformat() if m.received_at else None,
         "priority": m.priority, "category": m.category, "status": m.status,
-        "has_attachment": m.has_attachment, "unread": "UNREAD" in (m.labels or []),
+        "has_attachment": m.has_attachment, "has_note": notes_count > 0, "notes_count": notes_count,
+        "unread": "UNREAD" in (m.labels or []),
         "starred": "STARRED" in (m.labels or []), "in_inbox": "INBOX" in (m.labels or []),
         "matched_rule_id": str(m.matched_rule_id) if m.matched_rule_id else None,
         "summary": ext.get("summary"), "company": ext.get("company"), "platform": ext.get("platform"),
@@ -71,7 +72,8 @@ def list_messages(
     accounts = {a.id: a for a in db.scalars(select(GmailAccount).where(GmailAccount.user_id == user.id))}
     if grouped and view == "feed" and grouping.enabled(db, user.id):
         rows, groups, next_before, mail_total, group_total = grouping.feed_page(db, user.id, q, before, limit)
-        items = [{"type": "mail", **message_json(m, accounts.get(m.account_id))} for m in rows]
+        note_counts = dict(db.execute(select(MailNote.message_id, func.count()).where(MailNote.message_id.in_([m.id for m in rows])).group_by(MailNote.message_id)).all()) if rows else {}
+        items = [{"type": "mail", **message_json(m, accounts.get(m.account_id), notes_count=note_counts.get(m.id, 0))} for m in rows]
         items += [grouping.group_json(g, ms) for g, ms in groups]
         items.sort(key=lambda i: i["received_at"] or "", reverse=True)
         return {"items": items, "next_before": next_before, "grouped": True,
@@ -80,7 +82,8 @@ def list_messages(
     if before:
         q = q.where(Message.received_at < before)
     rows = list(db.scalars(q.order_by(Message.received_at.desc().nulls_last()).limit(limit)))
-    items = [message_json(m, accounts.get(m.account_id)) for m in rows]
+    note_counts = dict(db.execute(select(MailNote.message_id, func.count()).where(MailNote.message_id.in_([m.id for m in rows])).group_by(MailNote.message_id)).all()) if rows else {}
+    items = [message_json(m, accounts.get(m.account_id), notes_count=note_counts.get(m.id, 0)) for m in rows]
     return {"items": items, "next_before": rows[-1].received_at.isoformat() if len(rows) == limit and rows[-1].received_at else None,
             "total": total, "pages": page_count(total, limit)}
 
@@ -100,7 +103,9 @@ def _own(db: Session, user: User, message_id: uuid.UUID) -> Message:
 def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     m = _own(db, user, message_id)
     n = db.scalar(select(Notification).where(Notification.message_id == m.id))
-    out = message_json(m, db.get(GmailAccount, m.account_id), n)
+    note_items = notes_service.list_for_message(db, user.id, m.id)
+    out = message_json(m, db.get(GmailAccount, m.account_id), n, notes_count=len(note_items))
+    out["notes"] = [notes_service.note_json(note) for note in note_items]
     # the group it was put in (when grouping is on), so the apps can open it from the mail
     from app.models import MailGroup
     on = grouping.enabled(db, user.id)
@@ -247,3 +252,45 @@ def set_read_state(body: ReadStateIn, user: User = Depends(current_user), db: Se
         events.mail_changed(db, user.id, changed_ids)
     db.commit()
     return {"unread": body.unread, "conversations": len(threads), "in_gmail": in_gmail, "sift_only": sorted(local_only)}
+
+
+
+class NoteIn(BaseModel):
+    body: str = Field(min_length=1, max_length=10_000)
+
+
+@router.get("/{message_id}/notes")
+def list_notes(message_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    _own(db, user, message_id)
+    notes_list = notes_service.list_for_message(db, user.id, message_id)
+    return {"notes": [notes_service.note_json(n) for n in notes_list]}
+
+
+@router.post("/{message_id}/notes", status_code=201)
+def create_note(message_id: uuid.UUID, body: NoteIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    _own(db, user, message_id)
+    try:
+        note = notes_service.add_note(db, user.id, message_id, body.body)
+    except notes_service.NoteError as exc:
+        raise HTTPException(exc.status_code, exc.message) from exc
+    return notes_service.note_json(note)
+
+
+@router.patch("/{message_id}/notes/{note_id}")
+def update_note(message_id: uuid.UUID, note_id: uuid.UUID, body: NoteIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    _own(db, user, message_id)
+    try:
+        note = notes_service.update_note(db, user.id, message_id, note_id, body.body)
+    except notes_service.NoteError as exc:
+        raise HTTPException(exc.status_code, exc.message) from exc
+    return notes_service.note_json(note)
+
+
+@router.delete("/{message_id}/notes/{note_id}")
+def delete_note(message_id: uuid.UUID, note_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    _own(db, user, message_id)
+    try:
+        notes_service.delete_note(db, user.id, message_id, note_id)
+    except notes_service.NoteError as exc:
+        raise HTTPException(exc.status_code, exc.message) from exc
+    return {"ok": True}

@@ -132,6 +132,13 @@ Rule: commit every change to git, never push (the owner pushes).
   - Fix 3 (Privacy leak in pipeline): `app/pipeline.py` passed `meta.subject` unredacted to `llm.extract()`; now wrapped with `redact(meta.subject)`. Added regression test.
   - Fix 4 (Concurrency race in cross-account deduplication): `app/pipeline.py` acquired no lock when checking `message_id_header`, allowing simultaneous deliveries of cross-account mail to bypass deduplication; added transaction advisory lock on `hashtext(f"msgid:{user_id}:{meta.message_id}")`. Added concurrency test.
   - Fix 5 (Draft attachment payload safety): `app/api/compose.py` now validates aggregate attachment size before rebuilding draft, returning HTTP 413 instead of an uncaught 500 error when multiple attachments exceed 25 MB.
+- 2026-10-26 — Phase B (Mail Notes / Private Annotations on Any Mail):
+  - Service layer in `backend/app/notes.py`: full CRUD operations over `MailNote` model (`list_for_message`, `get_note`, `add_note`, `update_note`, `delete_note`, `note_json`). Input validation (up to 10k chars), empty rejection (HTTP 422), and multi-tenant security isolation. Emits `events.mail_changed()` on modifications for live sync across devices.
+  - REST endpoints added in `backend/app/api/messages.py`: `GET /api/v1/messages/{id}/notes`, `POST /api/v1/messages/{id}/notes` (HTTP 201), `PATCH /api/v1/messages/{id}/notes/{note_id}`, `DELETE /api/v1/messages/{id}/notes/{note_id}`.
+  - Message endpoints integration: `GET /api/v1/messages/{id}` returns the message's `notes: [...]`, `has_note: bool`, and `notes_count: int`. `GET /api/v1/messages` efficiently computes `has_note` and `notes_count` in a single query across returned rows. Search `has:note` filter natively supported.
+  - Sift AI integration: Added `note_mail` action to Ask Sift assistant (`backend/app/assistant.py`) allowing users to add private notes to emails via conversational commands.
+  - Web UI: Private Notes card in `web/src/pages/Mail.tsx` with inline note creation, inline note editing, and deletion with toast feedback; added note icon (📝) on `MailRow` in `web/src/components.tsx` across Feed, Folders, Groups, and Search.
+  - Full test verification: 5 new tests in `backend/tests/test_notes.py` (CRUD lifecycle, input validation, multi-user isolation, `has:note` search engine matching, Ask Sift `note_mail` action). Full backend test suite 435 passed; web TypeScript build & 6 Vitest tests passed.
 
 ## Decisions
 - **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { get, post, type Draft, type Folder, type FolderTree, type Group, type Mail, type Preview } from "../api";
+import { del, get, patch, post, type Draft, type Folder, type FolderTree, type Group, type Mail, type MailNote, type Preview } from "../api";
 import { Top, foldersChanged } from "../App";
 import { Thread } from "./Thread";
 import { LabelDialog, SnoozeDialog, mailAction, type MailAction } from "../mailActions";
@@ -43,6 +43,72 @@ export function MailDetail() {
   const tree = useLoad(() => get<FolderTree>("/folders"), [id]);
   const inFolders = useLoad(() => get<Folder[]>(`/folders/for-message/${id}`), [id], [...inFoldersLive]);
   const [picking, setPicking] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
+  async function saveNewNote() {
+    if (!noteText.trim()) return;
+    setSavingNote(true);
+    try {
+      const created = await post<MailNote>(`/messages/${id}/notes`, { body: noteText.trim() });
+      if (mail.data) {
+        mail.setData({
+          ...mail.data,
+          has_note: true,
+          notes_count: (mail.data.notes_count ?? 0) + 1,
+          notes: [...(mail.data.notes ?? []), created],
+        });
+      }
+      setNoteText("");
+      setAddingNote(false);
+      toast("Note saved");
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function saveEditNote(noteId: string) {
+    if (!editingText.trim()) return;
+    setSavingNote(true);
+    try {
+      const updated = await patch<MailNote>(`/messages/${id}/notes/${noteId}`, { body: editingText.trim() });
+      if (mail.data) {
+        mail.setData({
+          ...mail.data,
+          notes: (mail.data.notes ?? []).map((n) => (n.id === noteId ? updated : n)),
+        });
+      }
+      setEditingNoteId(null);
+      toast("Note updated");
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function deleteNote(noteId: string) {
+    try {
+      await del(`/messages/${id}/notes/${noteId}`);
+      if (mail.data) {
+        const remaining = (mail.data.notes ?? []).filter((n) => n.id !== noteId);
+        mail.setData({
+          ...mail.data,
+          has_note: remaining.length > 0,
+          notes_count: remaining.length,
+          notes: remaining,
+        });
+      }
+      toast("Note removed");
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
   const [likeThis, setLikeThis] = useState<{ draft: Draft; preview: Preview } | null>(null);
   const [grouping, setGrouping] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
@@ -140,6 +206,7 @@ export function MailDetail() {
             <div className="inline">
               <button className="btn btn-ghost btn-sm" onClick={() => setPicking(true)} data-tip="File this conversation into one of your folders">File in folder</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setGrouping(true)} data-tip="Put this mail in a group of yours (it can be in several)">Add to group…</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setAddingNote(true); setEditingNoteId(null); }} data-tip="Add a private note to this conversation">📝 Note</button>
               {last && !(inFolders.data ?? []).some((f) => f.id === last.id) && <button className="btn btn-ghost btn-sm" onClick={() => file(last)}>Move to {last.name}</button>}
               {m.status === "silenced" || m.status === "ignored"
                 ? <button className="btn btn-ghost btn-sm" onClick={unsilence} data-tip="Bring it back to the feed and stop silencing mail like it">Not like this</button>
@@ -164,6 +231,79 @@ export function MailDetail() {
                 <a className="link" onClick={() => fileLikeThis(inFolders.data![0])}>File mail like this in {inFolders.data![0].name} automatically</a>
               </div>
             )}
+
+            <div className="card" style={{ marginTop: 10 }}>
+              <div className="inline" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <b>Private Notes</b>
+                  <span className="dim" style={{ fontSize: 13, marginLeft: 8 }}>Only visible to you in Sift · Searchable via <code>has:note</code></span>
+                </div>
+                {!addingNote && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setAddingNote(true); setNoteText(""); }}>+ Add note</button>
+                )}
+              </div>
+
+              {addingNote && (
+                <div className="stack" style={{ marginTop: 10, gap: 8 }}>
+                  <textarea
+                    className="input"
+                    style={{ minHeight: 70, resize: "vertical", fontFamily: "inherit" }}
+                    placeholder="Write a private note (never sent to Gmail or recipient)..."
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    autoFocus
+                  />
+                  <div className="inline" style={{ justifyContent: "flex-end", gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setAddingNote(false); setNoteText(""); }}>Cancel</button>
+                    <button className="btn btn-primary btn-sm" disabled={!noteText.trim() || savingNote} onClick={saveNewNote}>
+                      {savingNote ? "Saving..." : "Save note"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(m.notes ?? []).length > 0 ? (
+                <div className="stack" style={{ marginTop: 10, gap: 8 }}>
+                  {m.notes!.map((note) => (
+                    <div key={note.id} style={{ padding: "8px 12px", background: "var(--bg-dim, #f8fafc)", borderRadius: 6, border: "1px solid var(--border-dim, #e2e8f0)" }}>
+                      {editingNoteId === note.id ? (
+                        <div className="stack" style={{ gap: 8 }}>
+                          <textarea
+                            className="input"
+                            style={{ minHeight: 70, resize: "vertical", fontFamily: "inherit" }}
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="inline" style={{ justifyContent: "flex-end", gap: 8 }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setEditingNoteId(null)}>Cancel</button>
+                            <button className="btn btn-primary btn-sm" disabled={!editingText.trim() || savingNote} onClick={() => saveEditNote(note.id)}>
+                              {savingNote ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{note.body}</div>
+                          <div className="inline" style={{ marginTop: 6, justifyContent: "space-between", alignItems: "center" }}>
+                            <span className="dim" style={{ fontSize: 12 }}>
+                              {fullTime(note.created_at)}
+                              {note.updated_at && note.updated_at !== note.created_at ? " (edited)" : ""}
+                            </span>
+                            <div className="inline" style={{ gap: 6 }}>
+                              <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => { setEditingNoteId(note.id); setEditingText(note.body); }}>Edit</button>
+                              <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 12, color: "var(--err, #ef4444)" }} onClick={() => deleteNote(note.id)}>Delete</button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                !addingNote && <p className="dim" style={{ marginTop: 8, fontSize: 13 }}>No private notes yet. Click "+ Add note" to jot down thoughts, recruiter follow-ups, or annotations.</p>
+              )}
+            </div>
 
             <div className="field" style={{ marginTop: 10 }}><label>Conversation</label></div>
             <Thread messageId={id} />

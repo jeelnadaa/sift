@@ -225,6 +225,7 @@ export function MailRow({ m, onOpen, extra, draggable = true, n, highlight, lead
           {m.category && m.category !== "other" && <Tag tone={m.priority ?? undefined} tip="Category Sift gave this mail">{m.category}</Tag>}
           {m.company && <Tag tip={`On the ${m.company} company timeline`}>{m.company}</Tag>}
           {m.has_attachment && <span className="dim" data-tip="Has an attachment">📎</span>}
+          {(m.has_note || (m.notes_count ?? 0) > 0) && <span className="dim" data-tip="Has a private note">📝</span>}
         </div>
         <div className="subj" data-tip={m.summary && m.subject ? `Subject: ${m.subject}` : undefined}><Highlight text={m.summary || m.subject || "(no subject)"} words={highlight} /></div>
       </div>
