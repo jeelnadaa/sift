@@ -23,6 +23,7 @@ Rule: commit every change to git, never push (the owner pushes).
 | Phase B (Core Specs & Essential Primitives) | **Built, Verified & Parity Complete 2026-10-26** (backend, web, Android): Mail Notes CRUD, Pinned Mail top ordering & filters, Per-account signatures & sender profiles, Quiet Hours schedule & category notification filtering |
 | Phase C (Organization & Productivity Hubs) | Fully Built, Verified & Parity Complete 2026-10-26 (Attachments Hub, Senders Directory, One-Tap Unsubscribe, Google Calendar & RSVP Hub) |
 | Phase D (Search & Engine Enhancements) | **Built, Verified & Parity Complete 2026-10-26** (backend, web, Android): Canned Reply Templates in Compose, Fallback LLM Provider (Ollama & OpenAI-compatible), PostgreSQL Trigram (`pg_trgm`) & typo-tolerant fuzzy search, VIP Senders & Muted Threads |
+| Production Hosting (Oracle Cloud Free Tier) | **LIVE in Production 2026-10-26** (Ampere A1, Oracle Linux 9.8, Docker Compose, Redis queue, Cloudflare Tunnel, NeverIdle anti-reclamation, automated nightly backups) |
 
 ## Log (newest last)
 - 2026-10-24 — Chose name Sift. Started design track: static HTML prototypes in `design/`.
@@ -347,3 +348,11 @@ Rule: commit every change to git, never push (the owner pushes).
     - Added self-healing verification in `app/api/messages.py` (`get_message`) that detects and cleans up any orphaned `opportunity_id` or `todo_id` on access.
     - Added lifecycle `ON_RESUME` auto-refresh in Android `MailScreen.kt` to guarantee instant UI synchronization when returning from timeline or to-do views.
     - Added comprehensive unit tests in `backend/tests/test_deletion_cleanup.py` (3 passed). Android Gradle suite verified (`testDebugUnitTest` passed 100%).
+- 2026-10-26 — **Production Deployment: Oracle Cloud Free Tier (LIVE).**
+  - **Infrastructure**: Provisioned Oracle Cloud Always Free VM `sift-vnic` on shape `VM.Standard.A1.Flex` (Ampere A1 ARM64, 1 OCPU, 6 GB RAM, 30 GB disk) running Oracle Linux 9.8. IP: `130.210.19.66`. SSH access via `opc@130.210.19.66` with key `C:\Users\solarquack\.ssh\oracle-sift.key`.
+  - **Anti-Reclamation Guard**: Configured `NeverIdle` (`/usr/local/bin/neveridle -cp 0.22 -m 1`) running as systemd service `neveridle.service` at `nice 19`. Locks 1 GiB RAM and generates 22% CPU duty cycle, keeping total system memory at ~1.6 GiB (~29%) and CPU at 22% so Oracle's 7-day idle reclamation criteria is permanently averted.
+  - **Docker Compose Stack**: Deployed full stack at `/opt/sift`: `postgres:17-alpine`, `redis:7-alpine`, `sift-api`, `sift-worker` (arq queue), `sift-scheduler` (APScheduler). Restored full database dump from owner's laptop (`latest.dump`). Verified health endpoint returning HTTP 200 `{"status":"ok","queue":"redis","database":"ok","mail_checks":"ok"}`.
+  - **Cloudflare Tunnel**: Installed `cloudflared` native service (`cloudflared.service`) on Oracle VM host with owner's tunnel token, routing `https://sift.solarquack.in` to `http://localhost:8000`.
+  - **Autostart Resiliency**: Enabled `sift.service` (Docker Compose stack auto-up), `cloudflared.service`, `neveridle.service`, and `docker.service` under systemd. All 4 services auto-recover upon server reboot in < 45 s.
+  - **Automated Backups**: Configured daily cron job at 03:30 UTC (`30 3 * * * cd /opt/sift && ./scripts/backup.sh >> /opt/sift/backups/backup.log 2>&1`) saving timestamped `.sql.gz` backups to `/opt/sift/backups/`.
+  - **Laptop Offloading**: Stopped local Sift processes and disabled the Sift autostart scheduled task on the laptop. Traffic is 100% served by Oracle Cloud. Documented update and failover workflows in `CLAUDE.md` §11 and `README.md` §6.

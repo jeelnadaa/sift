@@ -5,6 +5,12 @@ Guide for every Claude session on this repo. Read it fully before doing anything
 ## 1. What this project is
 **Sift** is a personal email assistant (the spec calls it "Inbox Agent"): multi-account Gmail, rules first, an optional small LLM using the user's own API key, instant FCM push to Android, company timelines for placement mail, and over time a Gmail replacement. Repo: `jeelnadaa/sift`. Domain: `solarquack.in`.
 
+> [!IMPORTANT]
+> **Production Status: LIVE ON ORACLE CLOUD FREE TIER**
+> Sift is **no longer running on the owner's laptop**. It is deployed and running 24/7 on an Oracle Cloud Free Tier instance (Ampere A1 Flex, Oracle Linux 9).
+> Public domain: **`https://sift.solarquack.in`** (routed via Cloudflare Tunnel).
+> See **Section 11: Production Environment & Deployment** below before making changes to production.
+
 Full product spec and build phases: `Inbox_Agent_Master_Prompt.md`. That file is the source of truth for **what** to build.
 
 ## 2. Start of every session (do this first, in order)
@@ -91,3 +97,62 @@ See "Dev environment notes" at the bottom of `PROGRESS.md` (throwaway Postgres o
 2. `PROGRESS.md` log, status and open questions are current.
 3. `DESIGN.md` / `README.md` match reality.
 4. Tell the owner what changed, what is verified, what is not, and what you need from them next.
+
+---
+
+## 11. Production Environment & Deployment (LIVE on Oracle Cloud)
+
+> [!IMPORTANT]
+> **Production Server Details:**
+> - **Host IP:** `130.210.19.66`
+> - **SSH User:** `opc`
+> - **SSH Key Location (on Owner's Laptop):** `C:\Users\solarquack\.ssh\oracle-sift.key` (also copied as `oracle_sift.key`)
+> - **Quick SSH Command:** `ssh -i C:\Users\solarquack\.ssh\oracle-sift.key opc@130.210.19.66`
+> - **Server Architecture & OS:** Ampere A1 (ARM64), 1 OCPU, 6 GB RAM, Oracle Linux 9.8
+> - **Production Directory:** `/opt/sift`
+> - **Public URL:** `https://sift.solarquack.in` (routed via Cloudflare Tunnel)
+
+### Production Architecture
+- **Container Stack (`/opt/sift/docker-compose.yml`):**
+  - `sift-api`: FastAPI backend on `127.0.0.1:8000` (serving built web UI at `/app`)
+  - `sift-worker`: arq Redis worker (`python -m app.worker`)
+  - `sift-scheduler`: APScheduler polling Gmail every 5s (`python -m app.scheduler`)
+  - `sift-postgres`: PostgreSQL 17 on `postgres:5432` (`pgdata` volume)
+  - `sift-redis`: Redis 7 on `redis:6379` (`redisdata` volume)
+- **Cloudflare Tunnel (`cloudflared.service`):** Runs natively on the Oracle VM host, forwarding public traffic from `sift.solarquack.in` directly to `http://localhost:8000`.
+- **Anti-Reclamation Guard (`neveridle.service`):** Runs `/usr/local/bin/neveridle -cp 0.22 -m 1` at `nice 19`. Pins ~1.6 GiB total system memory (29%) and 22% CPU so Oracle never reclaims the instance under its 7-day idle policy.
+- **Autostart Services:** `sift.service` (Docker Compose), `cloudflared.service`, `neveridle.service`, and `docker.service` are all systemd `enabled` on boot.
+- **Automated Backups:** Daily crontab at 03:30 UTC (`30 3 * * * cd /opt/sift && ./scripts/backup.sh >> /opt/sift/backups/backup.log 2>&1`) writing timestamped `sift-*.sql.gz` to `/opt/sift/backups/`.
+
+### How to Deploy Changes to Production (Standard Workflow)
+1. Write and test code locally on the laptop.
+2. Commit changes: `git add . && git commit -m "Your commit message"`
+3. Push to GitHub: `git push origin main` *(or have the owner push)*
+4. SSH into the Oracle VM:
+   ```bash
+   ssh -i C:\Users\solarquack\.ssh\oracle-sift.key opc@130.210.19.66
+   ```
+5. Pull and rebuild production:
+   ```bash
+   cd /opt/sift && git pull && docker compose up -d --build
+   ```
+   *(Alembic migrations run automatically on container startup; Postgres/Redis data is fully preserved).*
+6. If only `/opt/sift/.env` was modified:
+   ```bash
+   cd /opt/sift && docker compose up -d
+   ```
+7. Verify deployment:
+   ```bash
+   curl -s http://127.0.0.1:8000/health
+   # or from any browser/device: https://sift.solarquack.in/health
+   ```
+
+### Disaster Recovery / Emergency Failover Back to Laptop
+If Oracle Cloud is down or undergoing maintenance, Sift can resume on the owner's laptop in under 60 seconds:
+1. In Administrator PowerShell on laptop:
+   ```powershell
+   Start-Service Cloudflared
+   powershell -ExecutionPolicy Bypass -File D:\inbox-app\scripts\sift.ps1 restore backups\sift-latest.dump
+   powershell -ExecutionPolicy Bypass -File D:\inbox-app\scripts\sift.ps1 start
+   ```
+2. Cloudflare Tunnel reconnects to the laptop, and Sift catches up on Gmail history without losing any data.

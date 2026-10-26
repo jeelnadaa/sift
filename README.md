@@ -14,7 +14,7 @@ Two independent choices, both set in `.env`, no code changes:
 
 | Choice | Options |
 |---|---|
-| **Where it runs** | Your laptop (native Windows or Docker Desktop), optionally exposed with Cloudflare Tunnel · Oracle Always Free VM · Google e2-micro |
+| **Where it runs** | **Oracle Cloud Free Tier (LIVE in Production)**; Laptop used for local development and emergency instant failover backup |
 | **How new mail is detected** (`CHANGE_DETECTION`) | `poll` (default: free, no Pub/Sub, no billing, ~5–10 s) · `push` (Pub/Sub, ~1–3 s, needs a billed Google Cloud project and public HTTPS) |
 
 ## Repository layout
@@ -275,30 +275,57 @@ What decides priority, in order: your rules (first match wins) → Gmail Promoti
 - **New accounts** bring in their last 7 days of inbox mail at once (rules only, no AI, no notifications), so the feed isn't empty on day one.
 - **The apps still open.** Web and phone keep a copy of everything you already loaded (feed, folders, timelines, to-dos, mail you opened). With the server off they show it under an **Offline** bar with the time of the copy; changes need the server. Settings → **Saved on this device** shows the size and **Clear** removes it (nothing changes in Gmail or on the server); signing out clears it too. The phone keeps at most 60 MB and drops the oldest copies first.
 
-## 6. Move to Oracle Cloud later
+## 6. Production Deployment: Oracle Cloud (LIVE)
 
-Nothing in the code is tied to the laptop. To move:
+Sift is deployed and running 24/7 on **Oracle Cloud Infrastructure (OCI) Free Tier**.
 
-1. On the laptop: back up the database (Docker: `scripts/backup.sh`; native: `pg_dump -U sift -d sift --no-owner | gzip > sift.sql.gz`). Keep your `.env`, especially `ENCRYPTION_KEYS`.
-2. Create the VM (Check Oracle's current Always Free limits first): shape **VM.Standard.A1.Flex**, at most **2 OCPU / 12 GB**, Ubuntu 24.04 Arm, home region Mumbai or Hyderabad.
-3. Networking: allow ingress TCP 80/443 in the subnet's security list, and in the VM `sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -j ACCEPT && sudo netfilter-persistent save`. DNS `A` record `sift.solarquack.in → VM IP` (or keep using Cloudflare Tunnel and skip ports and Caddy).
-4. Install Docker: `curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER && newgrp docker`.
-5. Deploy:
+### Server Information & Access
+- **Host IP:** `130.210.19.66`
+- **SSH User:** `opc`
+- **SSH Key Location (Laptop):** `C:\Users\solarquack\.ssh\oracle-sift.key` (or `oracle_sift.key`)
+- **Connect:**
+  ```powershell
+  ssh -i C:\Users\solarquack\.ssh\oracle-sift.key opc@130.210.19.66
+  ```
+- **VM Specs:** Shape **VM.Standard.A1.Flex** (Ampere ARM64, 1 OCPU, 6 GB RAM, 30 GB root volume), OS: Oracle Linux 9.8.
+- **Production Directory:** `/opt/sift`
+- **Public Domain:** `https://sift.solarquack.in` (routed via native `cloudflared.service` to `http://localhost:8000`).
+
+### Production Architecture & Autostart
+The stack is managed via Docker Compose (`/opt/sift/docker-compose.yml`) with:
+- **Containers:** `sift-api`, `sift-worker` (arq), `sift-scheduler` (APScheduler), `sift-postgres` (PostgreSQL 17), `sift-redis` (Redis 7).
+- **Environment:** `ENV=prod`, `COMPOSE_PROFILES=redis,tunnel`, `QUEUE_BACKEND=redis`, `PUBLIC_BASE_URL=https://sift.solarquack.in`.
+- **Anti-Reclamation Guard:** `neveridle.service` (`/usr/local/bin/neveridle -cp 0.22 -m 1`) runs at `nice 19`, keeping total memory usage at ~1.6 GiB (~29%) and CPU at 22% so Oracle's 7-day idle reclamation criteria is never met.
+- **Autostart Enabled Services:** `sift.service` (Docker Compose auto-up), `cloudflared.service`, `neveridle.service`, and `docker.service` are all systemd `enabled` to withstand reboots automatically.
+- **Automated Nightly Backups:** Crontab runs every night at 3:30 AM UTC (`scripts/backup.sh`) writing timestamped `.sql.gz` dumps to `/opt/sift/backups/`.
+
+### How to Deploy Changes to Production
+When you make changes to Sift:
+1. **On your laptop:** Commit and push:
    ```bash
-   sudo mkdir -p /opt/sift && sudo chown $USER /opt/sift && cd /opt/sift
-   git clone https://github.com/jeelnadaa/sift.git .
-   # copy .env, secrets/firebase.json and the backup from the laptop (scp)
-   # in .env: ENV=prod, COMPOSE_PROFILES=redis,https (or redis,tunnel), QUEUE_BACKEND=redis,
-   #          PUBLIC_BASE_URL=https://sift.solarquack.in, POSTGRES_PASSWORD=...
-   docker compose up -d --build postgres && ./scripts/restore.sh sift.sql.gz
-   docker compose up -d --build
-   curl -s https://sift.solarquack.in/health
+   git add .
+   git commit -m "Update feature"
+   git push origin main
    ```
-6. Add `https://sift.solarquack.in/api/v1/accounts/oauth/callback` to the OAuth client. Stop Sift on the laptop.
+2. **In your Oracle SSH terminal:** Pull and rebuild:
+   ```bash
+   cd /opt/sift && git pull && docker compose up -d --build
+   ```
+   *(Web UI re-builds, Python dependencies update, Alembic migrations run automatically on start; Postgres/Redis state is untouched).*
+3. **If only `.env` was updated:**
+   ```bash
+   cd /opt/sift && docker compose up -d
+   ```
 
-Accounts continue from their saved positions, so mail that arrived during the move is still processed.
-
-**Fallback host, Google e2-micro (1 GB RAM):** same steps with `COMPOSE_PROFILES=https`, `QUEUE_BACKEND=postgres`, `PG_SHARED_BUFFERS=64MB`, plus 1 GB swap. It needs a billing account, like Pub/Sub.
+### Emergency Failover Back to Laptop
+If the Oracle VM ever goes down, you can resume on your laptop in 60 seconds:
+1. In Administrator PowerShell on laptop:
+   ```powershell
+   Start-Service Cloudflared
+   powershell -ExecutionPolicy Bypass -File D:\inbox-app\scripts\sift.ps1 restore backups\latest.dump
+   powershell -ExecutionPolicy Bypass -File D:\inbox-app\scripts\sift.ps1 start
+   ```
+2. Cloudflare Tunnel reconnects to the laptop, and Sift catches up on Gmail history automatically.
 
 ## 7. Optional: switch to Pub/Sub push
 
