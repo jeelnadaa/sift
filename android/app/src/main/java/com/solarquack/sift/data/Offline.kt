@@ -106,4 +106,48 @@ object Offline {
         root(context).deleteRecursively()
         state.value = null
     }
+
+    fun getCachedFile(context: Context, pathOrUrl: String): File {
+        val app = context.applicationContext
+        val fullUrl = if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+            pathOrUrl
+        } else {
+            val base = Session.server(app).trimEnd('/')
+            val path = if (pathOrUrl.startsWith("/")) pathOrUrl else "/$pathOrUrl"
+            "$base$path"
+        }
+        return File(folder(app), sha(fullUrl) + ".json")
+    }
+
+    fun readSavedJson(context: Context, pathOrUrl: String): String? {
+        val file = getCachedFile(context, pathOrUrl)
+        if (file.exists() && file.isFile) {
+            return runCatching { file.readText() }.getOrNull()
+        }
+        return null
+    }
+
+    inline fun <reified T> peek(context: Context, pathOrUrl: String): T? {
+        val str = readSavedJson(context, pathOrUrl) ?: return null
+        return runCatching { Api.json.decodeFromString<T>(str) }.getOrNull()
+    }
+
+    fun getCachedMessage(context: Context, messageId: String): MessageDto? {
+        return peek<MessageDto>(context, "/api/v1/messages/$messageId")
+    }
+
+    fun getCachedThread(context: Context, messageId: String): ThreadDto? {
+        return peek<ThreadDto>(context, "/api/v1/messages/$messageId/thread")
+    }
+
+    fun getCachedFeed(context: Context, priority: String? = null, accountId: String? = null, view: String = "feed"): MessagePage? {
+        val params = mutableListOf<String>()
+        if (priority != null) params.add("priority=$priority")
+        if (accountId != null) params.add("account_id=$accountId")
+        params.add("view=$view")
+        val query = if (params.isNotEmpty()) "?" + params.joinToString("&") else ""
+        return peek<MessagePage>(context, "/api/v1/messages$query")
+            ?: peek<MessagePage>(context, "/api/v1/messages?view=$view")
+            ?: peek<MessagePage>(context, "/api/v1/messages")
+    }
 }

@@ -142,7 +142,7 @@ def test_settings_patch_validates(client, auth):
 
 def test_ai_key_is_validated_stored_encrypted_and_never_returned(client, auth, db, monkeypatch):
     fake = FakeLlm()
-    monkeypatch.setattr(llm, "provider_factory", lambda p, k, m: fake)
+    monkeypatch.setattr(llm, "provider_factory", lambda p, k, m=None, *args, **kwargs: fake)
     status = client.get("/api/v1/ai", headers=auth).json()
     assert (status["status"], status["ai_enabled"]) == ("missing", False)
 

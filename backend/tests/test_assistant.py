@@ -40,7 +40,7 @@ class PlanLlm(FakeLlm):
 @pytest.fixture
 def fake(monkeypatch):
     f = PlanLlm()
-    monkeypatch.setattr(llm, "provider_factory", lambda provider, key, model: f)
+    monkeypatch.setattr(llm, "provider_factory", lambda provider, key, model=None, *args, **kwargs: f)
     return f
 
 

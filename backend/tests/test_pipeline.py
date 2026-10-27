@@ -95,7 +95,7 @@ class FakeLlm:
 @pytest.fixture
 def fake_llm(monkeypatch):
     f = FakeLlm()
-    monkeypatch.setattr(llm, "provider_factory", lambda provider, key, model: f)
+    monkeypatch.setattr(llm, "provider_factory", lambda provider, key, model=None, *args, **kwargs: f)
     return f
 
 

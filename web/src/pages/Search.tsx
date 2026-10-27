@@ -32,6 +32,15 @@ const QUICK: [string, string, string][] = [
 
 const words = (q: string) => q.split(/\s+/).filter(Boolean);
 
+interface WebSearchSession {
+  q: string;
+  mode: string;
+  items: (Mail & { source?: string; score?: number; gmail_id?: string })[];
+  total: number;
+  scrollY: number;
+}
+let webSearchSession: WebSearchSession | null = null;
+
 /** Search (brief section 19): Gmail syntax plus Sift's own filters, across accounts, or by meaning. */
 export function SearchPage() {
   const navigate = useNavigate();
@@ -78,6 +87,72 @@ export function SearchPage() {
   }, [q, mode, parseError]);
   useEffect(() => setSelected(new Set()), [q, mode, results.page]);
 
+  const [accumulated, setAccumulated] = useState<(Mail & { source?: string; score?: number; gmail_id?: string })[]>(() => {
+    if (webSearchSession && webSearchSession.q === q && webSearchSession.mode === mode) {
+      return webSearchSession.items;
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (webSearchSession && webSearchSession.q === q && webSearchSession.mode === mode) {
+      if (webSearchSession.items.length > 0) {
+        setAccumulated(webSearchSession.items);
+      }
+      if (webSearchSession.scrollY > 0) {
+        const y = webSearchSession.scrollY;
+        setTimeout(() => {
+          const main = document.querySelector("main");
+          if (main) main.scrollTop = y;
+          else window.scrollTo({ top: y });
+        }, 50);
+      }
+    }
+  }, [q, mode]);
+
+  useEffect(() => {
+    return () => {
+      const dest = window.location.pathname;
+      if (!dest.startsWith("/mail") && !dest.startsWith("/read")) {
+        webSearchSession = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const incoming = results.data?.items;
+    if (!incoming) return;
+    if (results.page === 1) {
+      if (webSearchSession && webSearchSession.q === q && webSearchSession.mode === mode && webSearchSession.items.length >= incoming.length) {
+        setAccumulated(webSearchSession.items);
+      } else {
+        setAccumulated(incoming);
+      }
+    } else {
+      setAccumulated((prev) => {
+        const seen = new Set(prev.map((m) => m.id ?? `${m.account_id}:${m.thread_id}`));
+        const fresh = incoming.filter((m) => !seen.has(m.id ?? `${m.account_id}:${m.thread_id}`));
+        const merged = [...prev, ...fresh];
+        if (webSearchSession && webSearchSession.q === q && webSearchSession.mode === mode) {
+          webSearchSession.items = merged;
+        }
+        return merged;
+      });
+    }
+  }, [results.data, results.page, q, mode]);
+  useEffect(() => {
+    const handleScroll = () => {
+      const main = document.querySelector("main") || document.documentElement;
+      const distanceToBottom = main.scrollHeight - main.scrollTop - main.clientHeight;
+      if (distanceToBottom < 350 && results.onNext && !results.loading) {
+        results.onNext();
+      }
+    };
+    const target = document.querySelector("main") || window;
+    target.addEventListener("scroll", handleScroll, { passive: true });
+    return () => target.removeEventListener("scroll", handleScroll);
+  }, [results.onNext, results.loading]);
+
   function run(next: string, nextMode = mode) {
     const clean = next.trim().replace(/\s+/g, " ");
     setParams(clean ? { q: clean, ...(nextMode === "meaning" ? { mode: "meaning" } : {}) } : {});
@@ -86,7 +161,7 @@ export function SearchPage() {
   const removeChip = (c: Chip) => run(chips.filter((x) => x !== c).map((x) => x.text).join(" "));
   const negateChip = (c: Chip) => run(chips.map((x) => (x === c ? (x.negated ? x.text.slice(1) : "-" + x.text) : x.text)).join(" "));
 
-  const items = results.data?.items ?? [];
+  const items = accumulated.length > 0 ? accumulated : (results.data?.items ?? []);
   const r = results.data as Result | null;
   const stored = items.filter((m) => m.id);
   const aiOn = !!sem.data?.ai_enabled;
@@ -214,7 +289,16 @@ export function SearchPage() {
                     {m.score !== undefined && <span className="tag ok" data-tip="How close in meaning (1 = identical)">{Math.round(m.score * 100)}%</span>}
                     {!m.id && <span className="tag" data-tip="Found in Gmail; Sift never processed it (older than Sift)">Gmail only</span>}
                   </>}
-                  onOpen={() => navigate(m.id ? `/mail/${m.id}` : `/read/${m.account_id}/${m.thread_id}`)} />
+                  onOpen={() => {
+                    webSearchSession = {
+                      q,
+                      mode,
+                      items,
+                      total: results.total,
+                      scrollY: (document.querySelector("main")?.scrollTop ?? window.scrollY),
+                    };
+                    navigate(m.id ? `/mail/${m.id}` : `/read/${m.account_id}/${m.thread_id}`);
+                  }} />
               ))}
             </div>
             <Pager bottom page={results.page} pages={results.pages || results.page} total={results.total} noun="conversations" onPrev={results.onPrev} onNext={results.onNext} />

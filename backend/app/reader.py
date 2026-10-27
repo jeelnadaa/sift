@@ -182,12 +182,17 @@ _INV_SURFACE, _INV_TEXT = "#eaeae7", "#0b0c11"
 
 _FONT_FACE = ("@font-face{font-family:Satoshi;src:url(/api/v1/reader-fonts/satoshi-400.woff2) format('woff2');font-weight:400 500;font-display:swap}"
               "@font-face{font-family:Satoshi;src:url(/api/v1/reader-fonts/satoshi-700.woff2) format('woff2');font-weight:600 900;font-display:swap}")
-_BASE = ("html,body{margin:0}body{padding:4px 2px;font:15px/1.6 Satoshi,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;"
-         "overflow-wrap:anywhere;-webkit-text-size-adjust:100%}"
+_BASE = ("*,*:before,*:after{box-sizing:border-box!important}"
+         "html,body{margin:0;width:100%!important;max-width:100vw!important;overflow-x:auto!important;-webkit-text-size-adjust:100%}"
+         "body{padding:6px 4px;font:15px/1.6 Satoshi,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;overflow-wrap:anywhere}"
          # the app's font everywhere, except where the mail shows code
          "body *:not(pre):not(code):not(tt):not(kbd):not(samp){font-family:Satoshi,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif!important}"
-         "pre,code,tt,kbd,samp{font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap}"
-         "img{max-width:100%;height:auto}table{max-width:100%}"
+         "pre,code,tt,kbd,samp{font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap!important;word-break:break-all!important}"
+         "img,video,iframe,object,embed,svg{max-width:100%!important;height:auto!important}"
+         "table{width:100%!important;max-width:100%!important;table-layout:auto!important;border-collapse:collapse!important}"
+         "td,th{word-break:break-word!important;overflow-wrap:anywhere!important;max-width:100vw!important}"
+         "[style*='width'],[width]{max-width:100%!important}"
+         "div,p,span,section,article{max-width:100%!important;box-sizing:border-box!important}"
          "img[data-blocked]{display:inline-block;min-width:16px;min-height:16px;background:#2a2a30}")
 
 
@@ -196,13 +201,14 @@ def has_own_colors(html: str) -> bool:
 
 
 def document(html: str, colors: str = "dark") -> str:
-    """The mail as its own page. colors: "dark" (default, matches the app) or "original"."""
+    """The mail as its own page. colors: 'dark' (default, matches the app) or 'original'."""
     if colors == "original":
         theme = "html{background:#fff;color:#1a1a1a}a{color:#1a56db}"
         body = html
     elif has_own_colors(html):
         theme = (f"html{{background:{SURFACE};color-scheme:dark}}"
-                 f"#sift-mail{{background:{_INV_SURFACE};color:{_INV_TEXT};filter:invert(1) hue-rotate(180deg);padding:12px;border-radius:8px}}"
+                 f"#sift-mail{{background:{_INV_SURFACE};color:{_INV_TEXT};filter:invert(1) hue-rotate(180deg);padding:12px;border-radius:8px;"
+                 f"width:100%!important;max-width:100%!important;overflow-x:auto!important;box-sizing:border-box!important;}}"
                  "#sift-mail img,#sift-mail video,#sift-mail [background],#sift-mail [style*='background-image']"
                  "{filter:invert(1) hue-rotate(180deg)}")
         body = f'<div id="sift-mail">{html}</div>'
@@ -210,11 +216,11 @@ def document(html: str, colors: str = "dark") -> str:
         theme = (f"html{{background:{SURFACE};color:{TEXT};color-scheme:dark}}a{{color:{LINK}}}"
                  "blockquote{border-left:2px solid #3a3a42;margin:8px 0;padding-left:12px;color:#a9a9b1}hr{border:0;border-top:1px solid #2a2a30}")
         body = html
-    return ("<!doctype html><html><head><meta charset=\"utf-8\">"
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            "<base target=\"_blank\">"
-            f"<style>{_FONT_FACE}{_BASE}{theme}</style></head>"
-            f"<body>{body}</body></html>")
+    return ('<!doctype html><html><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">'
+            '<base target="_blank">'
+            f'<style>{_FONT_FACE}{_BASE}{theme}</style></head>'
+            f'<body>{body}</body></html>')
 
 
 def render_message(msg: dict, *, user_id: str, account_id: str, base: str, images: bool) -> dict:

@@ -42,7 +42,7 @@ class PlaceLlm(PlanLlm):
 @pytest.fixture
 def fake(monkeypatch):
     f = PlaceLlm()
-    monkeypatch.setattr(llm, "provider_factory", lambda provider, key, model: f)
+    monkeypatch.setattr(llm, "provider_factory", lambda provider, key, model=None, *args, **kwargs: f)
     return f
 
 

@@ -34,6 +34,15 @@ class SiftMessagingService : FirebaseMessagingService() {
         val data = message.data
         if (data["type"] == "sync") {  // silent: refresh what's on screen, show nothing
             com.solarquack.sift.data.LiveEvents.changed()
+            if (Session.signedIn(this)) {
+                runCatching {
+                    runBlocking {
+                        withTimeoutOrNull(10_000) {
+                            Api.get(this@SiftMessagingService).messages(view = "feed", limit = 30)
+                        }
+                    }
+                }
+            }
             return
         }
         data["sent_at_ms"]?.toLongOrNull()?.let {
@@ -43,11 +52,28 @@ class SiftMessagingService : FirebaseMessagingService() {
         }
         show(data)
         val notificationId = data["notification_id"]
-        if (notificationId != null && Session.signedIn(this)) {
-            // onMessageReceived has a short time budget (seconds): cap the call; a missed ack only
-            // means the server re-sends an urgent notification once
-            runCatching { runBlocking { withTimeoutOrNull(5_000) { Api.get(this@SiftMessagingService).ack(notificationId) } } }
-                .onFailure { Log.w(TAG, "ack failed; the server may re-send") }
+        val messageId = data["message_id"]
+        if (Session.signedIn(this)) {
+            // onMessageReceived has a short time budget (seconds): cap the calls;
+            // ack receipt so server knows it was delivered, and proactively prefetch
+            // the full message and conversation thread into offline storage immediately.
+            runCatching {
+                runBlocking {
+                    withTimeoutOrNull(15_000) {
+                        val api = Api.get(this@SiftMessagingService)
+                        if (notificationId != null) {
+                            runCatching { api.ack(notificationId) }
+                                .onFailure { Log.w(TAG, "ack failed; the server may re-send") }
+                        }
+                        if (messageId != null) {
+                            runCatching { api.message(messageId) }
+                            runCatching { api.thread(messageId) }
+                        }
+                        runCatching { api.messages(view = "feed", limit = 30) }
+                    }
+                }
+            }
+            com.solarquack.sift.data.LiveEvents.changed()
         }
     }
 

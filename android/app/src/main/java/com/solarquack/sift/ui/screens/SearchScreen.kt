@@ -56,6 +56,36 @@ import kotlinx.coroutines.launch
 private val QUICK = listOf("is:unread" to "Unread", "has:attachment" to "Attachment", "newer_than:7d" to "Last 7 days",
     "newer_than:30d" to "Last 30 days", "is:silenced" to "Silenced", "priority:urgent" to "Urgent")
 
+object SearchSession {
+    var draft: String = ""
+    var query: String = ""
+    var meaning: Boolean = false
+    var fuzzy: Boolean = false
+    var chips: List<QueryChip> = emptyList()
+    var hits: List<SearchHit> = emptyList()
+    var next: String? = null
+    var total: Int = 0
+    var estimated: Boolean = false
+    var failed: List<String> = emptyList()
+    var scrollIndex: Int = 0
+    var scrollOffset: Int = 0
+
+    fun clear() {
+        draft = ""
+        query = ""
+        meaning = false
+        fuzzy = false
+        chips = emptyList()
+        hits = emptyList()
+        next = null
+        total = 0
+        estimated = false
+        failed = emptyList()
+        scrollIndex = 0
+        scrollOffset = 0
+    }
+}
+
 /** Search (brief section 19) on the phone: Gmail syntax plus Sift filters across accounts, or by
  * meaning with the user's key. Results keep loading as you scroll. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -63,23 +93,49 @@ private val QUICK = listOf("is:unread" to "Unread", "has:attachment" to "Attachm
 fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var draft by rememberSaveable { mutableStateOf("") }
-    var query by rememberSaveable { mutableStateOf("") }
-    var meaning by rememberSaveable { mutableStateOf(false) }
-    var fuzzy by rememberSaveable { mutableStateOf(false) }
-    var chips by remember { mutableStateOf<List<QueryChip>>(emptyList()) }
-    var hits by remember { mutableStateOf<List<SearchHit>>(emptyList()) }
-    var next by remember { mutableStateOf<String?>(null) }
-    var total by remember { mutableStateOf(0) }
-    var estimated by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf<List<String>>(emptyList()) }
+    var draft by rememberSaveable { mutableStateOf(SearchSession.draft) }
+    var query by rememberSaveable { mutableStateOf(SearchSession.query) }
+    var meaning by rememberSaveable { mutableStateOf(SearchSession.meaning) }
+    var fuzzy by rememberSaveable { mutableStateOf(SearchSession.fuzzy) }
+    var chips by remember { mutableStateOf<List<QueryChip>>(SearchSession.chips) }
+    var hits by remember { mutableStateOf<List<SearchHit>>(SearchSession.hits) }
+    var next by remember { mutableStateOf<String?>(SearchSession.next) }
+    var total by remember { mutableStateOf(SearchSession.total) }
+    var estimated by remember { mutableStateOf(SearchSession.estimated) }
+    var failed by remember { mutableStateOf<List<String>>(SearchSession.failed) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf<List<SavedSearchDto>>(emptyList()) }
     var sem by remember { mutableStateOf<SemanticStatus?>(null) }
     var english by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = SearchSession.scrollIndex,
+        initialFirstVisibleItemScrollOffset = SearchSession.scrollOffset,
+    )
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            SearchSession.scrollIndex = listState.firstVisibleItemIndex
+            SearchSession.scrollOffset = listState.firstVisibleItemScrollOffset
+        }
+    }
+
+    androidx.activity.compose.BackHandler {
+        SearchSession.clear()
+        onBack()
+    }
+
+    LaunchedEffect(draft) {
+        val trimmed = draft.trim()
+        if (trimmed == query) return@LaunchedEffect
+        if (trimmed.isEmpty()) {
+            query = ""
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(400)
+        query = trimmed
+    }
 
     LaunchedEffect(Unit) {
         runCatching { saved = Api.get(context).savedSearches() }
@@ -106,13 +162,30 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
     }
 
     LaunchedEffect(query, meaning, fuzzy) {
+        if (SearchSession.query == query && SearchSession.meaning == meaning && SearchSession.fuzzy == fuzzy && SearchSession.hits.isNotEmpty() && hits.isNotEmpty()) {
+            return@LaunchedEffect
+        }
         hits = emptyList(); next = null; error = null
-        if (query.isBlank()) { chips = emptyList(); return@LaunchedEffect }
+        if (query.isBlank()) {
+            chips = emptyList()
+            SearchSession.clear()
+            return@LaunchedEffect
+        }
         loading = true
         try {
             if (meaning) chips = Api.get(context).parseQuery(QueryIn(query)).chips
             val (first, cursor) = page(null)
             hits = first; next = cursor
+            SearchSession.draft = draft
+            SearchSession.query = query
+            SearchSession.meaning = meaning
+            SearchSession.fuzzy = fuzzy
+            SearchSession.chips = chips
+            SearchSession.hits = first
+            SearchSession.next = cursor
+            SearchSession.total = total
+            SearchSession.estimated = estimated
+            SearchSession.failed = failed
             listState.scrollToItem(0)
         } catch (t: Throwable) { error = t.userMessage() } finally { loading = false }
     }
@@ -124,8 +197,12 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             try {
                 val (more, n) = page(cursor)
                 val seen = hits.map { it.accountId + it.threadId + it.id }.toSet()
-                hits = hits + more.filter { (it.accountId + it.threadId + it.id) !in seen }
+                val merged = hits + more.filter { (it.accountId + it.threadId + it.id) !in seen }
+                hits = merged
                 next = n
+                SearchSession.hits = merged
+                SearchSession.next = n
+                SearchSession.total = total
             } catch (t: Throwable) { error = t.userMessage() } finally { loading = false }
         }
     }
@@ -138,7 +215,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
 
     LazyColumn(Modifier.fillMaxSize().background(Ink.bg), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp)) {
         item {
-            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
+            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = { SearchSession.clear(); onBack() }).padding(vertical = 6.dp))
             Text("Search", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(bottom = 8.dp))
             Field(draft, { draft = it }, "Search all accounts", placeholder = "from:kotak has:attachment · folder:Work")
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -204,7 +281,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
         }
         items(hits, key = { it.id ?: (it.accountId + ":" + it.threadId) }) { h ->
             Box {
-                MailRow(h.asMessage()) { if (h.id != null) onOpenMail(h.id) else onOpenThread(h.accountId, h.threadId) }
+                MailRow(h.asMessage()) { SearchSession.scrollIndex = listState.firstVisibleItemIndex; SearchSession.scrollOffset = listState.firstVisibleItemScrollOffset; if (h.id != null) onOpenMail(h.id) else onOpenThread(h.accountId, h.threadId) }
                 Row(Modifier.align(Alignment.BottomEnd).padding(bottom = 8.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     h.score?.let { Tag("${(it * 100).toInt()}%", Ink.signal) }
                     if (h.id == null) Tag("Gmail only")
@@ -257,7 +334,7 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
 fun ReadThreadScreen(accountId: String, threadId: String, onBack: () -> Unit, onWrite: ((String, String, String) -> Unit)? = null) {
     androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
         item {
-            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
+            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = { SearchSession.clear(); onBack() }).padding(vertical = 6.dp))
             Text("Older mail Sift never processed, read straight from Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
             ThreadView(null, accountId, threadId, onWrite = onWrite)
         }

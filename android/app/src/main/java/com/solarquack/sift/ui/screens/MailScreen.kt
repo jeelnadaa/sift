@@ -62,7 +62,7 @@ import com.solarquack.sift.ui.theme.Ink
 fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Unit = {}, onEditRule: () -> Unit = {}, onWrite: (mode: String, messageId: String) -> Unit = { _, _ -> },
                onOpenGroup: (String) -> Unit = {}) {
     val context = LocalContext.current
-    var m by remember { mutableStateOf<MessageDto?>(null) }
+    var m by remember(id) { mutableStateOf<MessageDto?>(com.solarquack.sift.data.Offline.getCachedMessage(context, id)) }
     var error by remember { mutableStateOf<String?>(null) }
     var addingTodo by remember { mutableStateOf(false) }
     var likeThis by remember { mutableStateOf<DraftResponse?>(null) }
@@ -84,8 +84,9 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
                 m = loaded.copy(unread = false)
                 runCatching { Api.get(context).readState(com.solarquack.sift.data.ReadStateIn(listOf(id), false)) }
             }
+            error = null
         } catch (t: Throwable) {
-            error = t.userMessage()
+            if (m == null) error = t.userMessage()
             return@LaunchedEffect
         }
     }

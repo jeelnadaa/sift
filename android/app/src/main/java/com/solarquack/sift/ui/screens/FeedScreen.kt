@@ -55,25 +55,63 @@ import com.solarquack.sift.ui.relativeTime
 import com.solarquack.sift.ui.theme.Ink
 import kotlinx.coroutines.launch
 
+object FeedSessionCache {
+    var items: List<FeedItem> = emptyList()
+    var next: String? = null
+    var priority: String? = null
+    var account: String? = null
+    var silenced: Boolean = false
+    var grouped: Boolean = false
+    var accounts: List<AccountDto> = emptyList()
+    var scrollIndex: Int = 0
+    var scrollOffset: Int = 0
+
+    fun matches(p: String?, a: String?, s: Boolean): Boolean =
+        priority == p && account == a && silenced == s
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: () -> Unit, onOpenGroup: (String) -> Unit = {}, onSearch: (() -> Unit)? = null, onWrite: (() -> Unit)? = null,
                onAsk: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var items by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
-    var askGrouping by remember { mutableStateOf(false) }
-    var accounts by remember { mutableStateOf<List<AccountDto>>(emptyList()) }
     var priority by remember { mutableStateOf<String?>(null) }
     var account by remember { mutableStateOf<String?>(null) }
+
+    val cachedInitialItems = remember(priority, account, silenced) {
+        if (FeedSessionCache.matches(priority, account, silenced) && FeedSessionCache.items.isNotEmpty()) {
+            FeedSessionCache.items
+        } else {
+            val offlineFeed = com.solarquack.sift.data.Offline.getCachedFeed(context, priority, account, if (silenced) "silenced" else "feed")
+            offlineFeed?.items?.map { MailItem(it) } ?: emptyList()
+        }
+    }
+
+    var items by remember(priority, account, silenced) { mutableStateOf(cachedInitialItems) }
+    var askGrouping by remember { mutableStateOf(false) }
+    var accounts by remember { mutableStateOf(FeedSessionCache.accounts) }
     var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember(priority, account, silenced) { mutableStateOf(cachedInitialItems.isEmpty()) }
+    var refreshing by remember { mutableStateOf(false) }
     // infinite scroll: the cursor of the next (older) page, null when there is none
-    var next by remember { mutableStateOf<String?>(null) }
-    var grouped by remember { mutableStateOf(false) }
+    var next by remember(priority, account, silenced) {
+        mutableStateOf(if (FeedSessionCache.matches(priority, account, silenced)) FeedSessionCache.next else null)
+    }
+    var grouped by remember { mutableStateOf(FeedSessionCache.grouped) }
     var loadingMore by remember { mutableStateOf(false) }
     var pinnedOnly by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = if (FeedSessionCache.matches(priority, account, silenced)) FeedSessionCache.scrollIndex else 0,
+        initialFirstVisibleItemScrollOffset = if (FeedSessionCache.matches(priority, account, silenced)) FeedSessionCache.scrollOffset else 0,
+    )
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            FeedSessionCache.scrollIndex = listState.firstVisibleItemIndex
+            FeedSessionCache.scrollOffset = listState.firstVisibleItemScrollOffset
+        }
+    }
 
     suspend fun page(before: String?): Pair<List<FeedItem>, String?> {
         val api = Api.get(context)
@@ -89,9 +127,23 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
     }
 
-    fun load() {
+    fun syncCache(newItems: List<FeedItem>, newNext: String?) {
+        FeedSessionCache.items = newItems
+        FeedSessionCache.next = newNext
+        FeedSessionCache.priority = priority
+        FeedSessionCache.account = account
+        FeedSessionCache.silenced = silenced
+        FeedSessionCache.grouped = grouped
+        FeedSessionCache.accounts = accounts
+    }
+
+    fun load(isPullRefresh: Boolean = false) {
         scope.launch {
-            loading = true
+            if (isPullRefresh) {
+                refreshing = true
+            } else if (items.isEmpty()) {
+                loading = true
+            }
             try {
                 val api = Api.get(context)
                 accounts = api.accounts()
@@ -101,26 +153,32 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 val (first, cursor) = page(null)
                 items = first
                 next = cursor
-                listState.scrollToItem(0)
+                if (isPullRefresh) listState.scrollToItem(0)
                 error = null
+                syncCache(first, cursor)
             } catch (t: Throwable) {
-                error = t.userMessage()
+                if (items.isEmpty()) {
+                    error = t.userMessage()
+                }
             } finally {
                 loading = false
+                refreshing = false
             }
         }
     }
 
     fun loadMore() {
         val cursor = next ?: return
-        if (loadingMore || loading) return
+        if (loadingMore || loading || refreshing) return
         loadingMore = true
         scope.launch {
             try {
                 val (more, nextCursor) = page(cursor)
                 val seen = items.map { it.key }.toSet()
-                items = items + more.filter { it.key !in seen }
+                val merged = items + more.filter { it.key !in seen }
+                items = merged
                 next = nextCursor
+                syncCache(merged, nextCursor)
             } catch (t: Throwable) {
                 error = t.userMessage()
             } finally {
@@ -215,7 +273,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         } else {
             Text("Saved and searchable, never notified. Check here if a rule looks too greedy.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
         }
-        PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.fillMaxSize()) {
+        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { load(isPullRefresh = true) }, modifier = Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
                 error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
                 if (!loading && error == null && items.isEmpty()) {
@@ -229,7 +287,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 val displayItems = if (pinnedOnly) items.filter { it is MailItem && it.m.pinned } else items
                 items(displayItems, key = { it.key }) { item ->
                     when (item) {
-                        is MailItem -> MailRow(item.m, onLongPress = { toggleRead(item.m) }) { onOpen(item.m.id) }
+                        is MailItem -> MailRow(item.m, onLongPress = { toggleRead(item.m) }) { FeedSessionCache.scrollIndex = listState.firstVisibleItemIndex; FeedSessionCache.scrollOffset = listState.firstVisibleItemScrollOffset; onOpen(item.m.id) }
                         is GroupItem -> GroupRow(item.g) { onOpenGroup(item.g.id) }
                     }
                 }

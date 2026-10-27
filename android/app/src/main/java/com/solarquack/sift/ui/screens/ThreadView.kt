@@ -62,9 +62,16 @@ fun fileSize(n: Long): String = when {
 fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? = null, onWrite: ((mode: String, accountId: String, gmailId: String) -> Unit)? = null) {
     val context = LocalContext.current
     var images by remember { mutableStateOf(false) }
-    var thread by remember { mutableStateOf<ThreadDto?>(null) }
+    val cachedThread = remember(messageId) { messageId?.let { com.solarquack.sift.data.Offline.getCachedThread(context, it) } }
+    var thread by remember(messageId) { mutableStateOf<ThreadDto?>(cachedThread) }
     var error by remember { mutableStateOf<String?>(null) }
-    var open by remember { mutableStateOf(setOf<String>()) }
+    var open by remember(messageId) {
+        val initialOpen = cachedThread?.let { t ->
+            setOfNotNull(t.messages.lastOrNull()?.gmailId, t.messages.firstOrNull { it.id == messageId }?.gmailId) +
+                t.messages.filter { it.unread }.map { it.gmailId }
+        } ?: emptySet()
+        mutableStateOf(initialOpen)
+    }
 
     LaunchedEffect(messageId, images) {
         try {
@@ -75,7 +82,9 @@ fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? 
             open = open + listOfNotNull(t.messages.lastOrNull()?.gmailId, t.messages.firstOrNull { it.id == messageId }?.gmailId) +
                 t.messages.filter { it.unread }.map { it.gmailId }
             error = null
-        } catch (t: Throwable) { error = t.userMessage() }
+        } catch (t: Throwable) {
+            if (thread == null) error = t.userMessage()
+        }
     }
 
     error?.let { Banner(it, Ink.urgent); return }
@@ -222,7 +231,8 @@ private fun MailWebView(url: String) {
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
+                    settings.useWideViewPort = false
+                    settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
                     settings.textZoom = zoom.toInt()
                     // offline: show the copy this phone kept when the mail was last opened
                     settings.cacheMode = if (com.solarquack.sift.data.Offline.since.value != null) WebSettings.LOAD_CACHE_ELSE_NETWORK else WebSettings.LOAD_DEFAULT

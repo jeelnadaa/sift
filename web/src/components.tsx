@@ -3,22 +3,30 @@ import type { LiveEvent } from "./live";
 import { ApiError, get, post, type Folder, type Mail, type Group } from "./api";
 import { accountColor, flatten, fullTime, humanize, relativeTime } from "./util";
 
+const memLoadCache = new Map<string, unknown>();
+
 /** Load data with loading/error state; `reload` re-runs it. With `live`, it also reloads quietly
  * (no loading state, data stays on screen) when another device or Gmail changes something
  * (live events of those types, see live.ts). */
-export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: LiveEvent["type"][]) {
-  const [data, setData] = useState<T | null>(null);
+export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: LiveEvent["type"][], cacheKey?: string) {
+  const k = cacheKey ?? (deps.length ? JSON.stringify(deps) : undefined);
+  const cached = k ? (memLoadCache.get(k) as T | undefined) ?? null : null;
+  const [data, setData] = useState<T | null>(cached);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cached === null);
   const seq = useRef(0);
   const reload = useCallback(async (quiet = false) => {
     const n = ++seq.current;
-    if (!quiet) setLoading(true);
+    if (!quiet && !memLoadCache.has(k ?? "")) setLoading(true);
     try {
       const d = await fn();
-      if (n === seq.current) { setData(d); setError(null); }
+      if (n === seq.current) {
+        setData(d);
+        setError(null);
+        if (k) memLoadCache.set(k, d);
+      }
     } catch (e) {
-      if (n === seq.current && !quiet) setError(e instanceof Error ? e.message : String(e));
+      if (n === seq.current && (!quiet || !memLoadCache.has(k ?? ""))) setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (n === seq.current) setLoading(false);
     }
@@ -313,7 +321,7 @@ type PageData<T> = { items: T[]; next_before: string | null; total?: number; pag
 export function usePages<T, P extends PageData<T> = PageData<T>>(load: (before: string | null) => Promise<P>, key: unknown[], live?: LiveEvent["type"][]) {
   const k = JSON.stringify(key);
   // remembered per list for this tab, so opening a mail and coming back keeps your page
-  const store = `sift.pages:${location.pathname}`;
+  const store = `sift.pages:${location.pathname}${location.search}`;
   const [state, setStateRaw] = useState<{ k: string; cursors: (string | null)[] }>(() => {
     try { const saved = JSON.parse(sessionStorage.getItem(store) ?? "null"); if (saved?.k === k) return saved; } catch { /* ignore */ }
     return { k, cursors: [null] };
@@ -326,7 +334,8 @@ export function usePages<T, P extends PageData<T> = PageData<T>>(load: (before: 
   useEffect(() => { if (state.k !== k) setState({ k, cursors: [null] }); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [k]);
   const cursors = state.k === k ? state.cursors : [null];
   const cursor = cursors[cursors.length - 1];
-  const res = useLoad(() => load(cursor), [k, cursors.length, cursor], live);
+  const pageCacheKey = `${store}:${k}:${cursor}`;
+  const res = useLoad(() => load(cursor), [k, cursors.length, cursor], live, pageCacheKey);
   const page = cursors.length;
   useEffect(() => { document.querySelector("main")?.scrollTo({ top: 0 }); }, [page, k]);
   const next = res.data?.next_before;

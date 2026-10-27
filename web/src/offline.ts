@@ -11,13 +11,21 @@ const PREFIX = "sift-data:";
 const SKIP = [/^\/api\/v1\/auth\//, /^\/api\/v1\/events/];
 
 let offlineSince: number | null = null;
+const memCache = new Map<string, { data: unknown; savedAt: number }>();
 
 function cacheName(email: string | null) { return PREFIX + (email || "anon").toLowerCase(); }
 const supported = () => typeof caches !== "undefined";
 
 export function saveable(path: string) { return supported() && !SKIP.some((r) => r.test(path)); }
 
+/** Synchronous in-memory peek for instant cache-first rendering */
+export function peek<T>(url: string): T | null {
+  const hit = memCache.get(url);
+  return hit ? (hit.data as T) : null;
+}
+
 export async function remember(email: string | null, url: string, data: unknown): Promise<void> {
+  memCache.set(url, { data, savedAt: Date.now() });
   if (!supported()) return;
   try {
     const c = await caches.open(cacheName(email));
@@ -26,11 +34,16 @@ export async function remember(email: string | null, url: string, data: unknown)
 }
 
 export async function recall<T>(email: string | null, url: string): Promise<{ data: T; savedAt: number } | null> {
+  const hitMem = memCache.get(url);
+  if (hitMem) return { data: hitMem.data as T, savedAt: hitMem.savedAt };
   if (!supported()) return null;
   try {
     const hit = await (await caches.open(cacheName(email))).match(url);
     if (!hit) return null;
-    return { data: (await hit.json()) as T, savedAt: Number(hit.headers.get("X-Saved-At") || 0) };
+    const data = (await hit.json()) as T;
+    const savedAt = Number(hit.headers.get("X-Saved-At") || 0);
+    memCache.set(url, { data, savedAt });
+    return { data, savedAt };
   } catch { return null; }
 }
 
@@ -71,6 +84,7 @@ export async function savedSize(): Promise<{ bytes: number; entries: number }> {
 /** Clears saved mail and data for every account on this device. The app itself stays cached
  * (it holds no mail) unless `everything` is set. */
 export async function clearSaved(everything = false): Promise<void> {
+  memCache.clear();
   if (!supported()) return;
   for (const name of await caches.keys()) {
     if (name.startsWith(PREFIX) || name.startsWith("sift-read") || (everything && name.startsWith("sift-"))) await caches.delete(name);
