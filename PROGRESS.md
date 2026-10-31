@@ -24,6 +24,7 @@ Rule: commit every change to git, never push (the owner pushes).
 | Phase C (Organization & Productivity Hubs) | Fully Built, Verified & Parity Complete 2026-10-26 (Attachments Hub, Senders Directory, One-Tap Unsubscribe, Google Calendar & RSVP Hub) |
 | Phase D (Search & Engine Enhancements) | **Built, Verified & Parity Complete 2026-10-26** (backend, web, Android): Canned Reply Templates in Compose, Fallback LLM Provider (Ollama & OpenAI-compatible), PostgreSQL Trigram (`pg_trgm`) & typo-tolerant fuzzy search, VIP Senders & Muted Threads |
 | Production Hosting (Oracle Cloud Free Tier) | **LIVE in Production 2026-10-26** (Ampere A1, Oracle Linux 9.8, Docker Compose, Redis queue, Cloudflare Tunnel, NeverIdle anti-reclamation, automated nightly backups) |
+| Fixes batch 2026-10-31 (instant mail, downloads, refresh/live, OTP, bulk selection, Ask Sift) | **In progress** — plan `PLAN-2026-10-31.md`, decisions recorded below |
 | Offline Sync, Cache-First Architecture & Search Enhancements (2026-10-27) | **Built, Verified & Parity Complete** (Android, Web, Backend): Proactive push notification email pre-caching, 0ms cache-first stale-while-revalidate loading, responsive mobile email fitting, auto-debounced search, and persistent search sessions with infinite scroll |
 
 ## Log (newest last)
@@ -186,6 +187,15 @@ Rule: commit every change to git, never push (the owner pushes).
   - Built in three steps: 3a thread reader and attachments, 3b search (Gmail operators + our filters, saved searches, natural-language search with a key), 3c archive, labels, read/unread, star and snooze.
 
 - **Phase 4 decisions (owner, 2026-10-24):** sending reuses per-account write access (gmail.modify, which covers drafts and sending; no new scope); scheduled mail waits as a Gmail draft and Sift's scheduler sends it (needs the server running at that time); Phase 4 built all at once. Defaults taken: undo window 10 s (setting); plain-text composing with an HTML alternative generated from it (no rich-text editor); signature and sender name kept in Sift (reading Gmail's signature needs another scope); AI reply drafts only fill the text box.
+
+- **Fixes batch decisions (owner, 2026-10-31; plan in `PLAN-2026-10-31.md`):**
+  - Each device downloads the newest 100 feed mails (conversation + bodies), on Wi-Fi and mobile data. Bodies live only on the user's device; the server still never stores them.
+  - OTP: detected locally (no AI), never stored or logged; the code is hidden on the lock screen until unlocked; OTP mail is always urgent.
+  - "Delete" means Gmail Trash (recoverable for 30 days). Sift never deletes permanently.
+  - Select all = this page / loaded rows, plus "Select all N matching".
+  - Android: long-press starts selecting; swipe right = read/unread, swipe left = archive.
+  - Ask Sift: general tasks and general bulk tasks (not only the current selection), up to 1,000 conversations per step; it always shows the approximate token cost before Run. Selection ("these") is an extra target; the AI sees only the count.
+  - Git: Claude commits, the owner pushes, then Claude deploys to Oracle. Deploy once, after everything passes.
 
 - **Healing and Ask Sift decisions (2026-10-25, defaults taken):**
   - Late mail (> 30 min old when processed) still gets the AI; only urgent pushes on its own, the rest is one summary push per check. Mail older than 72 h is rules only ("never backfill with the LLM" read as "never spend tokens on mail older than 3 days unless the user asks"). The user can still run timelines/to-dos over it on purpose (folder AI or Ask Sift), which is an explicit request.
