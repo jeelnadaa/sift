@@ -3,6 +3,7 @@ package com.solarquack.sift.data
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -18,12 +19,15 @@ import java.security.MessageDigest
  * An OkHttp interceptor keeps every successful JSON GET in the app's private storage, one folder
  * per server + account. When the server can't be reached, the last copy is returned instead and
  * [since] says the app is offline (a banner shows it). Changes (send, archive, edit) still need the
- * server and fail as before. Mail bodies are cached by the WebView itself (ThreadView). Settings >
+ * server and fail as before. Conversations are downloaded with their reader documents inline
+ * (`thread?bundle=true`), so a saved mail opens with its contents and no network (ThreadView,
+ * [Prefetch]). Copies are filed under one key per kind of data ([key]), so a feed saved with any
+ * page size, or a conversation saved with or without its documents, is found again. Settings >
  * "Saved on this device" shows the size and clears it; signing out clears it too.
  * Nothing saved here contains the sign-in token or any key. */
 object Offline {
     private const val DIR = "offline"
-    private const val MAX_BYTES = 60L * 1024 * 1024  // oldest copies are dropped past this
+    private const val MAX_BYTES = 150L * 1024 * 1024  // oldest copies are dropped past this (100 downloaded mails are ~10 MB)
 
     private val state = MutableStateFlow<Long?>(null)
     /** When the oldest saved copy on screen was taken, while offline; null when online. */
@@ -46,7 +50,7 @@ object Offline {
         return Interceptor { chain ->
             val req = chain.request()
             val canSave = req.method == "GET" && saveable(req.url.encodedPath)
-            val file = if (canSave) File(folder(app), sha(req.url.toString()) + ".json") else null
+            val file = if (canSave) File(folder(app), sha(key(req.url)) + ".json") else null
             val res = try {
                 chain.proceed(req)
             } catch (e: IOException) {
@@ -107,6 +111,23 @@ object Offline {
         state.value = null
     }
 
+    private val THREAD = Regex("^/api/v1/messages/([0-9a-fA-F-]{36})/thread$")
+
+    /** One key per kind of data, so the reader finds what any request saved:
+     *  - the first page of a mail list ignores its page size (`limit`), and its query order;
+     *  - a conversation ignores `images` and `bundle` (the newest copy wins);
+     *  - everything else is its exact address. */
+    fun key(url: okhttp3.HttpUrl): String {
+        val path = url.encodedPath
+        THREAD.find(path)?.let { return "thread:" + it.groupValues[1] }
+        if (path == "/api/v1/messages" && url.queryParameter("before") == null) {
+            val q = url.queryParameterNames.filter { it != "limit" }.sorted()
+                .mapNotNull { n -> url.queryParameter(n)?.let { "$n=$it" } }.joinToString("&")
+            return "feed:$q"
+        }
+        return url.toString()
+    }
+
     fun getCachedFile(context: Context, pathOrUrl: String): File {
         val app = context.applicationContext
         val fullUrl = if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
@@ -116,7 +137,14 @@ object Offline {
             val path = if (pathOrUrl.startsWith("/")) pathOrUrl else "/$pathOrUrl"
             "$base$path"
         }
-        return File(folder(app), sha(fullUrl) + ".json")
+        val k = fullUrl.toHttpUrlOrNull()?.let { key(it) } ?: fullUrl
+        return File(folder(app), sha(k) + ".json")
+    }
+
+    /** True when this conversation was saved (with its documents) less than `maxAgeMs` ago. */
+    fun hasFreshThread(context: Context, messageId: String, maxAgeMs: Long): Boolean {
+        val f = getCachedFile(context, "/api/v1/messages/$messageId/thread")
+        return f.exists() && System.currentTimeMillis() - f.lastModified() < maxAgeMs
     }
 
     fun readSavedJson(context: Context, pathOrUrl: String): String? {
@@ -140,14 +168,15 @@ object Offline {
         return peek<ThreadDto>(context, "/api/v1/messages/$messageId/thread")
     }
 
+    /** The saved first page of a list exactly as the screen asks for it (see [key]). */
     fun getCachedFeed(context: Context, priority: String? = null, accountId: String? = null, view: String = "feed"): MessagePage? {
-        val params = mutableListOf<String>()
-        if (priority != null) params.add("priority=$priority")
-        if (accountId != null) params.add("account_id=$accountId")
-        params.add("view=$view")
-        val query = if (params.isNotEmpty()) "?" + params.joinToString("&") else ""
-        return peek<MessagePage>(context, "/api/v1/messages$query")
-            ?: peek<MessagePage>(context, "/api/v1/messages?view=$view")
-            ?: peek<MessagePage>(context, "/api/v1/messages")
+        val params = listOfNotNull(priority?.let { "priority=$it" }, accountId?.let { "account_id=$it" }, "view=$view")
+        return peek<MessagePage>(context, "/api/v1/messages?" + params.joinToString("&"))
+    }
+
+    /** The saved grouped feed (group rows and mail rows), as raw JSON objects. */
+    fun getCachedGroupedFeed(context: Context, priority: String? = null, accountId: String? = null): GroupedPage? {
+        val params = listOfNotNull(priority?.let { "priority=$it" }, accountId?.let { "account_id=$it" }, "grouped=true")
+        return peek<GroupedPage>(context, "/api/v1/messages?" + params.joinToString("&"))
     }
 }

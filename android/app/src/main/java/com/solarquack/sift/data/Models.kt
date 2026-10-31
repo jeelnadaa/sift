@@ -692,6 +692,8 @@ data class ThreadMessageDto(
     val snippet: String = "",
     val text: String = "",
     @SerialName("html_url") val htmlUrl: String? = null,
+    /** The finished reader document, when the conversation was fetched with bundle=true. */
+    val doc: String? = null,
     @SerialName("images_blocked") val imagesBlocked: Int = 0,
     val attachments: List<ThreadAttachmentDto> = emptyList(),
 )

@@ -89,6 +89,19 @@ function useOfflineSince(): number | null {
   return since;
 }
 
+/** True while some page shows a saved copy and its fresh data is on the way (components.tsx). */
+function useUpdating(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let t: number | undefined;
+    // only say so when it takes a moment: a fast answer shouldn't flash a note
+    const f = (e: Event) => { window.clearTimeout(t); if ((e as CustomEvent<boolean>).detail) t = window.setTimeout(() => setOn(true), 400); else setOn(false); };
+    addEventListener("sift:updating", f);
+    return () => { removeEventListener("sift:updating", f); window.clearTimeout(t); };
+  }, []);
+  return on;
+}
+
 function Shell({ onSignOut }: { onSignOut: () => void }) {
   const narrow = typeof matchMedia !== "undefined" && matchMedia("(max-width: 1000px)").matches;
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === "1" || narrow; } catch { return narrow; } });
@@ -125,6 +138,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
   const trouble = accounts.some((a) => a.status !== "active");
   const email = session.email() ?? "";
   const savedAt = useOfflineSince();
+  const updating = useUpdating();
 
   return (
     <div className={`shell ${collapsed ? "collapsed" : ""}`}>
@@ -170,6 +184,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
             <span>The Sift server can't be reached. Showing what this device saved{savedAt ? ` (${new Date(savedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })})` : ""}. Changes need the server.</span>
           </div>
         )}
+        {updating && savedAt === null && <div className="updating-note" role="status"><i />Updating…</div>}
         {asking && <AskPanel onClose={() => setAsking(false)} />}
         {location.pathname !== "/compose" && (
           <button className="fab" onClick={() => navigate("/compose")} data-tip="Write a new mail  (C)" aria-label="Write a new mail">

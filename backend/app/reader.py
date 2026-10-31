@@ -21,6 +21,12 @@ from app.mail.message import html_to_text
 
 IMAGE_TTL = 6 * 3600
 FILE_TTL = 30 * 60
+# Links inside a mail's document (proxied pictures, inline cid: pictures) live as long as a copy
+# downloaded to the user's device is useful, and are stable for a day so caches can reuse them.
+# The reader page link itself is stable for a 6 h window. Download links stay short-lived.
+DOC_LINK_TTL = 7 * 86400
+DOC_LINK_WINDOW = 86400
+RENDER_WINDOW = 6 * 3600
 INLINE_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/avif"}
 
 # Mail HTML relies on old-fashioned layout tags and attributes; allow those, nothing active.
@@ -123,12 +129,13 @@ def sanitize(raw_html: str) -> str:
 
 
 def image_proxy_url(base: str, url: str) -> str:
-    return f"{base}/api/v1/img?t={signing.make('img', {'u': url}, IMAGE_TTL)}"
+    return f"{base}/api/v1/img?t={signing.make('img', {'u': url}, DOC_LINK_TTL, DOC_LINK_WINDOW)}"
 
 
 def file_url(base: str, user_id: str, account_id: str, gmail_id: str, a: Attachment, inline: bool) -> str:
     token = signing.make("file", {"u": user_id, "a": account_id, "m": gmail_id, "x": a.attachment_id,
-                                  "n": a.filename[:200], "t": a.mime, "i": inline}, FILE_TTL)
+                                  "n": a.filename[:200], "t": a.mime, "i": inline},
+                         DOC_LINK_TTL if inline else FILE_TTL, DOC_LINK_WINDOW if inline else None)
     return f"{base}/api/v1/files/{token}"
 
 
@@ -161,7 +168,7 @@ def _addresses(value: str | None) -> list[dict]:
 
 
 def render_url(base: str, user_id: str, account_id: str, gmail_id: str, images: bool) -> str:
-    token = signing.make("render", {"u": user_id, "a": account_id, "m": gmail_id, "i": images}, IMAGE_TTL)
+    token = signing.make("render", {"u": user_id, "a": account_id, "m": gmail_id, "i": images}, IMAGE_TTL, RENDER_WINDOW)
     return f"{base}/api/v1/render/{token}"
 
 
@@ -169,6 +176,7 @@ def render_url(base: str, user_id: str, account_id: str, gmail_id: str, images: 
 # images from our own server only (proxy and cid links) and the app's own font; nothing can run.
 RENDER_CSP = ("default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; "
               "base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+_META_CSP = RENDER_CSP.replace("; frame-ancestors 'self'", "")
 READER_FONTS = {"satoshi-400.woff2", "satoshi-700.woff2"}
 
 # Colours match the app's message card (DESIGN.md: --surface, --text, --signal).
@@ -216,7 +224,10 @@ def document(html: str, colors: str = "dark") -> str:
         theme = (f"html{{background:{SURFACE};color:{TEXT};color-scheme:dark}}a{{color:{LINK}}}"
                  "blockquote{border-left:2px solid #3a3a42;margin:8px 0;padding-left:12px;color:#a9a9b1}hr{border:0;border-top:1px solid #2a2a30}")
         body = html
+    # the same policy as RENDER_CSP inside the page, for copies shown without the server's headers
+    # (a phone opening a downloaded mail); frame-ancestors only works as a header
     return ('<!doctype html><html><head><meta charset="utf-8">'
+            f'<meta http-equiv="Content-Security-Policy" content="{_META_CSP}">'
             '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">'
             '<base target="_blank">'
             f'<style>{_FONT_FACE}{_BASE}{theme}</style></head>'

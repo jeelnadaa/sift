@@ -82,6 +82,9 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     val cachedInitialItems = remember(priority, account, silenced) {
         if (FeedSessionCache.matches(priority, account, silenced) && FeedSessionCache.items.isNotEmpty()) {
             FeedSessionCache.items
+        } else if (!silenced && com.solarquack.sift.data.Session.feedGrouped(context)) {
+            // grouping on: the feed is the grouped list (group rows + mail rows)
+            com.solarquack.sift.data.Offline.getCachedGroupedFeed(context, priority, account)?.let { feedItems(it) } ?: emptyList()
         } else {
             val offlineFeed = com.solarquack.sift.data.Offline.getCachedFeed(context, priority, account, if (silenced) "silenced" else "feed")
             offlineFeed?.items?.map { MailItem(it) } ?: emptyList()
@@ -94,11 +97,13 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember(priority, account, silenced) { mutableStateOf(cachedInitialItems.isEmpty()) }
     var refreshing by remember { mutableStateOf(false) }
+    // a saved list is on screen while the fresh one loads (slow connection): say so, never blank
+    var updating by remember { mutableStateOf(false) }
     // infinite scroll: the cursor of the next (older) page, null when there is none
     var next by remember(priority, account, silenced) {
         mutableStateOf(if (FeedSessionCache.matches(priority, account, silenced)) FeedSessionCache.next else null)
     }
-    var grouped by remember { mutableStateOf(FeedSessionCache.grouped) }
+    var grouped by remember { mutableStateOf(if (FeedSessionCache.items.isNotEmpty()) FeedSessionCache.grouped else !silenced && com.solarquack.sift.data.Session.feedGrouped(context)) }
     var loadingMore by remember { mutableStateOf(false) }
     var pinnedOnly by remember { mutableStateOf(false) }
     val listState = rememberLazyListState(
@@ -117,10 +122,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         val api = Api.get(context)
         return if (grouped) {
             val p = api.groupedFeed(priority = priority, accountId = account, before = before)
-            p.items.map { o ->
-                if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
-                else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
-            } to p.nextBefore
+            feedItems(p) to p.nextBefore
         } else {
             val p = api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed", before = before)
             p.items.map { MailItem(it) } to p.nextBefore
@@ -135,6 +137,8 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         FeedSessionCache.silenced = silenced
         FeedSessionCache.grouped = grouped
         FeedSessionCache.accounts = accounts
+        // download the newest mails' contents in the background, so they open at once
+        com.solarquack.sift.data.Prefetch.mails(context, newItems.mapNotNull { (it as? MailItem)?.m?.id })
     }
 
     fun load(isPullRefresh: Boolean = false) {
@@ -143,13 +147,18 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 refreshing = true
             } else if (items.isEmpty()) {
                 loading = true
+            } else {
+                updating = true
             }
             try {
                 val api = Api.get(context)
                 accounts = api.accounts()
                 val grouping = if (silenced) null else runCatching { api.grouping() }.getOrNull()
                 if (grouping?.shouldAsk == true && !GroupingPrompt.askedThisOpen && com.solarquack.sift.data.Offline.since.value == null) { GroupingPrompt.askedThisOpen = true; askGrouping = true }
-                grouped = grouping?.groupingEnabled == "yes"
+                if (grouping != null) {
+                    grouped = grouping.groupingEnabled == "yes"
+                    com.solarquack.sift.data.Session.setFeedGrouped(context, grouped)
+                }
                 val (first, cursor) = page(null)
                 items = first
                 next = cursor
@@ -163,6 +172,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             } finally {
                 loading = false
                 refreshing = false
+                updating = false
             }
         }
     }
@@ -195,10 +205,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         runCatching {
             if (grouped) {
                 val p = api.groupedFeed(priority = priority, accountId = account, limit = count)
-                items = p.items.map { o ->
-                    if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
-                    else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
-                }
+                items = feedItems(p)
                 next = p.nextBefore
             } else {
                 val p = api.messages(priority = priority, accountId = account, view = if (silenced) "silenced" else "feed", limit = count)
@@ -206,6 +213,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 next = p.nextBefore
             }
             accounts = api.accounts()
+            syncCache(items, next)  // so coming back from a mail shows this list, not an older one
         }
     }
     LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { refreshQuiet() } }
@@ -276,6 +284,9 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { load(isPullRefresh = true) }, modifier = Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
                 error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
+                if (updating && !refreshing) item(key = "updating") {
+                    Text("Updating…", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
+                }
                 if (!loading && error == null && items.isEmpty()) {
                     item {
                         Text(
@@ -334,4 +345,10 @@ fun MailRow(m: MessageDto, onLongPress: (() -> Unit)? = null, onClick: () -> Uni
         Text(relativeTime(m.receivedAt), color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
     }
     HorizontalDivider(color = Ink.line)
+}
+
+/** A grouped feed page (group rows and mail rows) as list items. */
+internal fun feedItems(p: com.solarquack.sift.data.GroupedPage): List<FeedItem> = p.items.map { o ->
+    if (o["type"]?.jsonPrimitive?.contentOrNull == "group") GroupItem(Api.json.decodeFromJsonElement(GroupDto.serializer(), o))
+    else MailItem(Api.json.decodeFromJsonElement(MessageDto.serializer(), o))
 }

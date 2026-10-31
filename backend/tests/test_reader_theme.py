@@ -40,3 +40,8 @@ def test_setting_ranges(db):
     for bad in ({"daily_token_cap": -5}, {"resend_limit": 99}, {"load_remote_images": "yes"}):
         with pytest.raises(ValueError):
             user_settings.update(db, user.id, bad)
+
+
+def test_document_carries_its_own_policy_for_downloaded_copies():
+    doc = reader.document("<p>Hi</p>")
+    assert "http-equiv=\"Content-Security-Policy\"" in doc and "default-src 'none'" in doc and "script" not in doc

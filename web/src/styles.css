@@ -341,3 +341,10 @@ div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
 .ask-targets { margin: 6px 0 0 32px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-3); }
 .ask-targets li::before { content: "→ "; color: var(--text-3); }
 .ask-est { font-size: 12.5px; color: var(--warn); width: 100%; }
+
+/* "Updating…": a saved copy is on screen while the fresh one loads (slow connection) */
+.updating-note { position: fixed; top: 12px; right: 18px; z-index: 40; display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 10px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text-3); font-size: 12.5px; }
+.updating-note i { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); animation: upd-pulse 1s ease-in-out infinite; }
+@keyframes upd-pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .updating-note i { animation: none; } }

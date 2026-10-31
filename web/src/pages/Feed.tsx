@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isOffline } from "../offline";
+import { prefetchMails } from "../prefetch";
 import { useNavigate } from "react-router-dom";
 import { get, post, type Account, type Group, type GroupingStatus, type Mail, type Page } from "../api";
 import { Top } from "../App";
@@ -8,6 +9,9 @@ import { accountColor, accountName } from "../util";
 
 const PAGE_SIZE = 30;
 const PROMPTED_KEY = "sift.groupingPrompted";  // once per browser session; the server counts to 3
+const GROUPED_KEY = "sift.feedGrouped";  // last known grouping state, so the first request is the right list
+
+function savedGrouped(): boolean { try { return localStorage.getItem(GROUPED_KEY) === "1"; } catch { return false; } }
 
 export function Feed() {
   const navigate = useNavigate();
@@ -16,7 +20,10 @@ export function Feed() {
   const [ask, setAsk] = useState(false);
   const accounts = useLoad(() => get<Account[]>("/accounts"));
   const grouping = useLoad(() => get<GroupingStatus>("/grouping"));
-  const grouped = grouping.data?.grouping_enabled === "yes";
+  const grouped = grouping.data ? grouping.data.grouping_enabled === "yes" : savedGrouped();
+  useEffect(() => {
+    if (grouping.data) try { localStorage.setItem(GROUPED_KEY, grouped ? "1" : "0"); } catch { /* ignore */ }
+  }, [grouping.data, grouped]);
   const feed = usePages((before) => get<Page<Mail | Group>>("/messages", { account_id: account, priority, grouped: grouped || undefined, before, limit: PAGE_SIZE }),
     [account, priority, grouped], ["mail", "new_mail", "folders"]);
 
@@ -37,6 +44,8 @@ export function Feed() {
 
   const trouble = (accounts.data ?? []).filter((a) => a.status !== "active");
   const items = feed.data?.items ?? [];
+  // download the newest mails' contents in idle time, so they open at once (prefetch.ts)
+  useEffect(() => { if (feed.data && !feed.updating) prefetchMails(items.filter((i) => i.type !== "group").map((i) => i.id)); }, [feed.data, feed.updating]);  // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <Top title="Feed" />

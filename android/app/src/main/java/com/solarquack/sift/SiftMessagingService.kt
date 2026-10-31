@@ -37,9 +37,7 @@ class SiftMessagingService : FirebaseMessagingService() {
             if (Session.signedIn(this)) {
                 runCatching {
                     runBlocking {
-                        withTimeoutOrNull(10_000) {
-                            Api.get(this@SiftMessagingService).messages(view = "feed", limit = 30)
-                        }
+                        withTimeoutOrNull(10_000) { refreshFeed() }
                     }
                 }
             }
@@ -67,13 +65,21 @@ class SiftMessagingService : FirebaseMessagingService() {
                         }
                         if (messageId != null) {
                             runCatching { api.message(messageId) }
-                            runCatching { api.thread(messageId) }
+                            com.solarquack.sift.data.Prefetch.one(this@SiftMessagingService, messageId)  // conversation + contents
                         }
-                        runCatching { api.messages(view = "feed", limit = 30) }
+                        refreshFeed()
                     }
                 }
             }
             com.solarquack.sift.data.LiveEvents.changed()
+        }
+    }
+
+    /** Saves the feed's first page the way the feed screen reads it (grouped or not). */
+    private suspend fun refreshFeed() {
+        val api = Api.get(this)
+        runCatching {
+            if (Session.feedGrouped(this)) api.groupedFeed(limit = 30) else api.messages(view = "feed", limit = 30)
         }
     }
 

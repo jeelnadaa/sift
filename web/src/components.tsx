@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { LiveEvent } from "./live";
-import { ApiError, get, post, type Folder, type Mail, type Group } from "./api";
+import { ApiError, get, post, withSaved, type Folder, type Mail, type Group } from "./api";
 import { accountColor, flatten, fullTime, humanize, relativeTime } from "./util";
 
 const memLoadCache = new Map<string, unknown>();
@@ -9,17 +9,31 @@ const memLoadCache = new Map<string, unknown>();
  * (no loading state, data stays on screen) when another device or Gmail changes something
  * (live events of those types, see live.ts). */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: LiveEvent["type"][], cacheKey?: string) {
-  const k = cacheKey ?? (deps.length ? JSON.stringify(deps) : undefined);
+  // the loader's own source is part of the key: several loaders on one page often share deps
+  // (e.g. [id] for a mail, its folders and the folder tree) and must never get each other's data
+  const k = cacheKey ?? (deps.length ? fn.toString() + JSON.stringify(deps) : undefined);
   const cached = k ? (memLoadCache.get(k) as T | undefined) ?? null : null;
   const [data, setData] = useState<T | null>(cached);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(cached === null);
+  // true while a saved copy (this tab's, or this device's) is on screen and the fresh one loads
+  const [updating, setUpdating] = useState(false);
   const seq = useRef(0);
   const reload = useCallback(async (quiet = false) => {
     const n = ++seq.current;
-    if (!quiet && !memLoadCache.has(k ?? "")) setLoading(true);
+    const shown = memLoadCache.has(k ?? "");
+    if (!quiet && !shown) setLoading(true);
+    if (!quiet && shown) { setUpdating(true); updatingDelta(1); }
+    let counted = !quiet && shown;
     try {
-      const d = await fn();
+      // the device's saved copy shows as soon as it's found; the fresh answer replaces it
+      // (not for quiet reloads or when this tab already shows something: that is newer)
+      const d = await (quiet || shown ? fn() : withSaved((saved) => {
+        if (n !== seq.current) return;
+        setData(saved as T);
+        setLoading(false);
+        if (!counted) { counted = true; setUpdating(true); updatingDelta(1); }
+      }, fn));
       if (n === seq.current) {
         setData(d);
         setError(null);
@@ -28,7 +42,8 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: Li
     } catch (e) {
       if (n === seq.current && (!quiet || !memLoadCache.has(k ?? ""))) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      if (n === seq.current) setLoading(false);
+      if (counted) updatingDelta(-1);
+      if (n === seq.current) { setLoading(false); setUpdating(false); }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -46,7 +61,14 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: Li
     addEventListener("sift:live", on);
     return () => { removeEventListener("sift:live", on); window.clearTimeout(timer); };
   }, [reload, liveKey]);
-  return { data, setData, error, setError, loading, reload: () => reload(false) };
+  return { data, setData, error, setError, loading, updating, reload: () => reload(false) };
+}
+
+// how many pages are showing a saved copy while they fetch (the shell shows "Updating…")
+let updatingCount = 0;
+function updatingDelta(d: number) {
+  updatingCount = Math.max(0, updatingCount + d);
+  dispatchEvent(new CustomEvent("sift:updating", { detail: updatingCount > 0 }));
 }
 
 export const errorText = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : String(e));

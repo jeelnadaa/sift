@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # Interactive API docs at /docs. Off by default because the API is reachable from the internet.
     api_docs: bool = False
 
+    # Development only (ignored when ENV=prod): delay every API answer by this many milliseconds,
+    # to see how the apps behave on a slow connection (saved copies first, "Updating…").
+    dev_slow_ms: int = 0
+
     # The built web UI (web/dist, `npm run build`), served at /app. Empty = next to the backend
     # folder in a checkout (../web/dist), or /app/web in the Docker image.
     web_dist: str = ""

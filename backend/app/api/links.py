@@ -133,7 +133,9 @@ def attachment(token: str, db: Session = Depends(get_db)) -> Response:
     ascii_name = name.encode("ascii", "replace").decode().replace('"', "'").replace("?", "_")
     disposition = f"{'inline' if inline else 'attachment'}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
     media = d["t"] if inline else (d.get("t") or "application/octet-stream")
-    return Response(data, media_type=media, headers={**SAFE_HEADERS, "Content-Disposition": disposition, "Cache-Control": "private, max-age=600"})
+    # inline pictures belong to a mail whose content never changes: keep them as long as its document
+    cache = "private, max-age=604800" if inline else "private, max-age=600"
+    return Response(data, media_type=media, headers={**SAFE_HEADERS, "Content-Disposition": disposition, "Cache-Control": cache})
 
 
 @router.get("/render/{token}")
@@ -160,7 +162,8 @@ def render(token: str, colors: str = Query("dark", pattern="^(dark|original)$"),
     out = reader.render_message(msg, user_id=d["u"], account_id=d["a"], base="", images=bool(d.get("i")))
     body = reader.document(out["html"] or f'<div style="white-space:pre-wrap">{html_escape(out["text"])}</div>', colors)
     headers = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
-               "Content-Security-Policy": reader.RENDER_CSP, "Cache-Control": "private, max-age=600"}
+               # a mail's content never changes (images and colours are part of the link)
+               "Content-Security-Policy": reader.RENDER_CSP, "Cache-Control": "private, max-age=86400"}
     return Response(body, media_type="text/html; charset=utf-8", headers=headers)
 
 

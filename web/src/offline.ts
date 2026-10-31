@@ -24,13 +24,51 @@ export function peek<T>(url: string): T | null {
   return hit ? (hit.data as T) : null;
 }
 
+// the reader documents' own policy (backend reader.RENDER_CSP), for copies served from the cache
+const RENDER_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+const READ_CACHE = "sift-read-v1";  // shared with public/sw.js
+
+interface DocMessage { html_url?: string | null; doc?: string }
+export function hasDocs(data: unknown): boolean {
+  const ms = (data as { messages?: DocMessage[] } | null)?.messages;
+  return Array.isArray(ms) && ms.some((m) => typeof m?.doc === "string");
+}
+
+/** A conversation fetched with bundle=true carries each message's reader document. Each one is put
+ * in the service worker's reader cache under its link (so the mail frame opens without asking the
+ * server), and the saved conversation keeps only the links. */
+async function storeDocs(data: unknown): Promise<unknown> {
+  if (!hasDocs(data)) return data;
+  const d = data as { messages: DocMessage[] };
+  if (supported()) {
+    try {
+      const c = await caches.open(READ_CACHE);
+      await Promise.all(d.messages.filter((m) => m.doc && m.html_url).map((m) => c.put(new URL(m.html_url!, location.origin).href,
+        new Response(m.doc, { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": RENDER_CSP, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" } }))));
+    } catch { /* best-effort */ }
+  }
+  return { ...d, messages: d.messages.map(({ doc: _doc, ...m }) => m) };
+}
+
 export async function remember(email: string | null, url: string, data: unknown): Promise<void> {
+  data = await storeDocs(data);
   memCache.set(url, { data, savedAt: Date.now() });
   if (!supported()) return;
   try {
     const c = await caches.open(cacheName(email));
     await c.put(url, new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json", "X-Saved-At": String(Date.now()) } }));
   } catch { /* storage full or blocked: saving is best-effort */ }
+}
+
+/** When this device last saved `url` (0 when it hasn't). */
+export async function savedAt(email: string | null, url: string): Promise<number> {
+  const hitMem = memCache.get(url);
+  if (hitMem) return hitMem.savedAt;
+  if (!supported()) return 0;
+  try {
+    const hit = await (await caches.open(cacheName(email))).match(url);
+    return hit ? Number(hit.headers.get("X-Saved-At") || 0) : 0;
+  } catch { return 0; }
 }
 
 export async function recall<T>(email: string | null, url: string): Promise<{ data: T; savedAt: number } | null> {

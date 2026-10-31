@@ -37,7 +37,42 @@ function detail(body: unknown, status: number): string {
   return `Server error (${status}).`;
 }
 
-export async function request<T>(method: string, path: string, body?: unknown, query?: Record<string, unknown>): Promise<T> {
+// ---- saved copy first (stale-while-revalidate) -------------------------------------------------
+// useLoad wraps its loader in withSaved(); a GET made directly by that loader reports this device's
+// saved copy as soon as it's found, so a page shows at once on a slow connection and the fresh
+// answer replaces it. Only when the loader *returns that request's own promise* (`() => get(...)`)
+// is the copy used, so a loader that reshapes its data never receives raw data of another shape.
+interface SavedSlot { onSaved: (data: unknown) => void; claimed: Promise<unknown> | null; enabled: boolean; done: boolean }
+let currentSlot: SavedSlot | null = null;
+
+export function withSaved<T>(onSaved: (data: unknown) => void, fn: () => Promise<T>): Promise<T> {
+  const slot: SavedSlot = { onSaved, claimed: null, enabled: false, done: false };
+  currentSlot = slot;
+  let p: Promise<T>;
+  try { p = fn(); } finally { currentSlot = null; }
+  slot.enabled = slot.claimed === p;
+  return p;
+}
+
+export function request<T>(method: string, path: string, body?: unknown, query?: Record<string, unknown>): Promise<T> {
+  const slot = currentSlot;
+  currentSlot = null;  // only the loader's first request may claim it
+  const p = send<T>(method, path, body, query);
+  if (slot && method === "GET" && !slot.claimed) {
+    slot.claimed = p;
+    const url = new URL("/api/v1" + path, location.origin);
+    for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+    void p.finally(() => { slot.done = true; }).catch(() => {});
+    if (offline.saveable(url.pathname)) {
+      void offline.recall<T>(session.email(), url.href).then((saved) => {
+        if (saved && slot.enabled && !slot.done) slot.onSaved(saved.data);
+      });
+    }
+  }
+  return p;
+}
+
+async function send<T>(method: string, path: string, body?: unknown, query?: Record<string, unknown>): Promise<T> {
   const url = new URL("/api/v1" + path, location.origin);
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
   const headers: Record<string, string> = {};
@@ -66,7 +101,8 @@ export async function request<T>(method: string, path: string, body?: unknown, q
     if (res.status === 401 && path !== "/auth/login") { session.clear(); onSignedOut(); }
     throw new ApiError(res.status, detail(data, res.status), data);
   }
-  if (saveable) void offline.remember(session.email(), url.href, data);
+  // a conversation's reader documents go to the reader cache before the page asks for them
+  if (saveable) { const saving = offline.remember(session.email(), url.href, data); if (offline.hasDocs(data)) await saving; }
   return data as T;
 }
 

@@ -21,12 +21,14 @@ export function size(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** The whole conversation, fetched live. The newest message (and the one you opened) start open;
+/** The whole conversation: this device's saved copy first, then the fresh one. The newest message (and the one you opened) start open;
  * older ones show a one-line preview until clicked. Remote images stay blocked until asked for. */
 export function Thread({ messageId, accountId, threadId }: { messageId?: string; accountId?: string; threadId?: string }) {
   const [images, setImages] = useState(false);
   const path = messageId ? `/messages/${messageId}/thread` : `/accounts/${accountId}/threads/${threadId}`;
-  const t = useLoad(() => get<ThreadData>(path, { images: images || undefined }), [path, images]);
+  // bundle: each message's reader document comes along and goes straight to the reader cache
+  // (offline.ts), so the frames below open without asking the server again
+  const t = useLoad(() => get<ThreadData>(path, { images: images || undefined, bundle: true }), [path, images]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const d = t.data;

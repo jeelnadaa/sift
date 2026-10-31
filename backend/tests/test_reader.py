@@ -198,3 +198,52 @@ def test_images_load_by_default_through_the_proxy_and_the_setting_turns_it_off(c
     client.patch("/api/v1/settings", headers=H(user), json={"load_remote_images": False})
     first = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"][0]
     assert first["images_blocked"] == 1 and "/api/v1/img" not in client.get(first["html_url"]).text
+
+
+def test_reader_links_stay_the_same_so_caches_find_the_mail(client, thread):
+    user, msg = thread
+    a = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"][0]
+    b = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"][0]
+    assert a["html_url"] == b["html_url"]
+    page = client.get(a["html_url"])
+    assert "max-age=86400" in page.headers["cache-control"]
+    # download links stay short-lived and are not windowed
+    assert signing.read("file", a["attachments"][0]["url"].rsplit("/", 1)[1])
+
+
+def test_window_rounds_expiry_up(keys, monkeypatch):
+    import time as _t
+    monkeypatch.setattr(signing.time, "time", lambda: 1000.0)
+    t1 = signing.make("render", {"x": 1}, 100, 3600)
+    monkeypatch.setattr(signing.time, "time", lambda: 2000.0)
+    assert signing.make("render", {"x": 1}, 100, 3600) == t1  # same window, same token
+    monkeypatch.setattr(signing.time, "time", lambda: 3550.0)
+    assert signing.make("render", {"x": 1}, 100, 3600) != t1  # crossed into the next window
+    monkeypatch.setattr(signing.time, "time", lambda: _t.time())
+
+
+def test_bundle_carries_the_reader_documents(client, thread, monkeypatch):
+    user, msg = thread
+    r = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user), params={"bundle": True, "images": False}).json()
+    first, reply = r["messages"]
+    assert "<!doctype html>" in first["doc"] and "First" in first["doc"] and "onclick" not in first["doc"]
+    assert "t.example" not in first["doc"]
+    assert "doc" not in reply  # plain-text mail: the app shows its text
+    plain = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"][0]
+    assert "doc" not in plain
+    # the size cap keeps the newest documents only
+    from app.api import messages as m_api
+    monkeypatch.setattr(m_api, "BUNDLE_DOC_BYTES", 10)
+    capped = client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user), params={"bundle": True}).json()["messages"][0]
+    assert "doc" not in capped and capped["html_url"]
+
+
+def test_bundle_downloads_are_rate_limited(client, thread, monkeypatch):
+    user, msg = thread
+    from app.api import messages as m_api
+    monkeypatch.setattr(m_api, "BUNDLES_PER_MINUTE", 2)
+    m_api._bundle_hits.clear()
+    codes = [client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user), params={"bundle": True}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    assert client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).status_code == 200  # reading is never limited
+    m_api._bundle_hits.clear()

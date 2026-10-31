@@ -41,7 +41,7 @@ interface SiftApi {
     @POST("api/v1/messages/read-state") suspend fun readState(@Body body: ReadStateIn): ReadStateOut
     @GET("api/v1/messages/{id}") suspend fun message(@Path("id") id: String): MessageDto
     @GET("api/v1/messages/{id}/body") suspend fun body(@Path("id") id: String): BodyDto
-    @GET("api/v1/messages/{id}/thread") suspend fun thread(@Path("id") id: String, @Query("images") images: Boolean? = null): ThreadDto
+    @GET("api/v1/messages/{id}/thread") suspend fun thread(@Path("id") id: String, @Query("images") images: Boolean? = null, @Query("bundle") bundle: Boolean? = true): ThreadDto
     @POST("api/v1/messages/{id}/pin") suspend fun pinMessage(@Path("id") id: String, @Query("pinned") pinned: Boolean): PinResult
     @GET("api/v1/messages/{id}/notes") suspend fun notes(@Path("id") messageId: String): List<MailNoteDto>
     @POST("api/v1/messages/{id}/notes") suspend fun addNote(@Path("id") messageId: String, @Body body: NoteIn): MailNoteDto
@@ -208,7 +208,7 @@ interface SiftApi {
     @POST("api/v1/search/from-text") suspend fun searchFromText(@Body body: TextIn): FromTextResult
     @GET("api/v1/saved-searches") suspend fun savedSearches(): List<SavedSearchDto>
     @POST("api/v1/saved-searches") suspend fun saveSearch(@Body body: SavedSearchIn): SavedSearchDto
-    @GET("api/v1/accounts/{account}/threads/{thread}") suspend fun accountThread(@Path("account") accountId: String, @Path("thread") threadId: String, @Query("images") images: Boolean? = null): ThreadDto
+    @GET("api/v1/accounts/{account}/threads/{thread}") suspend fun accountThread(@Path("account") accountId: String, @Path("thread") threadId: String, @Query("images") images: Boolean? = null, @Query("bundle") bundle: Boolean? = true): ThreadDto
 
     @POST("api/v1/mail/actions") suspend fun mailAction(@Body body: MailActionIn): MailActionResult
     @POST("api/v1/snoozes") suspend fun snooze(@Body body: SnoozeIn): List<SnoozeDto>

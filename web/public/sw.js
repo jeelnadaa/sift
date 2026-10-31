@@ -1,10 +1,12 @@
 /* Sift's service worker: the app keeps opening when the server is off (the laptop is shut, the
  * tunnel shows an error page). It only stores the app itself and the mail pages you opened:
  *  - the app's page and its hashed build files (fonts, script, styles);
- *  - mail you read (the sanitized reader pages and their images, under /api/v1/render, /img,
- *    /reader-fonts), so it can be read again offline.
+ *  - mail you read or that was downloaded ahead (the sanitized reader pages and their images, under
+ *    /api/v1/render, /img, /reader-fonts), so it opens at once and offline. The app itself puts the
+ *    reader documents that come with a conversation (bundle) in the same cache (src/offline.ts).
  * JSON data (feed, timelines, to-dos...) is saved per account by the app itself (src/offline.ts).
- * Everything here is network-first except the immutable build files; a 5xx (the tunnel's
+ * The app's page is network-first; build files and mail pages are cache-first: a reader link names
+ * one mail with one images choice, and a mail's content never changes. A 5xx (the tunnel's
  * "origin unreachable") counts as offline. Settings > "Saved on this device" clears it all. */
 const SHELL = "sift-shell-v1";
 const READ = "sift-read-v1";
@@ -32,13 +34,23 @@ async function networkFirst(req, cacheName, key) {
   }
 }
 
-async function cacheFirst(req) {
-  const cache = await caches.open(SHELL);
+const READ_MAX = 1500;  // reader pages and pictures kept; the oldest go first
+
+async function cacheFirst(req, cacheName = SHELL) {
+  const cache = await caches.open(cacheName);
   const hit = await cache.match(req);
   if (hit) return hit;
   const res = await fetch(req);
-  if (res.ok) await cache.put(req, res.clone());
+  if (res.ok) {
+    await cache.put(req, res.clone());
+    if (cacheName === READ) trim(cache);
+  }
   return res;
+}
+
+async function trim(cache) {
+  const keys = await cache.keys();  // in the order they were added
+  for (const k of keys.slice(0, Math.max(0, keys.length - READ_MAX))) await cache.delete(k);
 }
 
 self.addEventListener("fetch", (e) => {
@@ -55,7 +67,7 @@ self.addEventListener("fetch", (e) => {
   } else if (p === "/app/favicon.svg") {
     e.respondWith(networkFirst(req, SHELL));
   } else if (p.startsWith("/api/v1/render/") || p.startsWith("/api/v1/img") || p.startsWith("/api/v1/reader-fonts/")) {
-    e.respondWith(networkFirst(req, READ));
+    e.respondWith(cacheFirst(req, READ));
   }
 });
 

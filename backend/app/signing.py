@@ -33,8 +33,14 @@ def _unb64(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def make(purpose: str, data: dict, ttl_seconds: int) -> str:
-    body = _b64(json.dumps({"d": data, "e": int(time.time()) + ttl_seconds}, separators=(",", ":")).encode())
+def make(purpose: str, data: dict, ttl_seconds: int, window: int | None = None) -> str:
+    """`window`: round the expiry up to a multiple of it, so the same data gives the same token
+    for that long (a link stays valid between ttl and ttl + window). Stable links let browser,
+    WebView and service-worker caches find a mail again instead of fetching it anew."""
+    expiry = int(time.time()) + ttl_seconds
+    if window:
+        expiry = -(-expiry // window) * window
+    body = _b64(json.dumps({"d": data, "e": expiry}, separators=(",", ":")).encode())
     sig = _b64(hmac.new(_key(purpose), body.encode(), hashlib.sha256).digest())
     return f"{body}.{sig}"
 

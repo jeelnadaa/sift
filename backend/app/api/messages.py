@@ -159,15 +159,39 @@ def get_message(message_id: uuid.UUID, user: User = Depends(current_user), db: S
 
 
 @router.get("/{message_id}/thread")
-def get_thread(message_id: uuid.UUID, images: bool | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+def get_thread(message_id: uuid.UUID, images: bool | None = None, bundle: bool = False,
+               user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """The whole conversation, fetched live from Gmail: sanitized HTML (remote images blocked
     unless `images`, and then only through the image proxy), plain text, and attachments as
-    signed links. Not stored, not logged."""
+    signed links. Not stored, not logged.
+    `bundle=true` also returns each message's finished reader document inline (`doc`), so a
+    device can download a whole mail in one request and open it later without the network."""
     m = _own(db, user, message_id)
-    return thread_json(db, user, db.get(GmailAccount, m.account_id), m.thread_id, images, m.subject)
+    if bundle:
+        _bundle_limit(user.id)
+    return thread_json(db, user, db.get(GmailAccount, m.account_id), m.thread_id, images, m.subject, bundle=bundle)
 
 
-def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, images: bool | None, fallback_subject: str | None = None) -> dict:
+# Downloading ahead is the client's choice; this keeps a runaway client from spending the
+# account's Gmail quota or the server's CPU. In-process: one API process per server here.
+BUNDLES_PER_MINUTE = 120
+BUNDLE_DOC_BYTES = 3 * 1024 * 1024  # inline documents per conversation; older ones beyond it stay links
+_bundle_hits: dict[uuid.UUID, list[float]] = {}
+
+
+def _bundle_limit(user_id: uuid.UUID) -> None:
+    import time
+    now = time.monotonic()
+    hits = [t for t in _bundle_hits.get(user_id, []) if now - t < 60]
+    if len(hits) >= BUNDLES_PER_MINUTE:
+        _bundle_hits[user_id] = hits
+        raise HTTPException(429, "too many downloads; try again in a minute")
+    hits.append(now)
+    _bundle_hits[user_id] = hits
+
+
+def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, images: bool | None, fallback_subject: str | None = None,
+                bundle: bool = False) -> dict:
     if images is None:  # the user's setting (default: load, through the image proxy)
         from app import user_settings
         images = bool(user_settings.get(db, user.id)["load_remote_images"])
@@ -184,9 +208,15 @@ def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, 
     msgs = reader.render_thread(thread, user_id=str(user.id), account_id=str(account.id), base="", images=images)
     stored = dict(db.execute(select(Message.gmail_id, Message.id).where(
         Message.account_id == account.id, Message.gmail_id.in_([x["gmail_id"] for x in msgs]))).all())
-    for x in msgs:
+    budget = BUNDLE_DOC_BYTES
+    for x in reversed(msgs):  # newest first get their document inline
         x["id"] = str(stored[x["gmail_id"]]) if x["gmail_id"] in stored else None
-        x.pop("html")  # clients load the sandboxed document from html_url instead
+        html = x.pop("html")  # clients load the sandboxed document from html_url instead
+        if bundle and html:
+            doc = reader.document(html)
+            if len(doc) <= budget:
+                x["doc"] = doc
+                budget -= len(doc)
 
     # Index any attachments in the rendered messages if stored in db
     from app import attachments
