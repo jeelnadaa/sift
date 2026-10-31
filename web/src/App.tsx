@@ -8,6 +8,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams }
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
 import { DialogHost, Icon, RefreshButton, Toaster, TooltipLayer, errorText, toast } from "./components";
 import { AskPanel } from "./pages/Ask";
+import type { AskSelection } from "./bulk";
 import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
 import { MailDetail } from "./pages/Mail";
@@ -108,6 +109,12 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [asking, setAsking] = useState(false);
+  const [askSel, setAskSel] = useState<AskSelection | null>(null);  // "these" from a selection bar
+  useEffect(() => {
+    const open = (e: Event) => { setAskSel((e as CustomEvent<AskSelection>).detail); setAsking(true); };
+    addEventListener("sift:ask", open);
+    return () => removeEventListener("sift:ask", open);
+  }, []);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -185,7 +192,7 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
           </div>
         )}
         {updating && savedAt === null && <div className="updating-note" role="status"><i />Updating…</div>}
-        {asking && <AskPanel onClose={() => setAsking(false)} />}
+        {asking && <AskPanel selection={askSel} onDropSelection={() => setAskSel(null)} onClose={() => { setAsking(false); setAskSel(null); }} />}
         {location.pathname !== "/compose" && (
           <button className="fab" onClick={() => navigate("/compose")} data-tip="Write a new mail  (C)" aria-label="Write a new mail">
             <Icon name="pen" /><span>Write</span>

@@ -87,6 +87,8 @@ def test_feed_excludes_silenced_mail_and_filters(client, auth, mail):
     feed = client.get("/api/v1/messages", headers=auth).json()["items"]
     assert len(feed) == 4 and all(m["priority"] == "normal" for m in feed)
     assert all(m["account"] == "Demo" for m in feed)
+    # the account's address and the thread let "Open in Gmail" open this conversation in the right account
+    assert all(m["account_email"] == mail.email and m["thread_id"] for m in feed)
     silenced = client.get("/api/v1/messages", params={"view": "silenced"}, headers=auth).json()["items"]
     assert [m["subject"] for m in silenced] == ["Rs 240.00 debited from your account via UPI"]
     assert client.get("/api/v1/messages", params={"priority": "urgent"}, headers=auth).json()["items"] == []

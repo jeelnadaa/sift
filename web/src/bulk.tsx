@@ -45,6 +45,21 @@ const VERB: Record<string, string> = {
 
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
+/** What Ask Sift calls "these": ids only (the AI is told how many, never which). */
+export interface AskSelection { message_ids?: string[]; group_ids?: string[]; opportunity_ids?: string[]; folder_ids?: string[]; label: string }
+
+/** Opens Ask Sift with the selection as "these" (App listens for sift:ask). */
+export function askAbout(sel: AskSelection) {
+  dispatchEvent(new CustomEvent<AskSelection>("sift:ask", { detail: sel }));
+}
+
+export function AskButton({ sel }: { sel: AskSelection | null }) {
+  return (
+    <button className="btn btn-ghost btn-sm ask-these" disabled={!sel} onClick={() => sel && askAbout(sel)}
+      data-tip={sel ? "Ask Sift to do something with these, in your own words" : "Pick rows on this page (not \"all\") to ask about them"}>✦ Ask</button>
+  );
+}
+
 /** Runs one action over a selection: confirm when it's big or reaches into groups, ask for Gmail
  * write access when needed, follow a background job, then offer Undo. Resolves true when done. */
 export async function runBulk(target: BulkTarget, action: string, params: Record<string, string> = {}, opts: { quiet?: boolean; confirmed?: boolean } = {}): Promise<boolean> {
@@ -277,6 +292,7 @@ export function BulkBar({ sel, items, total, match, place = null, noun = "mails"
             </ul>
           )}
         </div>
+        <AskButton sel={sel.all ? null : { message_ids: mails.map((m) => m.id), group_ids: groups.map((g) => g.id), label: count }} />
         <button className="btn btn-ghost btn-sm" onClick={sel.clear} aria-label="Clear the selection" data-tip="Clear (Esc)">✕</button>
       </div>
       {picker === "folder" && <FolderPicker title="File in…" onClose={() => setPicker(null)} onPick={(f) => { setPicker(null); if (f) void go("file", { folder_id: f.id }); }} />}

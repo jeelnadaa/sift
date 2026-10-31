@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError, get, post, type Mail } from "../api";
 import { Icon, MailRow, Tag, errorText, toast } from "../components";
 import { fullTime } from "../util";
+import type { AskSelection } from "../bulk";
 
 /** Sift AI / Ask Sift (backend: app/assistant.py). One box for anything the app can do, in plain
  * words. Each request is one small AI call that makes a plan of the app's own actions. Before
@@ -25,12 +26,19 @@ export interface Run {
   needs_confirm: boolean; changes_gmail: boolean; tokens: number; estimate: number; created_at: string | null;
 }
 
+const THESE_EXAMPLES = [
+  "Mark these read and file them in a folder Later",
+  "Put these on the Acme timeline",
+  "Make to-dos from these",
+];
+
 const EXAMPLES = [
   "Make a group Internships for internship offers and add old ones too",
   "New mail from Nvidia goes to the Nvidia folder and a group Nvidia updates",
   "What's due this week?",
   "Draft a reply to Riya saying Thursday 4 pm works",
   "Archive bank alerts older than a month",
+  "Close every timeline that has a result and delete done to-dos",
 ];
 
 const PAGES: Record<string, string> = {
@@ -48,9 +56,17 @@ function linkTo(l: Result["link"]): { to: string; state?: unknown } | null {
   return PAGES[l.page] ? { to: PAGES[l.page] } : null;
 }
 
-export function AskPanel({ onClose }: { onClose: () => void }) {
+export function AskPanel({ onClose, selection = null, onDropSelection }: { onClose: () => void; selection?: AskSelection | null; onDropSelection?: () => void }) {
   const navigate = useNavigate();
   const [text, setText] = useState("");
+  // what asking costs, shown before asking (no AI call); what running costs is shown with the plan
+  const [cost, setCost] = useState<{ tokens: number; ai_enabled: boolean } | null>(null);
+  const ids = selection ? { message_ids: selection.message_ids ?? [], group_ids: selection.group_ids ?? [], opportunity_ids: selection.opportunity_ids ?? [], folder_ids: selection.folder_ids ?? [] } : null;
+  const selKey = JSON.stringify(ids);
+  useEffect(() => {
+    post<{ tokens: number; ai_enabled: boolean }>("/assistant/estimate", ids ?? undefined).then(setCost).catch(() => setCost(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selKey]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [busy, setBusy] = useState<string | null>(null);  // "ask" or a run id
   const box = useRef<HTMLTextAreaElement>(null);
@@ -71,7 +87,7 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
     if (!t || busy) return;
     setBusy("ask");
     try {
-      const r = await post<Run>("/assistant", { text: t });
+      const r = await post<Run>("/assistant", { text: t, ...(ids ? { selection: ids } : {}) });
       setRuns((rs) => [...rs.slice(-7), r]);
       setText("");
     } catch (e) {
@@ -103,7 +119,7 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
           {runs.length === 0 && !busy && (
             <div className="ask-empty">
               <p>Tell Sift what to do, like you'd tell a person. Each request is one small AI call with your own key.</p>
-              <div className="ask-ex">{EXAMPLES.map((x) => <button key={x} className="chip" onClick={() => ask(x)}>{x}</button>)}</div>
+              <div className="ask-ex">{(selection ? THESE_EXAMPLES : EXAMPLES).map((x) => <button key={x} className="chip" onClick={() => setText(x)}>{x}</button>)}</div>
             </div>
           )}
           {runs.map((r) => <RunView key={r.id} r={r} busy={busy === r.id} onRun={() => run(r)} onCancel={() => cancel(r)} onOpen={open}
@@ -111,12 +127,24 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
           {busy === "ask" && <div className="ask-me thinking"><span className="dot-pulse" /> Planning…</div>}
           <div ref={end} />
         </div>
-        <form className="ask-in" onSubmit={(e) => { e.preventDefault(); ask(); }}>
-          <textarea ref={box} value={text} maxLength={600} rows={2} placeholder="e.g. make timelines from Placements → Nvidia"
-            onChange={(e) => setText(e.target.value)} aria-label="What should Sift do?"
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }} />
-          <button className="btn btn-primary" disabled={!text.trim() || !!busy} data-tip="Plan it  (Enter)">Ask</button>
-        </form>
+        <div className="ask-bottom">
+          {selection && (
+            <div className="ask-sel">
+              <span>✦ <b>{selection.label}</b> selected. Say <i>these</i> to act on them; the AI only sees how many.</span>
+              <button className="btn btn-ghost btn-sm" onClick={onDropSelection} aria-label="Ask without the selection" data-tip="Ask without the selection">✕</button>
+            </div>
+          )}
+          <div className="ask-cost-before" aria-live="polite">
+            {cost && !cost.ai_enabled ? "Add your AI key in Settings to use Ask Sift."
+              : cost ? `Asking uses about ${cost.tokens.toLocaleString()} tokens of your key. Changes show their own estimate before you press Run.` : ""}
+          </div>
+          <form className="ask-in" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+            <textarea ref={box} value={text} maxLength={600} rows={2} placeholder={selection ? "e.g. archive these and add them to the Bank group" : "e.g. make timelines from Placements → Nvidia"}
+              onChange={(e) => setText(e.target.value)} aria-label="What should Sift do?"
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }} />
+            <button className="btn btn-primary" disabled={!text.trim() || !!busy} data-tip="Plan it  (Enter)">Ask</button>
+          </form>
+        </div>
       </aside>
     </div>
   );
@@ -155,7 +183,8 @@ function RunView({ r, busy, onRun, onCancel, onOpen, onMail }: {
           </ol>
         )}
         <div className="ask-foot">
-          {r.needs_confirm && r.estimate > 0 && <span className="ask-est" data-tip="What running may use, on top of the planning shown at the right">Running may use about {r.estimate.toLocaleString()} more tokens</span>}
+          {r.needs_confirm && <span className="ask-est" data-tip="What running may use, on top of the planning shown at the right">
+            {r.estimate > 0 ? `Running may use about ${r.estimate.toLocaleString()} more tokens` : "Running uses no more AI tokens"}</span>}
           {r.needs_confirm && <>
             <button className="btn btn-primary btn-sm" onClick={onRun} disabled={busy}>{busy ? "Running…" : r.changes_gmail ? "Run, including Gmail changes" : "Run"}</button>
             <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>

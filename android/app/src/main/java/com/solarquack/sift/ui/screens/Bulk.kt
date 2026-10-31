@@ -328,7 +328,7 @@ fun SwipeRow(rightLabel: String, onRight: (() -> Unit)?, onLeft: (() -> Unit)?, 
  * hides mail-only choices. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MailBulkBar(runner: BulkRunner, body: (String) -> BulkIn, extra: List<SheetItem> = emptyList(), onDone: () -> Unit) {
+fun MailBulkBar(runner: BulkRunner, body: (String) -> BulkIn, extra: List<SheetItem> = emptyList(), onAsk: (() -> Unit)? = null, onDone: () -> Unit) {
     val context = LocalContext.current
     var more by remember { mutableStateOf(false) }
     var picker by remember { mutableStateOf<String?>(null) }  // folder, group, timeline, snooze
@@ -360,7 +360,8 @@ fun MailBulkBar(runner: BulkRunner, body: (String) -> BulkIn, extra: List<SheetI
             SheetItem("Add to a timeline…", null, section = "Sift") { picker = "timeline" },
             SheetItem("Mute the conversations", "No more notifications from them", section = "Sift") { go("mute") },
             SheetItem("Unmute", null, section = "Sift") { go("unmute") },
-        ) + extra + listOf(
+        ) + extra + listOfNotNull(
+            onAsk?.let { ask -> SheetItem("✦ Ask Sift about these…", "In your own words; you see the steps and tokens first", section = "Sift AI") { ask() } },
             SheetItem("Report spam", "Moves them to Gmail's spam", danger = true, section = "Remove") { go("spam") },
         )
         ModalBottomSheet(

@@ -22,6 +22,8 @@ data class MessageDto(
     val id: String,
     @SerialName("account_id") val accountId: String,
     val account: String? = null,
+    @SerialName("account_email") val accountEmail: String? = null,
+    @SerialName("thread_id") val threadId: String? = null,
     @SerialName("account_color") val accountColor: String? = null,
     val sender: String? = null,
     @SerialName("sender_name") val senderName: String? = null,
@@ -958,7 +960,19 @@ data class ReadStateOut(val unread: Boolean = false, @SerialName("in_gmail") val
 // ---- Ask Sift (backend app/assistant.py) ----
 
 @Serializable
-data class AskIn(val text: String)
+data class AskIn(val text: String, val selection: AskSelectionIn? = null)
+
+/** What Ask Sift calls "these": ids only (the AI is told how many, never which). */
+@Serializable
+data class AskSelectionIn(
+    @SerialName("message_ids") val messageIds: List<String> = emptyList(),
+    @SerialName("group_ids") val groupIds: List<String> = emptyList(),
+    @SerialName("opportunity_ids") val opportunityIds: List<String> = emptyList(),
+    @SerialName("folder_ids") val folderIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class AskEstimate(val tokens: Int = 0, @SerialName("ai_enabled") val aiEnabled: Boolean = false)
 
 @Serializable
 data class AskStepDto(val action: String, val kind: String = "read", val preview: String? = null, val error: String? = null,

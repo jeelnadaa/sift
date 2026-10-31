@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Opportunity, type OpportunityDetail, type TimelineEvent } from "../api";
 import { Top } from "../App";
-import { SelectBox, ThingBar, runBulk, runMany, useSelection } from "../bulk";
+import { AskButton, SelectBox, ThingBar, runBulk, runMany, useSelection } from "../bulk";
 import { Avatar, Banner, confirmDialog, errorText, inputDialog, Modal, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { fullTime, googleCalendarUrl, humanize, safeUrl, toLocalInput } from "../util";
 
@@ -49,6 +49,7 @@ export function Opportunities() {
           <button className="btn btn-ghost btn-sm" onClick={() => theirMail("archive")} data-tip="Archive every mail on these timelines in Gmail">Archive mail</button>
           <button className="btn btn-ghost btn-sm danger-text" onClick={() => many("Deleted", (o) => del(`/opportunities/${o}`),
             { title: `Delete ${sel.size} timeline${sel.size === 1 ? "" : "s"}?`, body: "The timelines go; the mail on them stays." })}>Delete</button>
+          <AskButton sel={{ opportunity_ids: [...sel.keys], label: `${sel.size} timeline${sel.size === 1 ? "" : "s"}` }} />
         </ThingBar>
         <div className="split">
           <div className={`list ${sel.size ? "selecting" : ""}`}>

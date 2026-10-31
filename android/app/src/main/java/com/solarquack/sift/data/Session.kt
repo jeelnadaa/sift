@@ -33,7 +33,8 @@ object Session {
 
     /** Whether the feed was grouped last time, so the saved grouped list shows before the server answers. */
     fun feedGrouped(context: Context): Boolean = prefs(context).getBoolean("feed_grouped", false)
-    fun setFeedGrouped(context: Context, on: Boolean) = prefs(context).edit().putBoolean("feed_grouped", on).apply()
+    // a hint only: failing to save it must never fail the feed load that calls this
+    fun setFeedGrouped(context: Context, on: Boolean) { runCatching { prefs(context).edit().putBoolean("feed_grouped", on).apply() } }
 
     fun saveLastDelay(context: Context, ms: Long) = prefs(context).edit().putLong("last_delay_ms", ms).apply()
     fun lastDelay(context: Context): Long? = prefs(context).getLong("last_delay_ms", -1).takeIf { it >= 0 }

@@ -24,7 +24,7 @@ Rule: commit every change to git, never push (the owner pushes).
 | Phase C (Organization & Productivity Hubs) | Fully Built, Verified & Parity Complete 2026-10-26 (Attachments Hub, Senders Directory, One-Tap Unsubscribe, Google Calendar & RSVP Hub) |
 | Phase D (Search & Engine Enhancements) | **Built, Verified & Parity Complete 2026-10-26** (backend, web, Android): Canned Reply Templates in Compose, Fallback LLM Provider (Ollama & OpenAI-compatible), PostgreSQL Trigram (`pg_trgm`) & typo-tolerant fuzzy search, VIP Senders & Muted Threads |
 | Production Hosting (Oracle Cloud Free Tier) | **LIVE in Production 2026-10-26** (Ampere A1, Oracle Linux 9.8, Docker Compose, Redis queue, Cloudflare Tunnel, NeverIdle anti-reclamation, automated nightly backups) |
-| Fixes batch 2026-10-31 (instant mail, downloads, refresh/live, OTP, bulk selection, Ask Sift) | **In progress** — plan `PLAN-2026-10-31.md`, decisions recorded below |
+| Fixes batch 2026-10-31 (instant mail, downloads, refresh/live, OTP, bulk selection, Ask Sift) | **Done locally** (527 backend tests, web, Android unit + Paparazzi); waiting for the owner's push, then the Oracle deploy. Plan `PLAN-2026-10-31.md` |
 | Offline Sync, Cache-First Architecture & Search Enhancements (2026-10-27) | **Built, Verified & Parity Complete** (Android, Web, Backend): Proactive push notification email pre-caching, 0ms cache-first stale-while-revalidate loading, responsive mobile email fitting, auto-debounced search, and persistent search sessions with infinite scroll |
 
 ## Log (newest last)
@@ -190,6 +190,33 @@ Rule: commit every change to git, never push (the owner pushes).
   - Mail rows swipe: right switches read/unread, left archives. Long-press now picks instead of switching read/unread.
   - Checked: 13 bulk tests (mixed mail + groups counted once, preview changes nothing, Undo reverses exactly what changed, trash hides and Undo restores, no write access → nothing changes and the accounts are named while read falls back to Sift, select-all-matching with filters, every Sift action and its Undo, others' mail/groups/timelines/folders refused, choices required, background job with progress, the 1,000 limit, timelines and folders). Full backend suite: 520 passed before the folder target was added; bulk tests 13/13 after.
   - In the browser pane against the local server: page select, Unread, Read + Undo, Delete → "Move to Gmail's trash 4 conversations?" → gone → Undo brings them back, the More menu, the Folders tree bar, and Search's full bar. Web type-check and build pass. Android compiles; picking, swipes and the bars are not yet checked on a phone.
+- 2026-10-31 — **Fixes batch, part 5: Ask Sift does general and bulk tasks, with the cost first.**
+  - **Bulk:** a step may cover up to 1,000 conversations (was 200). Gmail steps (`mail_action`, `label_mail`, new `unlabel_mail`) now go through `bulk.run`, the selection bar's own code. More than 30 conversations become a background job with progress (enqueued on the Postgres queue in the same transaction). Read/unread work without write access (Sift only).
+  - **Mail ops added:** important, not important, restore from trash, not spam.
+  - **New actions** (catalogue 51 → 61):
+    - `reopen_timeline`; close, reopen and delete now take several names or "all".
+    - `redate_todos`; finish and delete take `when` (overdue, today, week, done, all) as well as title words.
+    - `set_folder` (pin, notifications), `merge_group`, `mute_mail`, `not_like_this`, `vip_sender`, `save_search` (with alerts), `delete_saved_search`.
+  - The planner is told that bulk is fine ("archive all newsletters older than 30 days" is one step).
+  - **These:** `POST /assistant` takes `selection` (message, group, timeline and folder ids). It is checked before any AI call (someone else's mail → 422, no call) and saved on the run (migration 0023 `assistant_runs.selection`). The planner sees only "SELECTED: N conversations (q="these")". `q="these"` resolves through `bulk.resolve`. Without a selection, the step explains.
+  - **Cost first:** `POST /assistant/estimate` works out about how many tokens asking costs (prompt + context + a typical answer, about 2k) without any AI call. Web and phone show it under the box ("Asking uses about N tokens of your key…", or "Add your AI key" when AI is off). A plan waiting for Run always states what running costs, including "Running uses no more AI tokens". Example requests now fill the box instead of sending at once.
+  - **Web:** **✦ Ask** in every selection bar (Feed, folder, group, Silenced, Search, Groups) and in the Opportunities and Folders-tree bars. It opens Ask Sift with a "4 mails selected. Say *these*…" strip (✕ drops it).
+  - **Android:** More → "✦ Ask Sift about these…" in the feed's selection sheet, with the same strip and cost line.
+  - The planner prompt grew from about 1.3k to 1.9k tokens per request (size guard in the test raised to 7,600 characters).
+  - Checked: `test_assistant.py` 25/25, including 6 new tests:
+    - "these" acts on exactly the selection, and the prompt carries only the count;
+    - no selection, or someone else's mail, is refused before any AI call;
+    - a big Gmail step becomes a bulk job;
+    - several timelines and to-dos at once (close two, move overdue, delete done, reopen all);
+    - VIP, folder settings, saved searches, mute and merge, with undo;
+    - the estimate makes no AI call.
+  - The AI-off test still makes zero calls. In the browser pane: ✦ Ask in the feed's bar opens the panel with "4 mails selected", these examples and the cost line (this local account has no key, so it says to add one). Android compiles.
+- 2026-10-31 — **Fixes batch, part 6: small fixes.**
+  - **Phone Pinned chip:** it filtered only the loaded mail (and hid "Select all matching"). It now opens Search for `is:pinned`, the same as the web, so every pinned mail shows.
+  - **Phone "Open in Gmail":** it always opened `u/0` (often the wrong account) at All Mail. It now opens the exact conversation in the mail's own account (`u/?authuser=<address>#all/<thread id>`). The message JSON carries `account_email` for this (tested).
+  - **Web rail:** with the sidebar collapsed, the "Ask Sift" label spilled out of the 76px rail; it now hides like the Write label.
+  - **375px check (web):** the feed's selection bar wraps onto three rows inside the card, and the Ask panel with a selection fits. Nothing overflows sideways.
+  - **Phone feed:** saving the "grouped last time" hint could throw and turn the whole feed load into an error (seen in the Paparazzi render). The hint is now best-effort. Paparazzi re-rendered: the feed, Ask, mail and to-do screens look right. Android unit tests: 35 pass.
 
 ## Decisions
 - **Owner, 2026-10-24: production quality throughout.** The app may be published, so build it production-grade even though the owner is the only user now (auth, sign-in throttling, validation, security, polish). Deployment target decided later, after the app is complete.
@@ -251,16 +278,24 @@ Rule: commit every change to git, never push (the owner pushes).
 
 6. **Try the new pieces:** shut the server, open the web app and the phone (Offline bar, saved feed), Settings → Saved on this device → Clear; start it again after a while (one "caught up" notification); Ask Sift on web and phone (e.g. "make timelines from Placements → Nvidia"); delete a to-do on the phone; More → Groups.
 
+## Known limitations (fixes batch 2026-10-31)
+- Not yet tried on a real phone: this PC can't run the Android emulator. Checked by compiling, unit tests and Paparazzi renders only (the mail fix, pull to refresh, live updates, Copy code, long-press and swipes).
+- "Downloaded ahead" covers the newest 100 feed mails on each device. Older mail still needs a connection the first time it's opened.
+- One-time codes are found by local patterns. An unusual wording can be missed (the mail is then handled normally), and a code-like number near the word "code" may be offered by mistake. Codes are never stored or logged.
+- "Select all N matching" and Ask Sift steps cover at most 1,000 conversations at a time. More than 30 Gmail conversations run in the background, paced, so a big change takes a while to show in Gmail.
+- Ask Sift's "these" uses the rows you picked, not "all matching" (the ✦ Ask button is off then). On the phone it's in the feed's selection sheet only.
+- The token figure before asking is an estimate (the prompt, your context and a typical answer). The real count shows after planning.
+
 ## Known limitations (custom groups and Sift AI)
 - Descriptions are checked only for mail the AI reads (AI on, not settled by a rule, under 3 days old); other mail is routed by searches only. Up to 25 described places per user ride along with each reading.
 - Searches in criteria are matched on Sift's stored copy: Gmail words, `OR`, `-`, dates and Sift filters work; parentheses and `AROUND` don't (the save is refused with a message).
-- Sift AI plans at most 8 steps; one step changes at most 200 conversations; replies and forwards use the newest matching mail. It never sends, never deletes mail, and can't change keys or accounts.
+- Sift AI plans at most 8 steps; one step changes at most 1,000 conversations (was 200 until 2026-10-31); replies and forwards use the newest matching mail. It never sends, never deletes mail permanently (trash only), and can't change keys or accounts.
 
 ## Known limitations (healing, offline, Ask Sift)
 - Catch-up by date covers 30 days and 500 mails per account; a longer outage leaves older mail in Gmail only (search still finds it).
 - Mail older than 72 h when processed is not read by the AI (rules only): it won't join timelines until you ask for it.
 - Offline mode shows what this device already loaded; pages never opened, attachments and remote images in mail aren't saved. Nothing can be changed while offline (no offline queue). The web app needs one online visit after this update for the service worker to install.
-- Ask Sift plans at most 6 steps per request and changes at most 200 conversations per step; Gmail changes need the account's write access (asked from a mail's Actions). It can't send mail, delete folders or rules, or change the AI key (on purpose).
+- Ask Sift plans at most 8 steps per request and changes at most 1,000 conversations per step; Gmail changes other than read/unread need the account's write access (asked from a mail's Actions). It can't send mail or change the AI key (on purpose).
 - Pacing counts calls Sift recorded; other apps using the same key aren't seen, so Gemini can still answer 429 (handled as before: AI pauses, mail arrives as normal).
 
 ## Known limitations (AI on folders)

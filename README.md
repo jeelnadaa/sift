@@ -264,7 +264,17 @@ What decides priority, in order: your rules (first match wins) → Gmail Promoti
 
 ### Ask Sift (one box for anything the app can do)
 - Web: the **✦ Ask Sift** button under Write in the sidebar, or the `A` key. Phone: **✦ Ask** at the top of the Feed, or More → Ask Sift.
-- It can work with everything: groups (make one with criteria, rename, mute, delete, add or take out mail), folders (make, rename, move, delete, file, take out, sort, criteria), timelines (build from mail, make, rename, close, delete, add steps, put mail on one), to-dos (make from mail, add, change, finish, delete), rules (draft from words, switch on/off, delete), single mails (tag, snooze, archive, read/unread, star, label, trash, spam) and settings. Replies, forwards and new mail become **Gmail drafts** you check and send yourself; Sift AI never sends.
+- It can work with everything, one thing or many at once:
+  - **Groups:** make one with criteria, rename, mute, merge, delete, add or take out mail.
+  - **Folders:** make, rename, move, pin, set notifications, delete, file, take out, sort, set criteria.
+  - **Timelines:** build from mail, make, rename, add steps, put mail on one, and close, reopen or delete several or all at once.
+  - **To-dos:** make from mail, add, change, and finish, delete or move the due date of many by words or by when (overdue, today, this week, done).
+  - **Rules:** draft from words, switch on or off, delete.
+  - **Mail:** tag, note, pin, snooze, mute, "not like this" for silenced mail, archive, move to inbox, read/unread, star, important, add or remove labels, trash or restore, spam or not spam. Each step covers up to 1,000 conversations; big Gmail changes run in the background with progress.
+  - **Also:** VIP senders, saved searches (with alerts), and settings.
+- Replies, forwards and new mail become **Gmail drafts** you check and send yourself; Sift AI never sends.
+- **These:** pick rows and choose **✦ Ask** in the selection bar (phone: More → Ask Sift about these). Then say "these" ("file these in Placements and mark them read"). The AI is told only how many you picked, never which mail.
+- **Cost first:** under the box, Ask Sift says about how many tokens asking will use before you ask (no AI call is made for that). Example requests fill the box rather than sending.
 - Before anything runs, each step says **what it will touch** (the folder, group, timeline, rule, and the first mails by sender and subject, "+ 12 more") and the **tokens it may use**, with a total ("Running may use about 4,600 more tokens"). Token usage has its own **Sift AI** card (each request and what it cost), apart from everyday work.
 - Say what you want in plain words: "make timelines from Placements → Nvidia", "timelines from the last 30 days of placement mail", "what's due this week?", "sort my Placements folder by company", "file mail from hirepro in a new Tests folder", "archive Northbank alerts older than a month", "add a to-do to call Riya tomorrow 5 pm", "silence bank debits under 500" (drafts a rule for you to review).
 - Sift shows a numbered plan. Looking things up runs at once; anything that changes something waits for **Run** (**Cancel** discards it). Steps that change Gmail are marked **Gmail**, and nothing is ever sent.

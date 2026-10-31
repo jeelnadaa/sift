@@ -293,6 +293,7 @@ div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
 .ask-btn { width: 100%; justify-content: center; gap: 10px; height: 42px; margin: -6px 0 16px; border-color: rgba(200,255,61,.35); color: var(--signal); }
 .ask-btn .ico { width: 18px; height: 18px; stroke: currentColor; }
 .shell.collapsed .ask-btn { padding: 0; }
+.collapsed .ask-btn .lbl { display: none; }
 .ask-scrim { place-items: stretch end; padding: 0; background: rgba(0,0,0,.45); }
 .ask { width: min(560px, 100vw); height: 100%; display: flex; flex-direction: column; background: var(--bg-2, #0f0f11); border-left: 1px solid var(--line-2); animation: slide-in .28s var(--ease-out); }
 @keyframes slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -341,6 +342,12 @@ div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
 .ask-targets { margin: 6px 0 0 32px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-3); }
 .ask-targets li::before { content: "→ "; color: var(--text-3); }
 .ask-est { font-size: 12.5px; color: var(--warn); width: 100%; }
+.ask-bottom { border-top: 1px solid var(--line); }
+.ask-bottom .ask-in { border-top: 0; padding-top: 8px; }
+.ask-sel { display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 6px 6px 6px 12px; font-size: 13px;
+  background: rgba(200,255,61,.07); border: 1px solid rgba(200,255,61,.3); border-radius: var(--r); }
+.ask-sel span { flex: 1; }
+.ask-cost-before { padding: 10px 20px 0; font-size: 12.5px; color: var(--text-3); min-height: 18px; }
 
 /* "Updating…": a saved copy is on screen while the fresh one loads (slow connection) */
 .updating-note { position: fixed; top: 12px; right: 18px; z-index: 40; display: inline-flex; align-items: center; gap: 8px;

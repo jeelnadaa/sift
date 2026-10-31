@@ -671,6 +671,8 @@ class AssistantRun(Base):
     results: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)
     status: Mapped[str] = mapped_column(String(10), default="planned", server_default="planned", nullable=False)
     tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # what the user had selected when asking ("these"): message/group/opportunity/folder ids
+    selection: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

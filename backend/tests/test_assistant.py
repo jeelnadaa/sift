@@ -98,7 +98,7 @@ def test_one_small_call_per_request_and_no_mail_text_reaches_the_planner(client,
         assert (m.subject or "zz-none") not in prompt and (m.snippet or "zz-none")[:30] not in prompt  # names only, never mail
     usage = db.scalar(select(TokenUsage).where(TokenUsage.purpose == "assistant"))
     assert usage.input_tokens == 1200 and body["tokens"] == 1280
-    assert len(fake.planner_calls[0]["system"]) < 6000  # the catalogue stays small (~1.3k tokens)
+    assert len(fake.planner_calls[0]["system"]) < 7600  # the catalogue stays small (~1.9k tokens with the 2026-10-31 bulk actions)
 
 
 def test_bad_model_output_gives_a_plain_answer_not_an_error(client, world, auth, fake):
@@ -341,3 +341,127 @@ def test_list_todos_when_done_and_overdue(db, world):
     assert done_res["text"] == "1 to-do done" and len(done_res["todos"]) == 1
     overdue_res = _list_todos(db, user.id, "overdue")
     assert overdue_res["text"] == "1 to-do overdue" and len(overdue_res["todos"]) == 1
+
+
+# ---- bulk, "these", the cost before asking (2026-10-31) ------------------------------------------
+
+def test_these_is_the_selection_and_the_ai_sees_only_how_many(client, db, world, auth, fake):
+    user, _ = world
+    picked = list(db.scalars(select(Message).where(Message.user_id == user.id).order_by(Message.received_at.desc()).limit(3)))
+    fake.plan = {"reply": "", "steps": [{"action": "mail_action", "q": "these", "op": "read"}]}
+    body = client.post("/api/v1/assistant", headers=auth, json={"text": "mark these read",
+                       "selection": {"message_ids": [str(m.id) for m in picked]}}).json()
+    prompt = fake.planner_calls[0]["prompt"]
+    assert "SELECTED: 3 conversations" in prompt
+    for m in picked:
+        assert (m.subject or "zz-none") not in prompt  # only the count, never the mail
+    assert "3 conversations matching these" in body["steps"][0]["preview"]
+    r = client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth).json()
+    assert r["results"][0]["ok"], r["results"]
+    for m in picked:
+        db.refresh(m)
+        assert "UNREAD" not in (m.labels or [])
+
+
+def test_these_without_a_selection_or_with_someone_elses_mail_is_refused(client, db, world, auth, fake):
+    body = ask(client, auth, "archive these", {"reply": "", "steps": [{"action": "mail_action", "q": "these", "op": "archive"}]}, fake).json()
+    assert "nothing is selected" in body["steps"][0]["error"]
+    other = User(email="other@gmail.com")
+    db.add(other)
+    db.flush()
+    acc = GmailAccount(user_id=other.id, email="o@gmail.com", status="active")
+    db.add(acc)
+    db.flush()
+    theirs = Message(user_id=other.id, account_id=acc.id, gmail_id="x1", thread_id="x1", subject="Theirs", status="processed")
+    db.add(theirs)
+    db.commit()
+    calls = len(fake.planner_calls)
+    r = client.post("/api/v1/assistant", headers=auth, json={"text": "archive these", "selection": {"message_ids": [str(theirs.id)]}})
+    assert r.status_code == 422 and len(fake.planner_calls) == calls  # refused before any AI call
+
+
+def test_big_gmail_steps_run_through_bulk_as_a_job(client, db, world, auth, fake, monkeypatch):
+    from app import bulk
+    from app.mail import google_oauth
+    from app.models import BulkJob
+    monkeypatch.setattr(bulk, "INLINE_GMAIL", 1)
+    acc = db.get(GmailAccount, world[1].id)
+    acc.encrypted_refresh_token, acc.scopes = "x", [google_oauth.READONLY_SCOPE, "https://www.googleapis.com/auth/gmail.modify"]
+    db.commit()
+    body = ask(client, auth, "archive everything from the last year", {"reply": "", "steps": [
+        {"action": "mail_action", "q": "newer_than:365d", "op": "archive"}]}, fake).json()
+    n = int(body["steps"][0]["preview"].split("archive ")[1].split(" ")[0])
+    assert n > 1
+    r = client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth).json()
+    assert r["results"][0]["ok"] and "background" in r["results"][0]["text"], r["results"]
+    job = db.scalar(select(BulkJob))
+    assert job.total == n and job.action == "archive" and job.status == "queued"
+
+
+def test_many_timelines_and_todos_at_once(client, db, world, auth, fake):
+    user, _ = world
+    for c in ("Zentrix", "Quorvane"):
+        db.add(Opportunity(user_id=user.id, company=c, aliases=[], domains=[]))
+    now = datetime.now(UTC)
+    db.add_all([Todo(user_id=user.id, title="Old one", due_at=now - timedelta(days=2)),
+                Todo(user_id=user.id, title="Older one", due_at=now - timedelta(days=3)),
+                Todo(user_id=user.id, title="Finished", done=True, done_at=now)])
+    db.commit()
+    body = ask(client, auth, "close zentrix and quorvane, move overdue to-dos to friday, clear done ones", {"reply": "", "steps": [
+        {"action": "close_timeline", "company": "Zentrix, Quorvane"},
+        {"action": "redate_todos", "when": "overdue", "at": (now + timedelta(days=3)).isoformat()},
+        {"action": "delete_todo", "when": "done"},
+    ]}, fake).json()
+    assert [s["error"] for s in body["steps"]] == [None, None, None], body["steps"]
+    assert "Close 2 timelines" in body["steps"][0]["preview"] and "Move 2 to-dos" in body["steps"][1]["preview"]
+    r = client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth).json()
+    assert all(x["ok"] for x in r["results"]), r["results"]
+    db.expire_all()
+    assert {o.status for o in db.scalars(select(Opportunity).where(Opportunity.company.in_(("Zentrix", "Quorvane"))))} == {"closed"}
+    assert all(t.due_at > now for t in db.scalars(select(Todo).where(Todo.title.in_(("Old one", "Older one")))))
+    assert db.scalar(select(Todo).where(Todo.title == "Finished")) is None
+    body = ask(client, auth, "reopen all", {"reply": "", "steps": [{"action": "reopen_timeline", "company": "all"}]}, fake).json()
+    client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth)
+    db.expire_all()
+    assert {o.status for o in db.scalars(select(Opportunity).where(Opportunity.company.in_(("Zentrix", "Quorvane"))))} == {"active"}
+
+
+def test_new_actions_vip_folder_settings_saved_searches_mute_and_merge(client, db, world, auth, fake):
+    from app.models import Folder, MailGroup, MutedThread, SavedSearch, VipSender
+    user, _ = world
+    f = folders.create(db, user.id, "Bank", None)
+    a = MailGroup(user_id=user.id, title="Alerts A", kind="custom", key="custom:a")
+    b = MailGroup(user_id=user.id, title="Alerts B", kind="custom", key="custom:b")
+    db.add_all([a, b])
+    db.commit()
+    body = ask(client, auth, "lots", {"reply": "", "steps": [
+        {"action": "vip_sender", "sender": "Boss@Acme.com"},
+        {"action": "set_folder", "folder": "Bank", "pinned": "yes", "notify": "mute"},
+        {"action": "save_search", "name": "Kotak", "q": "from:kotak", "value": "alert"},
+        {"action": "mute_mail", "q": "from:kotak"},
+        {"action": "merge_group", "group": "Alerts A", "into": "Alerts B"},
+    ]}, fake).json()
+    assert [s["error"] for s in body["steps"]] == [None] * 5, body["steps"]
+    r = client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth).json()
+    assert all(x["ok"] for x in r["results"]), r["results"]
+    db.expire_all()
+    assert db.scalar(select(VipSender).where(VipSender.user_id == user.id)).email == "boss@acme.com"
+    f = db.get(Folder, f.id)
+    assert f.pinned and f.notify_mode == "mute"
+    assert db.scalar(select(SavedSearch).where(SavedSearch.name == "Kotak")).notify
+    assert db.scalar(select(func.count()).select_from(MutedThread)) >= 1
+    body = ask(client, auth, "undo some", {"reply": "", "steps": [
+        {"action": "vip_sender", "sender": "boss@acme.com", "value": "off"},
+        {"action": "delete_saved_search", "name": "kotak"},
+        {"action": "vip_sender", "sender": "not an address"},
+    ]}, fake).json()
+    assert "isn't an email address" in body["steps"][2]["error"]
+    client.post(f"/api/v1/assistant/{body['id']}/run", headers=auth)
+    db.expire_all()
+    assert db.scalar(select(VipSender)) is None and db.scalar(select(SavedSearch)) is None
+
+
+def test_the_cost_of_asking_is_shown_first_without_an_ai_call(client, db, world, auth, fake):
+    r = client.post("/api/v1/assistant/estimate", headers=auth).json()
+    assert r["ai_enabled"] and 800 < r["tokens"] < 5000, r
+    assert fake.planner_calls == [] and fake.calls == []

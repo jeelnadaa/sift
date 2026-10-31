@@ -27,6 +27,7 @@ interface SiftApi {
     @GET("api/v1/ai-tasks") suspend fun aiTasks(): AiTaskList
     @GET("api/v1/me") suspend fun me(): UserDto
     @POST("api/v1/assistant") suspend fun ask(@Body body: AskIn): AskRunDto
+    @POST("api/v1/assistant/estimate") suspend fun askEstimate(@Body body: AskSelectionIn = AskSelectionIn()): AskEstimate
     @POST("api/v1/assistant/{id}/run") suspend fun runPlan(@Path("id") id: String): AskRunDto
     @POST("api/v1/assistant/{id}/cancel") suspend fun cancelPlan(@Path("id") id: String): AskRunDto
     @GET("api/v1/assistant/runs") suspend fun askRuns(): List<AskRunDto>

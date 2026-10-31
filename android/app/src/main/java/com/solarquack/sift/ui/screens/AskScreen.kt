@@ -49,6 +49,19 @@ import com.solarquack.sift.ui.theme.Ink
 import com.solarquack.sift.ui.theme.Radius
 import kotlinx.coroutines.launch
 
+/** Hands a selection to Ask Sift ("these") when a selection bar opens it. */
+object AskSeed {
+    private var pending: Pair<com.solarquack.sift.data.AskSelectionIn, String>? = null
+    fun give(selection: com.solarquack.sift.data.AskSelectionIn, label: String) { pending = selection to label }
+    fun take(): Pair<com.solarquack.sift.data.AskSelectionIn, String>? = pending.also { pending = null }
+}
+
+private val THESE_EXAMPLES = listOf(
+    "Mark these read and file them in a folder Later",
+    "Put these on the Acme timeline",
+    "Make to-dos from these",
+)
+
 private val EXAMPLES = listOf(
     "Make a group Internships for internship offers and add old ones too",
     "New mail from Nvidia goes to the Nvidia folder and a group Nvidia updates",
@@ -64,6 +77,11 @@ private val EXAMPLES = listOf(
 fun AskScreen(onBack: () -> Unit, onOpenMail: (String) -> Unit, onOpenLink: (AskLinkDto) -> Unit, onRuleDraft: (com.solarquack.sift.data.RuleDraft) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // "these": what was picked when Ask was opened from a selection bar (AskSeed), until dropped
+    var selection by remember { mutableStateOf(AskSeed.take()) }
+    // what asking costs, shown before asking (no AI call); what running costs is shown with the plan
+    var cost by remember { mutableStateOf<com.solarquack.sift.data.AskEstimate?>(null) }
+    LaunchedEffect(selection) { cost = runCatching { Api.get(context).askEstimate(selection?.first ?: com.solarquack.sift.data.AskSelectionIn()) }.getOrNull() }
     var runs by remember { mutableStateOf<List<AskRunDto>>(emptyList()) }
     var text by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf<String?>(null) }  // "ask" or a run id
@@ -79,7 +97,7 @@ fun AskScreen(onBack: () -> Unit, onOpenMail: (String) -> Unit, onOpenLink: (Ask
         if (t.isEmpty() || busy != null) return
         busy = "ask"; error = null
         scope.launch {
-            try { runs = (runs + Api.get(context).ask(AskIn(t))).takeLast(8); text = "" } catch (e: Throwable) { error = e.userMessage() } finally { busy = null }
+            try { runs = (runs + Api.get(context).ask(AskIn(t, selection?.first))).takeLast(8); text = "" } catch (e: Throwable) { error = e.userMessage() } finally { busy = null }
         }
     }
 
@@ -100,9 +118,10 @@ fun AskScreen(onBack: () -> Unit, onOpenMail: (String) -> Unit, onOpenLink: (Ask
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Tell Sift what to do, like you'd tell a person. Each request is one small AI call with your own key.",
                         color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
-                    EXAMPLES.forEach { x ->
+                    (if (selection != null) THESE_EXAMPLES else EXAMPLES).forEach { x ->
+                        // fills the box (asking costs tokens, so the user sends it)
                         Text(x, color = Ink.text, style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.fillMaxWidth().border(1.dp, Ink.line2, Radius.md).clickable { ask(x) }.padding(horizontal = 12.dp, vertical = 10.dp))
+                            modifier = Modifier.fillMaxWidth().border(1.dp, Ink.line2, Radius.md).clickable { text = x }.padding(horizontal = 12.dp, vertical = 10.dp))
                     }
                 }
             }
@@ -121,6 +140,20 @@ fun AskScreen(onBack: () -> Unit, onOpenMail: (String) -> Unit, onOpenLink: (Ask
             error?.let { item { Banner(it, Ink.urgent) } }
         }
 
+        selection?.let { (_, label) ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(top = 6.dp).background(Ink.signal.copy(alpha = 0.08f), Radius.md)
+                .border(1.dp, Ink.signal.copy(alpha = 0.3f), Radius.md).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("✦ $label selected. Say \"these\" to act on them; the AI only sees how many.", color = Ink.text, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+                Text("✕", color = Ink.text2, style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.clickable(onClickLabel = "Ask without the selection") { selection = null }.padding(12.dp))
+            }
+        }
+        cost?.let { c ->
+            Text(if (!c.aiEnabled) "Add your AI key in Settings to use Ask Sift."
+                else "Asking uses about ${"%,d".format(c.tokens)} tokens of your key. Changes show their own estimate before you press Run.",
+                color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp))
+        }
         Row(Modifier.fillMaxWidth().background(Ink.bg).padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
             OutlinedTextField(
                 value = text, onValueChange = { text = it.take(600) }, placeholder = { Text("e.g. make timelines from Placements → Nvidia", color = Ink.text3) },
@@ -165,8 +198,8 @@ private fun RunCard(r: AskRunDto, busy: Boolean, onRun: () -> Unit, onCancel: ()
                     res?.let { ResultBlock(it, onOpenMail, onOpenLink, onRuleDraft) }
                 }
             }
-            if (r.needsConfirm && r.estimate > 0) Text("Running may use about ${"%,d".format(r.estimate)} more tokens", color = Ink.warn,
-                style = MaterialTheme.typography.bodySmall)
+            if (r.needsConfirm) Text(if (r.estimate > 0) "Running may use about ${"%,d".format(r.estimate)} more tokens" else "Running uses no more AI tokens",
+                color = Ink.warn, style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (r.needsConfirm) {
                     PrimaryButton(if (busy) "Running…" else if (r.changesGmail) "Run, with Gmail changes" else "Run", enabled = !busy, onClick = onRun)

@@ -107,7 +107,6 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     }
     var grouped by remember { mutableStateOf(if (FeedSessionCache.items.isNotEmpty()) FeedSessionCache.grouped else !silenced && com.solarquack.sift.data.Session.feedGrouped(context)) }
     var loadingMore by remember { mutableStateOf(false) }
-    var pinnedOnly by remember { mutableStateOf(false) }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = if (FeedSessionCache.matches(priority, account, silenced)) FeedSessionCache.scrollIndex else 0,
         initialFirstVisibleItemScrollOffset = if (FeedSessionCache.matches(priority, account, silenced)) FeedSessionCache.scrollOffset else 0,
@@ -242,7 +241,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     }
 
     // picking many (long-press): the bar acts on what's picked, or on the whole list ("All matching")
-    val picks = rememberPicks(priority, account, silenced, grouped, pinnedOnly)
+    val picks = rememberPicks(priority, account, silenced, grouped)
     val runner = rememberBulkRunner { scope.launch { refreshQuiet() } }
     fun bulkBody(action: String): BulkIn =
         if (picks.all) BulkIn(action, match = BulkMatch(view = if (silenced) "silenced" else "feed", priority = priority, accountId = account))
@@ -260,8 +259,8 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     if (askGrouping) GroupingPromptDialog { answer -> askGrouping = false; if (answer == "yes") load() }
 
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
-        val displayItems = if (pinnedOnly) items.filter { it is MailItem && it.m.pinned } else items
-        if (picks.active) SelectionTopBar(picks, displayItems.map { it.key }, onAllMatching = if (pinnedOnly) null else ({ picks.all = true }))
+        val displayItems = items
+        if (picks.active) SelectionTopBar(picks, displayItems.map { it.key }, onAllMatching = { picks.all = true })
         else Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (silenced) "Silenced" else "Feed", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f))
             onAsk?.let { go ->
@@ -297,8 +296,9 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
         if (!silenced) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Chip("All", priority == null && !pinnedOnly) { priority = null; pinnedOnly = false }
-                Chip("📌 Pinned", pinnedOnly) { pinnedOnly = !pinnedOnly }
+                Chip("All", priority == null) { priority = null }
+                // every pinned mail, not only the loaded ones: a server search, like the web
+                onSearch?.let { go -> Chip("📌 Pinned", false) { SearchSession.clear(); SearchSession.draft = "is:pinned"; SearchSession.query = "is:pinned"; go() } }
                 listOf("urgent", "normal", "digest").forEach { p -> Chip(p, priority == p, dot = Ink.tier(p)) { priority = if (priority == p) null else p } }
             }
         } else {
@@ -356,7 +356,18 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                     picks.clear(); refreshQuiet()
                 }
             })
-            MailBulkBar(runner, ::bulkBody, extra = notLikeThis) { picks.clear() }
+            val askThese = onAsk?.takeIf { !picks.all }?.let { go ->
+                {
+                    val mails = picks.keys.filter { it.startsWith("m:") }.map { it.drop(2) }
+                    val groups = picks.keys.filter { it.startsWith("g:") }.map { it.drop(2) }
+                    val label = listOfNotNull(mails.size.takeIf { it > 0 }?.let { "$it mail" + if (it == 1) "" else "s" },
+                        groups.size.takeIf { it > 0 }?.let { "$it group" + if (it == 1) "" else "s" }).joinToString(" + ")
+                    AskSeed.give(com.solarquack.sift.data.AskSelectionIn(messageIds = mails, groupIds = groups), label)
+                    picks.clear()
+                    go()
+                }
+            }
+            MailBulkBar(runner, ::bulkBody, extra = notLikeThis, onAsk = askThese) { picks.clear() }
         }
     }
     BulkRunnerUi(runner)

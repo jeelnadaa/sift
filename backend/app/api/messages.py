@@ -26,6 +26,7 @@ def message_json(m: Message, account: GmailAccount | None = None, notification: 
     return {
         "id": str(m.id), "account_id": str(m.account_id),
         "account": (account.label or account.email) if account else None,
+        "account_email": account.email if account else None,
         "account_color": account.color if account else None,
         "thread_id": m.thread_id, "sender": m.sender, "sender_name": m.sender_name,
         "subject": m.subject, "snippet": m.snippet,

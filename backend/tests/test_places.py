@@ -314,7 +314,8 @@ def test_sift_ai_drafts_replies_and_forwards_but_never_sends(client, db, world, 
     assert made[1].to == ["mentor@college.edu"] and made[1].body.startswith("FYI") and made[1].forward_gmail_id == "g1"
     assert r["results"][0]["link"]["page"] == "draft" and sent == []
     from app import assistant
-    assert not any("send" in a for a in assistant.ACTIONS)  # there is no action that sends
+    # there is no action that sends ("send" as a word: vip_sender only marks a sender)
+    assert not any(re.search(r"(^|_)send(_|$)", a) for a in assistant.ACTIONS)
 
 
 def test_sift_ai_tokens_are_kept_apart_on_the_usage_page(client, db, world, auth, fake):

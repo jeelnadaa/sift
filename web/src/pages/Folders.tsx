@@ -3,7 +3,7 @@ import { FolderAi } from "./FolderAi";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Folder, type FolderTree, type FolderView } from "../api";
 import { Top, fileDropped, foldersChanged } from "../App";
-import { BulkBar, SelectBox, ThingBar, rowKey, runBulk, runMany, useSelection } from "../bulk";
+import { AskButton, BulkBar, SelectBox, ThingBar, rowKey, runBulk, runMany, useSelection } from "../bulk";
 import { Banner, confirmDialog, errorText, FolderPicker, MailRow, Modal, Pager, TextField, toast, Toggle, useLoad, usePages } from "../components";
 import { FOLDER_COLORS, findFolder, flatten, subtreeIds } from "../util";
 
@@ -77,6 +77,7 @@ export function Folders() {
               <button className="btn btn-ghost btn-sm" onClick={() => many("Muted", (id) => patch(`/folders/${id}`, { notify_mode: "mute" }))} data-tip="Mail filed here won't notify. Urgent mail still does">Mute</button>
               <button className="btn btn-ghost btn-sm" onClick={() => many("Notifying as usual", (id) => patch(`/folders/${id}`, { notify_mode: "default" }))}>Unmute</button>
               <button className="btn btn-ghost btn-sm danger-text" onClick={deleteSelected}>Delete</button>
+              <AskButton sel={{ folder_ids: [...sel.keys], label: `${sel.size} folder${sel.size === 1 ? "" : "s"}` }} />
             </ThingBar>
             {tree.data && folders.length === 0 && <p className="dim" style={{ padding: 8 }}>No folders yet. Make one, then drag mail onto it or let a rule file it.</p>}
             {rows.map(([f, depth]) => (

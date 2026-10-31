@@ -19,11 +19,16 @@ How it stays safe:
   Nothing is ever sent: replies and forwards become Gmail drafts the user sends themselves.
 - The plan is data: unknown actions are dropped, fields are checked, every name is looked up
   (or made earlier in the same plan), mail sets are capped, names from mail are quoted data.
+
+Bulk (owner, 2026-10-31): a step may act on up to bulk.LIMIT (1,000) conversations, through the
+same code as the apps' selection bar (app/bulk.py), so big Gmail changes run in the background with
+progress. "These" is what the user had selected when they asked: the AI sees only how many.
 """
 import json
 import logging
 import re
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -33,7 +38,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import folder_ai, folders, opportunities, places, user_settings
+from app import bulk, folder_ai, folders, opportunities, places, user_settings
 from app.llm import service as llm
 from app.llm.base import LlmAuthError, LlmError, LlmQuotaError
 from app.models import (AiTask, AssistantRun, Folder, FolderItem, GmailAccount, GroupMember, MailGroup, MailTag, Message,
@@ -42,7 +47,10 @@ from app.models import (AiTask, AssistantRun, Folder, FolderItem, GmailAccount, 
 log = logging.getLogger(__name__)
 
 MAX_STEPS = 8
-MAIL_LIMIT = 200  # conversations one step may change
+MAIL_LIMIT = bulk.LIMIT  # conversations one step may change (1,000)
+THESE = "these"  # q for what the user had selected
+PLAN_OUTPUT_ESTIMATE = 350  # tokens the planner usually writes back, for the "about N tokens" line
+CHARS_PER_TOKEN = 4
 SHOW_LIMIT = 25  # rows a "find" step shows
 TARGETS_SHOWN = 5  # mails named in a step's preview ("+ 12 more")
 READ_ESTIMATE = 900  # tokens for the AI to read one mail (input + output), for the cost preview
@@ -79,8 +87,9 @@ ACTIONS: dict[str, Action] = {
     "build_timelines": A("write", ("q", "name"), ("q",), "AI puts mail matching q (older mail too, from Gmail) on company timelines; name = short label"),
     "create_timeline": A("write", ("company",), ("company",), "start an empty company timeline"),
     "rename_timeline": A("write", ("company", "new_name"), ("company", "new_name"), "rename a timeline"),
-    "close_timeline": A("write", ("company",), ("company",), "mark a timeline closed"),
-    "delete_timeline": A("write", ("company",), ("company",), "delete a timeline (mail stays)"),
+    "close_timeline": A("write", ("company",), ("company",), "mark timelines closed; company = one name, several separated by commas, or all"),
+    "reopen_timeline": A("write", ("company",), ("company",), "reopen closed timelines; company = names separated by commas, or all"),
+    "delete_timeline": A("write", ("company",), ("company",), "delete timelines (mail stays); company = names separated by commas, or all closed"),
     "add_section": A("write", ("company", "stage", "title", "at", "note"), ("company", "title", "at"),
                      "add a step to a timeline; stage = announcement|registration|assessment|interview|result|offer|update; at = ISO date-time"),
     "add_to_timeline": A("write", ("q", "company"), ("q", "company"), "put mail matching q on a company's timeline"),
@@ -88,8 +97,9 @@ ACTIONS: dict[str, Action] = {
     "make_todos": A("write", ("q", "name"), ("q",), "AI makes to-dos from mail matching q that needs action"),
     "add_todo": A("write", ("title", "at", "note"), ("title",), "add a to-do; at = due ISO date-time"),
     "edit_todo": A("write", ("title", "new_name", "at", "note"), ("title",), "change the to-do whose title contains title: new_name, due at, note"),
-    "finish_todo": A("write", ("title",), ("title",), "mark open to-dos whose title contains this as done"),
-    "delete_todo": A("write", ("title",), ("title",), "delete to-dos whose title contains this"),
+    "finish_todo": A("write", ("title", "when"), (), "mark open to-dos done: title = words in the title, and/or when = overdue|today|week|all"),
+    "delete_todo": A("write", ("title", "when"), (), "delete to-dos: title = words in the title, and/or when = overdue|today|week|done|all"),
+    "redate_todos": A("write", ("title", "when", "at"), ("at",), "move the due date of open to-dos (title words and/or when = overdue|today|week|all) to at"),
     # folders
     "create_folder": A("write", ("name", "parent"), ("name",), "make a folder, inside parent if given"),
     "rename_folder": A("write", ("folder", "new_name"), ("folder", "new_name"), "rename a folder"),
@@ -97,6 +107,7 @@ ACTIONS: dict[str, Action] = {
     "delete_folder": A("write", ("folder",), ("folder",), "delete a folder (its mail stays; subfolders move up)"),
     "file_mail": A("write", ("q", "folder"), ("q", "folder"), "file conversations matching q into a folder"),
     "unfile_mail": A("write", ("q", "folder"), ("q", "folder"), "take conversations matching q out of a folder"),
+    "set_folder": A("write", ("folder", "pinned", "notify"), ("folder",), "pinned = yes|no pins a folder to the top; notify = default|always|mute sets its notifications"),
     "sort_folder": A("write", ("folder", "by", "instruction"), ("folder",), "sort a folder's mail into subfolders; by = company|sender|instruction"),
     "set_folder_criteria": A("write", ("folder", "q", "instruction", "fill"), ("folder",),
                              "new mail matching q and/or described by instruction goes to this folder too; fill=yes also files matching mail already here"),
@@ -109,6 +120,7 @@ ACTIONS: dict[str, Action] = {
     "set_group_criteria": A("write", ("group", "q", "instruction"), ("group",), "change which new mail joins a group"),
     "add_to_group": A("write", ("q", "group"), ("q", "group"), "put mail matching q in a group"),
     "remove_from_group": A("write", ("q", "group"), ("q", "group"), "take mail matching q out of a group"),
+    "merge_group": A("write", ("group", "into"), ("group", "into"), "merge group into another group (into)"),
     # rules
     "draft_rule": A("write", ("text",), ("text",), "draft a mail rule from words for the user to review"),
     "enable_rule": A("write", ("rule",), ("rule",), "switch a rule on (rule = words from its name)"),
@@ -119,24 +131,34 @@ ACTIONS: dict[str, Action] = {
     "note_mail": A("write", ("q", "text"), ("q", "text"), "add a private note to mail matching q"),
     "pin_mail": A("write", ("q",), ("q",), "pin mail matching q to top of feed"),
     "unpin_mail": A("write", ("q",), ("q",), "unpin mail matching q"),
+    "mute_mail": A("write", ("q", "value"), ("q",), "mute (value=on) or unmute (value=off) conversations matching q: no more notifications from them"),
+    "not_like_this": A("write", ("q",), ("q",), "bring silenced mail matching q back to the feed (Sift learns from it); q should include is:silenced"),
+    "vip_sender": A("write", ("sender", "value"), ("sender",), "make a sender's email address a VIP, always urgent (value=off removes it)"),
+    "save_search": A("write", ("name", "q", "value"), ("name", "q"), "save search q under name; value=alert also notifies on new matches"),
+    "delete_saved_search": A("write", ("name",), ("name",), "delete a saved search"),
     "snooze_mail": A("write", ("q", "at"), ("q", "at"), "snooze conversations matching q until at"),
     "set_setting": A("write", ("key", "value"), ("key", "value"),
                      "change a setting: daily_token_cap|undo_send_seconds|load_remote_images|resend_urgent|sender_name|ai_requests_per_minute|ai_requests_per_day"),
     # Gmail (never sends: replies and forwards become drafts)
-    "mail_action": A("gmail", ("q", "op"), ("q", "op"), "change conversations matching q in Gmail; op = archive|read|unread|star|unstar|trash|unarchive|spam"),
+    "mail_action": A("gmail", ("q", "op"), ("q", "op"),
+                     "change conversations matching q in Gmail; op = archive|unarchive|read|unread|star|unstar|important|unimportant|trash|untrash|spam|notspam"),
     "label_mail": A("gmail", ("q", "label"), ("q", "label"), "add a Gmail label to conversations matching q"),
+    "unlabel_mail": A("gmail", ("q", "label"), ("q", "label"), "remove a Gmail label from conversations matching q"),
     "draft_reply": A("gmail", ("q", "instruction"), ("q",), "AI writes a reply to the newest mail matching q as a Gmail draft (never sent); instruction = what to say"),
     "forward_mail": A("gmail", ("q", "to", "note"), ("q", "to"), "make a Gmail draft forwarding the newest mail matching q to address(es) to (never sent)"),
     "write_draft": A("gmail", ("to", "subject", "text", "account"), ("to",), "make a new Gmail draft (never sent)"),
 }
 FIELDS = ("q", "when", "company", "new_name", "page", "name", "folder", "parent", "by", "instruction", "stage", "title", "at",
-          "note", "tag", "text", "key", "value", "op", "label", "group", "rule", "fill", "to", "subject", "account")
+          "note", "tag", "text", "key", "value", "op", "label", "group", "rule", "fill", "to", "subject", "account", "sender", "into",
+          "pinned", "notify")
 PAGES = {"feed": "/", "todo": "/todo", "opportunities": "/opportunities", "folders": "/folders", "groups": "/groups", "rules": "/rules",
          "settings": "/settings", "outbox": "/outbox", "silenced": "/silenced", "usage": "/usage", "search": "/search"}
 SETTING_KEYS = {"daily_token_cap", "undo_send_seconds", "load_remote_images", "resend_urgent", "sender_name",
                 "ai_requests_per_minute", "ai_requests_per_day"}
 STAGES = ("announcement", "registration", "assessment", "interview", "result", "offer", "update")
-MAIL_OPS = ("archive", "read", "unread", "star", "unstar", "trash", "unarchive", "spam")
+MAIL_OPS = ("archive", "unarchive", "read", "unread", "star", "unstar", "important", "unimportant", "trash", "untrash", "spam", "notspam")
+TODO_WHEN = ("overdue", "today", "week", "done", "all")
+FOLDER_NOTIFY = ("default", "always", "mute")
 AI_ACTIONS = ("build_timelines", "make_todos", "draft_rule", "sort_folder", "draft_reply")
 
 SYSTEM = """You are the planner inside Sift, a personal email app. Turn the user's request into a short plan made of the app's own actions. Return only JSON.
@@ -144,6 +166,8 @@ Rules:
 - Use only the ACTIONS below. Write a step's fields in args as key="value" pairs separated by " ; ", only the fields that action lists.
 - Carry every detail of the request into the fields: what a group or folder is for -> instruction (or q when it is exact, like a sender); "fill it", "add existing mail", "from now and before" -> fill="yes"; what a reply should say -> instruction; dates -> at.
   Example: "a group for internship offers, add old ones too" -> create_group, args: name="Internships" ; instruction="internship offers" ; fill="yes"
+- When SELECTED is given and the request says these / them / selected / this mail, use q="these" (exactly) for that mail; it may be combined with nothing else.
+- Bulk is fine: one step may cover up to 1,000 conversations ("archive all newsletters older than 30 days" = one mail_action step).
 - Mail sets use q, a Sift search: Gmail words (from:nvidia, subject:test, newer_than:30d, older_than:30d, after:2026/10/01, has:attachment, is:unread) plus Sift filters folder:NAME, group:NAME, company:NAME, tag:NAME, priority:urgent|normal|digest, type:CATEGORY, is:silenced, account:LABEL. Quote names with spaces: folder:"Acme Corp".
 - A folder inside another is named by its own name (folder:Nvidia), not a path.
 - Use the KNOWN names exactly when they fit. Dates: today is in TODAY; give ISO date-times with the offset.
@@ -206,8 +230,29 @@ def _clip(names, n: int, width: int = 60) -> str:
     return ", ".join(f'"{x}"' for x in out) or "(none)"
 
 
-def context(db: Session, user_id: uuid.UUID) -> str:
-    """The few names the planner needs, kept small (tokens are the user's)."""
+_selection: ContextVar[dict | None] = ContextVar("assistant_selection", default=None)
+
+
+def clean_selection(sel: dict | None) -> dict | None:
+    """{"message_ids": [...], "group_ids": [...], "opportunity_ids": [...], "folder_ids": [...]} as strings."""
+    if not sel:
+        return None
+    out = {k: [str(x) for x in (sel.get(k) or [])][:bulk.LIMIT] for k in ("message_ids", "group_ids", "opportunity_ids", "folder_ids")}
+    return out if any(out.values()) else None
+
+
+def _selected(db: Session, user_id: uuid.UUID, sel: dict) -> list[Message]:
+    try:
+        ids = {k: [uuid.UUID(x) for x in v] for k, v in sel.items()}
+        rows, _ = bulk.resolve(db, user_id, ids["message_ids"], ids["group_ids"], None, ids["opportunity_ids"], ids["folder_ids"])
+    except (ValueError, KeyError) as exc:  # bulk.BulkError is a ValueError
+        raise AssistantError(f"the selection: {exc}") from exc
+    return rows
+
+
+def context(db: Session, user_id: uuid.UUID, selection: dict | None = None) -> str:
+    """The few names the planner needs, kept small (tokens are the user's). A selection is only
+    counted: the AI never sees which mail it is."""
     tz = user_settings.get(db, user_id)["timezone"]
     now = datetime.now(ZoneInfo(tz))
     tree = folders.load_tree(db, user_id)
@@ -222,7 +267,8 @@ def context(db: Session, user_id: uuid.UUID) -> str:
     return (f"TODAY: {now.strftime('%A %Y-%m-%d %H:%M')} ({tz}, offset {now.strftime('%z')[:3]}:{now.strftime('%z')[3:]})\n"
             f"KNOWN FOLDERS: {_clip(fnames, 60)}\nKNOWN GROUPS: {_clip(groups, 30)}\nKNOWN COMPANIES: {_clip(companies, 60)}\n"
             f"KNOWN RULES: {_clip(rules, 30)}\nKNOWN TAGS: {_clip(tags, 30)}\nKNOWN ACCOUNTS: {_clip(accounts, 10)}\n"
-            f"KNOWN CATEGORIES: {', '.join(cats)}")
+            f"KNOWN CATEGORIES: {', '.join(cats)}"
+            + (f"\nSELECTED: {_n(len(_selected(db, user_id, selection)), 'conversation')} (q=\"these\")" if selection else ""))
 
 
 def _previous(db: Session, user_id: uuid.UUID, before: uuid.UUID | None = None) -> str:
@@ -240,8 +286,16 @@ def _previous(db: Session, user_id: uuid.UUID, before: uuid.UUID | None = None) 
 
 # ---- planning -------------------------------------------------------------------------------
 
-def plan(db: Session, user_id: uuid.UUID, text: str) -> AssistantRun:
-    """One AI call: words -> checked plan, saved as a run. Read-only plans are run at once."""
+def estimate(db: Session, user_id: uuid.UUID, selection: dict | None = None, text: str = "") -> int:
+    """About how many tokens asking costs (the planner's prompt and answer), shown before the
+    user asks. What running the plan costs is shown with the plan, before Run."""
+    chars = len(_system()) + len(context(db, user_id, clean_selection(selection))) + len(_previous(db, user_id)) + max(len(text), 120) + 40
+    return chars // CHARS_PER_TOKEN + PLAN_OUTPUT_ESTIMATE
+
+
+def plan(db: Session, user_id: uuid.UUID, text: str, selection: dict | None = None) -> AssistantRun:
+    """One AI call: words -> checked plan, saved as a run. Read-only plans are run at once.
+    `selection` is what the user had picked ("these")."""
     text = " ".join(text.split())[:600]
     if len(text) < 2:
         raise AssistantError("Say what you'd like Sift to do")
@@ -250,10 +304,13 @@ def plan(db: Session, user_id: uuid.UUID, text: str) -> AssistantRun:
     if not llm.under_cap(db, user_id):
         raise AssistantError("Today's token cap is reached. It resets at midnight, or raise it in Settings.")
     cred = llm.credential(db, user_id)
-    run = AssistantRun(user_id=user_id, text=text, status="planned", steps=[], results=[])
+    selection = clean_selection(selection)
+    if selection:
+        _selected(db, user_id, selection)  # someone else's or deleted mail: refused before any AI call
+    run = AssistantRun(user_id=user_id, text=text, status="planned", steps=[], results=[], selection=selection)
     db.add(run)
     db.flush()  # the run exists first, so the planning call is counted under it
-    prompt = f"{context(db, user_id)}\n{_previous(db, user_id, run.id)}\n<request>\n{text.replace('</request>', '')}\n</request>"
+    prompt = f"{context(db, user_id, selection)}\n{_previous(db, user_id, run.id)}\n<request>\n{text.replace('</request>', '')}\n</request>"
     token = llm.current_run.set(run.id)
     try:
         result = llm._provider(cred).generate_json(_system(), prompt, _schema(), max_output_tokens=900)
@@ -277,11 +334,15 @@ def plan(db: Session, user_id: uuid.UUID, text: str) -> AssistantRun:
         data = {"reply": "I couldn't turn that into steps. Try saying it differently.", "steps": []}
     run.reply = str(data.get("reply") or "")[:400]
     run.tokens = result.input_tokens + result.output_tokens
-    run.steps = check(db, user_id, data.get("steps") or [])
-    db.commit()  # the run (and the token use) is saved before any step runs
-    if run.steps and all(ACTIONS[s["action"]].kind == "read" for s in run.steps if not s.get("error")):
-        execute(db, run)
-        db.commit()
+    sel_token = _selection.set(selection)
+    try:
+        run.steps = check(db, user_id, data.get("steps") or [])
+        db.commit()  # the run (and the token use) is saved before any step runs
+        if run.steps and all(ACTIONS[s["action"]].kind == "read" for s in run.steps if not s.get("error")):
+            execute(db, run)
+            db.commit()
+    finally:
+        _selection.reset(sel_token)
     return run
 
 
@@ -342,6 +403,11 @@ def _when(db: Session, user_id: uuid.UUID, value: str | None) -> datetime | None
 
 def _mail(db: Session, user_id: uuid.UUID, q: str, limit: int = MAIL_LIMIT) -> list[Message]:
     from app.search.engine import SearchError, stored_matches
+    if q.strip().strip('"').lower() == THESE:
+        sel = _selection.get()
+        if not sel:
+            raise AssistantError("nothing is selected; pick the mail first, or say which mail")
+        return _selected(db, user_id, sel)[:limit]
     try:
         return stored_matches(db, user_id, _expand_groups(db, user_id, q), limit)
     except SearchError as exc:
@@ -397,6 +463,8 @@ def check(db: Session, user_id: uuid.UUID, raw_steps: list) -> list[dict]:
             missing = [f for f in spec.required if not step.get(f)]
             if missing:
                 raise AssistantError(f"needs {', '.join(missing)}")
+            if name in ("finish_todo", "delete_todo", "redate_todos") and not (step.get("title") or step.get("when")):
+                raise AssistantError("say which to-dos (words from the title, or when)")
             p = _preview(db, user_id, step, made)
             step.update(preview=p.text, targets=p.targets, tokens=p.tokens)
             new = {"create_folder": ("folder", "name"), "rename_folder": ("folder", "new_name"), "create_group": ("group", "name"),
@@ -494,12 +562,15 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
         if _company(db, user_id, s["company"]):
             raise AssistantError(f"{s['company']} already has a timeline")
         return P(f"Start a timeline for {s['company']}", [f"New timeline: {s['company']}"])
-    if a in ("rename_timeline", "close_timeline", "delete_timeline"):
+    if a in ("close_timeline", "reopen_timeline", "delete_timeline"):
+        os_ = _companies(db, user_id, s["company"], a, made)
+        verb = {"close_timeline": "Close", "reopen_timeline": "Reopen", "delete_timeline": "Delete"}[a]
+        tail = " (their mail stays)" if a == "delete_timeline" else ""
+        return P(f"{verb} {_n(len(os_), 'timeline')}{tail}", [f"Timeline: {o.company}" for o in os_[:TARGETS_SHOWN]]
+                 + ([f"+ {len(os_) - TARGETS_SHOWN} more"] if len(os_) > TARGETS_SHOWN else []))
+    if a == "rename_timeline":
         o = _need_company(db, user_id, s["company"], made)
-        events = (db.scalar(select(func.count()).select_from(OpportunityEvent).where(OpportunityEvent.opportunity_id == o.id)) or 0) if o.id else 0
-        text = {"rename_timeline": f"Rename the {o.company} timeline to {s.get('new_name')}", "close_timeline": f"Close the {o.company} timeline",
-                "delete_timeline": f"Delete the {o.company} timeline and its {_n(events, 'step')} (the mail stays)"}[a]
-        return P(text, [f"Timeline: {o.company}"])
+        return P(f"Rename the {o.company} timeline to {s.get('new_name')}", [f"Timeline: {o.company}"])
     if a == "add_section":
         o = _need_company(db, user_id, s["company"], made)
         at = _when(db, user_id, s["at"])
@@ -520,22 +591,30 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
         if s.get("at") and at is None:
             raise AssistantError("couldn't read the due date")
         return P(f"Add to-do \"{s['title']}\"" + (f", due {at.strftime('%a %d %b, %H:%M')}" if at else ""), [])
-    if a in ("finish_todo", "delete_todo", "edit_todo"):
-        ts = _todos_matching(db, user_id, s["title"], a != "finish_todo")
+    if a in ("finish_todo", "delete_todo", "redate_todos"):
+        ts = _todos_for(db, user_id, s.get("title"), s.get("when"), a)
+        which = " ".join(x for x in (f"matching \"{s['title']}\"" if s.get("title") else "", f"({s['when']})" if s.get("when") else "") if x)
+        if a == "redate_todos":
+            at = _when(db, user_id, s["at"])
+            if at is None:
+                raise AssistantError("couldn't read the new due date")
+            return P(f"Move {_n(len(ts), 'to-do')} {which} to {at.strftime('%a %d %b, %H:%M')}", [f"To-do: {t.title}" for t in ts[:TARGETS_SHOWN]])
+        verb = "Mark done" if a == "finish_todo" else "Delete"
+        return P(f"{verb} {_n(len(ts), 'to-do')} {which}", [f"To-do: {t.title}" for t in ts[:TARGETS_SHOWN]]
+                 + ([f"+ {len(ts) - TARGETS_SHOWN} more"] if len(ts) > TARGETS_SHOWN else []))
+    if a == "edit_todo":
+        ts = _todos_matching(db, user_id, s["title"], True)
         if not ts:
             raise AssistantError(f"no to-do matches \"{s['title']}\"")
-        if a == "edit_todo":
-            if len(ts) > 1:
-                raise AssistantError(f"{len(ts)} to-dos match \"{s['title']}\"; say which one")
-            if s.get("at") and _when(db, user_id, s["at"]) is None:
-                raise AssistantError("couldn't read the due date")
-            changes = ", ".join(x for x in (f"name to \"{s['new_name']}\"" if s.get("new_name") else "",
-                                            f"due to {s['at']}" if s.get("at") else "", "the note" if s.get("note") else "") if x)
-            if not changes:
-                raise AssistantError("say what to change")
-            return P(f"Change {changes}", [f"To-do: {ts[0].title}"])
-        verb = "Mark done" if a == "finish_todo" else "Delete"
-        return P(f"{verb} {_n(len(ts), 'to-do')} matching \"{s['title']}\"", [f"To-do: {t.title}" for t in ts[:TARGETS_SHOWN]])
+        if len(ts) > 1:
+            raise AssistantError(f"{len(ts)} to-dos match \"{s['title']}\"; say which one")
+        if s.get("at") and _when(db, user_id, s["at"]) is None:
+            raise AssistantError("couldn't read the due date")
+        changes = ", ".join(x for x in (f"name to \"{s['new_name']}\"" if s.get("new_name") else "",
+                                        f"due to {s['at']}" if s.get("at") else "", "the note" if s.get("note") else "") if x)
+        if not changes:
+            raise AssistantError("say what to change")
+        return P(f"Change {changes}", [f"To-do: {ts[0].title}"])
 
     # folders
     if a == "create_folder":
@@ -562,6 +641,18 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
             f"Take {_n(len(ms), 'conversation')} matching {s['q']} out of {fname}"
         del verb
         return P(text, [f"Folder: {fname}", *_mail_targets(ms)])
+    if a == "set_folder":
+        fname = _need_folder(db, user_id, s["folder"], made)
+        bits = []
+        if s.get("pinned"):
+            bits.append("pin it" if _yes(s["pinned"]) else "unpin it")
+        if s.get("notify"):
+            if s["notify"].lower() not in FOLDER_NOTIFY:
+                raise AssistantError(f"notify must be one of {', '.join(FOLDER_NOTIFY)}")
+            bits.append({"default": "notify as usual", "always": "always notify", "mute": "mute its notifications"}[s["notify"].lower()])
+        if not bits:
+            raise AssistantError("say what to change: pinned or notify")
+        return P(f"Folder {fname}: {' and '.join(bits)}", [f"Folder: {fname}"])
     if a == "sort_folder":
         by = (s.get("by") or "company").lower()
         if by not in ("company", "sender", "instruction"):
@@ -599,6 +690,11 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
         text = {"rename_group": f"Rename group {gname} to {s.get('new_name')}", "delete_group": f"Delete group {gname} ({_n(n, 'mail')} stay in your mail)",
                 "mute_group": f"{'Unmute' if (s.get('value') or 'on').lower() in ('off', 'no', 'false') else 'Mute'} group {gname}"}[a]
         return P(text, [f"Group: {gname}"])
+    if a == "merge_group":
+        gname, into = _need_group(db, user_id, s["group"], made), _need_group(db, user_id, s["into"], made)
+        if gname.lower() == into.lower():
+            raise AssistantError("pick two different groups")
+        return P(f"Merge group {gname} into {into} (mail doesn't change)", [f"Group: {gname}", f"Group: {into}"])
     if a in ("add_to_group", "remove_from_group"):
         gname = _need_group(db, user_id, s["group"], made)
         ms = _mail(db, user_id, s["q"])
@@ -624,6 +720,22 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
         ms = _mail(db, user_id, s["q"])
         verb = "Pin" if a == "pin_mail" else "Unpin"
         return P(f"{verb} {_n(len(ms), 'mail')} matching {s['q']}", _mail_targets(ms))
+    if a == "mute_mail":
+        ms = _threads(_mail(db, user_id, s["q"]))
+        verb = "Unmute" if _off(s.get("value")) else "Mute"
+        return P(f"{verb} {_n(len(ms), 'conversation')} matching {s['q']}", _mail_targets(ms))
+    if a == "not_like_this":
+        ms = [m for m in _mail(db, user_id, s["q"]) if m.status in _silenced_statuses()]
+        return P(f"Bring {_n(len(ms), 'silenced mail')} matching {s['q']} back to the feed", _mail_targets(ms))
+    if a == "vip_sender":
+        email = _sender_email(s["sender"])
+        return P(f"{'Remove' if _off(s.get('value')) else 'Make'} {email} {'from VIPs' if _off(s.get('value')) else 'a VIP (always urgent)'}", [f"Sender: {email}"])
+    if a == "save_search":
+        alert = (s.get("value") or "").lower() in ("alert", "notify", "on", "yes")
+        return P(f"Save the search {s['q']} as {s['name']}" + (" and notify on new matches" if alert else ""), [f"Saved search: {s['name']}"])
+    if a == "delete_saved_search":
+        ss = _saved_by_name(db, user_id, s["name"])
+        return P(f"Delete the saved search {ss.name}", [f"Saved search: {ss.name}"])
     if a == "snooze_mail":
         at = _when(db, user_id, s["at"])
         if at is None:
@@ -641,8 +753,10 @@ def _preview(db: Session, user_id: uuid.UUID, s: dict, made: dict) -> Preview:
             raise AssistantError(f"op must be one of {', '.join(MAIL_OPS)}")
         ms = _threads(_mail(db, user_id, s["q"]))
         return P(f"In Gmail: {s['op']} {_n(len(ms), 'conversation')} matching {s['q']}", _mail_targets(ms))
-    if a == "label_mail":
+    if a in ("label_mail", "unlabel_mail"):
         ms = _threads(_mail(db, user_id, s["q"]))
+        if a == "unlabel_mail":
+            return P(f"In Gmail: remove the label {s['label']} from {_n(len(ms), 'conversation')} matching {s['q']}", _mail_targets(ms))
         return P(f"In Gmail: label {_n(len(ms), 'conversation')} matching {s['q']} as {s['label']}", _mail_targets(ms))
     if a in ("draft_reply", "forward_mail"):
         ms = _mail(db, user_id, s["q"], 1)
@@ -692,6 +806,81 @@ def _group_members(db: Session, g: MailGroup) -> list[Message]:
     return grouping.members(db, g)
 
 
+def _off(value: str | None) -> bool:
+    return (value or "on").strip().lower() in ("off", "no", "false", "0", "remove")
+
+
+def _silenced_statuses():
+    from app.api.messages import SILENCED_STATUSES
+    return SILENCED_STATUSES
+
+
+def _sender_email(value: str) -> str:
+    v = value.strip().strip('"<>').lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+        raise AssistantError(f"{value} isn't an email address")
+    return v
+
+
+def _saved_by_name(db: Session, user_id: uuid.UUID, name: str):
+    from app.models import SavedSearch
+    rows = list(db.scalars(select(SavedSearch).where(SavedSearch.user_id == user_id)))
+    exact = [r for r in rows if r.name.lower() == name.strip().strip('"').lower()]
+    if exact:
+        return exact[0]
+    scored = sorted(((opportunities.name_score(r.name, name), r) for r in rows), key=lambda x: -x[0])
+    if scored and scored[0][0] >= opportunities.FUZZY:
+        return scored[0][1]
+    raise AssistantError(f"there's no saved search called {name}")
+
+
+def _companies(db: Session, user_id: uuid.UUID, names: str, action: str, made: dict | None = None) -> list:
+    """Several timelines at once: "Acme, Globex" or "all" (all active ones to close, all closed
+    ones to reopen or delete)."""
+    if names.strip().lower() in ("all", "*", "every", "everything"):
+        status = "active" if action == "close_timeline" else "closed"
+        out = list(db.scalars(select(Opportunity).where(Opportunity.user_id == user_id, Opportunity.status == status)
+                              .order_by(Opportunity.updated_at.desc()).limit(200)))
+        if not out:
+            raise AssistantError(f"there are no {status} timelines")
+        return out
+    out, seen = [], set()
+    for name in [x.strip() for x in re.split(r"\s*(?:,|;|\band\b)\s*", names) if x.strip()][:50]:
+        o = _need_company(db, user_id, name, made)
+        if o.id not in seen:
+            seen.add(o.id)
+            out.append(o)
+    return out
+
+
+def _todos_for(db: Session, user_id: uuid.UUID, words: str | None, when: str | None, action: str) -> list[Todo]:
+    """To-dos by title words and/or when (overdue, today, week, done, all)."""
+    when = (when or "").lower() or None
+    if when and when not in TODO_WHEN:
+        raise AssistantError(f"when must be one of {', '.join(TODO_WHEN)}")
+    if when == "done" and action != "delete_todo":
+        raise AssistantError("only deleting works on done to-dos")
+    tz = ZoneInfo(user_settings.get(db, user_id)["timezone"])
+    now = datetime.now(tz)
+    q = select(Todo).where(Todo.user_id == user_id)
+    if words:
+        q = q.where(func.lower(Todo.title).contains(words.lower()))
+    if when == "done":
+        q = q.where(Todo.done.is_(True))
+    elif when != "all" or action != "delete_todo":
+        q = q.where(Todo.done.is_(False))
+    if when == "overdue":
+        q = q.where(Todo.due_at < now)
+    elif when == "today":
+        q = q.where(Todo.due_at < now.replace(hour=23, minute=59, second=59))
+    elif when == "week":
+        q = q.where(Todo.due_at < now + timedelta(days=7))
+    ts = list(db.scalars(q.order_by(Todo.due_at.asc().nulls_last()).limit(500)))
+    if not ts:
+        raise AssistantError("no to-do matches")
+    return ts
+
+
 def _todos_matching(db: Session, user_id: uuid.UUID, words: str, include_done: bool) -> list[Todo]:
     q = select(Todo).where(Todo.user_id == user_id, func.lower(Todo.title).contains(words.lower()))
     if not include_done:
@@ -707,9 +896,13 @@ def run_steps(db: Session, run: AssistantRun) -> AssistantRun:
         raise AssistantError("This plan already ran" if run.status in ("done", "running") else "This plan was cancelled")
     if any(s.get("action") in AI_ACTIONS for s in run.steps) and not llm.ai_enabled(db, run.user_id):
         raise AssistantError("Add your AI key in Settings first")
-    # re-check against the data as it is now (a folder may be gone since the plan was made)
-    run.steps = check(db, run.user_id, [{k: v for k, v in s.items() if k == "action" or k in FIELDS} for s in run.steps])
-    execute(db, run)
+    sel_token = _selection.set(run.selection)
+    try:
+        # re-check against the data as it is now (a folder may be gone since the plan was made)
+        run.steps = check(db, run.user_id, [{k: v for k, v in s.items() if k == "action" or k in FIELDS} for s in run.steps])
+        execute(db, run)
+    finally:
+        _selection.reset(sel_token)
     return run
 
 
@@ -839,15 +1032,17 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
         old = o.company
         opp_api.update_opportunity(o.id, opp_api.OpportunityPatch(company=s["new_name"][:200]), user, db)
         return {"text": f"Renamed {old} to {s['new_name']}", "link": {"page": "opportunity", "id": str(o.id)}}
-    if a == "close_timeline":
-        o = _need_company(db, user_id, s["company"])
-        opp_api.update_opportunity(o.id, opp_api.OpportunityPatch(status="closed"), user, db)
-        return {"text": f"Closed the {o.company} timeline", "link": {"page": "opportunity", "id": str(o.id)}}
-    if a == "delete_timeline":
-        o = _need_company(db, user_id, s["company"])
-        name = o.company
-        opp_api.delete_opportunity(o.id, user, db)
-        return {"text": f"Deleted the {name} timeline; its mail stays", "link": {"page": "opportunities"}}
+    if a in ("close_timeline", "reopen_timeline", "delete_timeline"):
+        os_ = _companies(db, user_id, s["company"], a)
+        for o in os_:
+            if a == "delete_timeline":
+                opp_api.delete_opportunity(o.id, user, db)
+            else:
+                opp_api.update_opportunity(o.id, opp_api.OpportunityPatch(status="closed" if a == "close_timeline" else "active"), user, db)
+        verb = {"close_timeline": "Closed", "reopen_timeline": "Reopened", "delete_timeline": "Deleted"}[a]
+        tail = "; their mail stays" if a == "delete_timeline" else ""
+        link = {"page": "opportunity", "id": str(os_[0].id)} if len(os_) == 1 and a != "delete_timeline" else {"page": "opportunities"}
+        return {"text": f"{verb} {_n(len(os_), 'timeline')}{tail}", "link": link}
     if a == "add_section":
         o = _need_company(db, user_id, s["company"])
         body = opp_api.SectionIn(kind=(s.get("stage") or "update").lower(), title=s["title"][:200], note=(s.get("note") or None),
@@ -880,15 +1075,19 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
                                    due_at=_when(db, user_id, s.get("at")))
         todo_api.update_todo(ts[0].id, patch, user, db)
         return {"text": f"Changed to-do \"{s.get('new_name') or ts[0].title}\"", "link": {"page": "todo"}}
-    if a in ("finish_todo", "delete_todo"):
+    if a in ("finish_todo", "delete_todo", "redate_todos"):
         from app.api import todos as todo_api
-        ts = _todos_matching(db, user_id, s["title"], a == "delete_todo")
+        ts = _todos_for(db, user_id, s.get("title"), s.get("when"), a)
+        at = _when(db, user_id, s.get("at")) if a == "redate_todos" else None
         for t in ts:
             if a == "finish_todo":
                 todo_api.update_todo(t.id, todo_api.TodoPatch(done=True), user, db)
+            elif a == "redate_todos":
+                todo_api.update_todo(t.id, todo_api.TodoPatch(due_at=at), user, db)
             else:
                 todo_api.delete_todo(t.id, user, db)
-        return {"text": f"{'Marked done' if a == 'finish_todo' else 'Deleted'} {_n(len(ts), 'to-do')}", "link": {"page": "todo"}}
+        verb = {"finish_todo": "Marked done", "delete_todo": "Deleted", "redate_todos": "Moved"}[a]
+        return {"text": f"{verb} {_n(len(ts), 'to-do')}", "link": {"page": "todo"}}
 
     # ---- folders
     if a == "create_folder":
@@ -900,7 +1099,7 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
         except folders.FolderError as exc:
             raise AssistantError(str(exc)) from exc
         return {"text": f"Made folder {f.name}" + (f" in {parent.name}" if parent else ""), "link": {"page": "folder", "id": str(f.id)}}
-    if a in ("rename_folder", "move_folder", "delete_folder", "file_mail", "unfile_mail", "sort_folder", "set_folder_criteria"):
+    if a in ("rename_folder", "move_folder", "delete_folder", "file_mail", "unfile_mail", "sort_folder", "set_folder_criteria", "set_folder"):
         f = _folder_by_name(db, user_id, s["folder"])
         if f is None:
             raise AssistantError(f"there's no folder called {s['folder']}")
@@ -918,6 +1117,10 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
                 name = f.name
                 folders.remove(db, user_id, f, "move_up")
                 return {"text": f"Deleted folder {name}; its mail stays", "link": {"page": "folders"}}
+            if a == "set_folder":
+                folders.edit(f, pinned=_yes(s["pinned"]) if s.get("pinned") else None,
+                             notify_mode=s["notify"].lower() if s.get("notify") else None)
+                return {"text": f"Changed folder {f.name}", "link": {"page": "folder", "id": str(f.id)}}
         except folders.FolderError as exc:
             raise AssistantError(str(exc)) from exc
         if a == "file_mail":
@@ -972,11 +1175,21 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
             else:
                 out["text"] += f" with {_n(folder_ai.fill_now(db, user_id, 'group', g.id, q, q), 'mail')} already here"
         return out
-    if a in ("rename_group", "delete_group", "mute_group", "set_group_criteria", "add_to_group", "remove_from_group"):
+    if a in ("rename_group", "delete_group", "mute_group", "set_group_criteria", "add_to_group", "remove_from_group", "merge_group"):
         g = _group_by_name(db, user_id, s["group"])
         if g is None:
             raise AssistantError(f"there's no group called {s['group']}")
         link = {"page": "group", "id": str(g.id)}
+        if a == "merge_group":
+            from app import grouping
+            target = _group_by_name(db, user_id, s["into"])
+            if target is None or target.id == g.id:
+                raise AssistantError(f"there's no other group called {s['into']}")
+            try:
+                grouping.merge(db, g, target)
+            except grouping.GroupError as exc:
+                raise AssistantError(str(exc)) from exc
+            return {"text": f"Merged into {target.title}", "link": {"page": "group", "id": str(target.id)}}
         if a == "rename_group":
             g.title = s["new_name"][:200]
             return {"text": f"Renamed the group to {g.title}", "link": link}
@@ -1053,6 +1266,34 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
         events.mail_changed(db, user_id, [m.id for m in ms])
         verb = "Pinned" if pinned else "Unpinned"
         return {"text": f"{verb} {_n(len(ms), 'mail')}", "link": {"page": "search", "q": "is:pinned" if pinned else s["q"]}}
+    if a == "mute_mail":
+        out = _bulk(db, user_id, s["q"], "unmute" if _off(s.get("value")) else "mute")
+        return {"text": f"{'Unmuted' if _off(s.get('value')) else 'Muted'} {_n(len(out.changed), 'conversation')}"}
+    if a == "not_like_this":
+        from app import rule_tools
+        ms = [m for m in _mail(db, user_id, s["q"]) if m.status in _silenced_statuses()]
+        for m in ms:
+            rule_tools.unsilence(db, m)
+        return {"text": f"Brought {_n(len(ms), 'mail')} back to the feed", "link": {"page": "feed"}}
+    if a == "vip_sender":
+        from app import vip
+        email = _sender_email(s["sender"])
+        if _off(s.get("value")):
+            vip.remove_vip(db, user_id, email)
+            return {"text": f"{email} is no longer a VIP"}
+        vip.add_vip(db, user_id, email)
+        return {"text": f"{email} is a VIP now: their mail is always urgent"}
+    if a == "save_search":
+        from app.api import saved as saved_api
+        alert = (s.get("value") or "").lower() in ("alert", "notify", "on", "yes")
+        r = saved_api.create(saved_api.SavedIn(name=s["name"][:120], query=_expand_groups(db, user_id, s["q"])[:1000], notify=alert), user, db)
+        return {"text": f"Saved the search {r['name']}" + (" with alerts" if alert else ""), "link": {"page": "search", "q": r["query"]}}
+    if a == "delete_saved_search":
+        from app.api import saved as saved_api
+        ss = _saved_by_name(db, user_id, s["name"])
+        name = ss.name
+        saved_api.remove(ss.id, user, db)
+        return {"text": f"Deleted the saved search {name}"}
     if a == "snooze_mail":
         from app import snooze
         ms = _threads(_mail(db, user_id, s["q"]))
@@ -1075,21 +1316,35 @@ def _run_one(db: Session, user_id: uuid.UUID, s: dict, run_id: uuid.UUID) -> dic
         return {"text": f"Set {s['key'].replace('_', ' ')} to {value}", "link": {"page": "settings"}}
 
     # ---- Gmail
-    if a in ("mail_action", "label_mail"):
-        from app import actions
-        ms = _threads(_mail(db, user_id, s["q"]))[:MAIL_LIMIT]
-        try:
-            r = actions.apply(db, user_id, [(m.account_id, m.thread_id) for m in ms], s["op"] if a == "mail_action" else "label",
-                              s.get("label") if a == "label_mail" else None)
-        except actions.NeedsWriteAccess as exc:
-            raise AssistantError("Sift needs permission to change mail in Gmail. Allow it from a mail's Actions first.") from exc
-        except actions.ActionError as exc:
-            raise AssistantError(str(exc)) from exc
-        tail = f" ({', '.join(r.failed)} failed)" if r.failed else ""
-        return {"text": f"Done in Gmail for {_n(r.done, 'conversation')}{tail}"}
+    if a in ("mail_action", "label_mail", "unlabel_mail"):
+        op = s["op"] if a == "mail_action" else "label" if a == "label_mail" else "unlabel"
+        out = _bulk(db, user_id, s["q"], op, {"label": s["label"]} if a != "mail_action" else {})
+        if out.job_id:
+            return {"text": f"Started in Gmail: {op} {_n(out.conversations, 'conversation')}. It runs in the background; your lists update as it goes.",
+                    "job_id": str(out.job_id)}
+        tail = f" ({', '.join(out.failed_accounts)} failed)" if out.failed_accounts else ""
+        local = f" (in Sift only for {', '.join(out.sift_only)})" if out.sift_only else ""
+        return {"text": f"Done in Gmail for {_n(len(out.changed), 'conversation')}{local}{tail}"}
     if a in ("draft_reply", "forward_mail", "write_draft"):
         return _draft(db, user, s)
     raise AssistantError(f"unknown action {a}")
+
+
+def _bulk(db: Session, user_id: uuid.UUID, q: str, action: str, params: dict | None = None) -> "bulk.Outcome":
+    """The selection bar's own code (app/bulk.py): up to 1,000 conversations; big Gmail changes
+    become a background job with progress."""
+    from app import actions, events, jobs
+    ms = _threads(_mail(db, user_id, q))
+    try:
+        out = bulk.run(db, user_id, ms, action, params or {})
+    except actions.NeedsWriteAccess as exc:
+        raise AssistantError("Sift needs permission to change mail in Gmail. Allow it from a mail's Actions first.") from exc
+    except (actions.ActionError, bulk.BulkError) as exc:
+        raise AssistantError(str(exc)) from exc
+    if out.job_id:
+        jobs.enqueue_pg(db, "bulk", {"job_id": str(out.job_id)}, dedupe_key=f"bulk:{out.job_id}")
+    events.mail_changed(db, user_id, out.changed)
+    return out
 
 
 def _draft(db: Session, user: User, s: dict) -> dict:

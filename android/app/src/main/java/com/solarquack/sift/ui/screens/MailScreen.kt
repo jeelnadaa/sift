@@ -204,8 +204,8 @@ fun MailScreen(id: String, onBack: () -> Unit, onOpenOpportunity: (String) -> Un
             }) else add(SheetItem("Ignore mails like this…", "Silence future mail from this sender with this kind of subject", section = "Sift") {
                 scope.launch { try { likeThis = Api.get(context).likeThis(msg.id, LikeThisIn(save = false)) } catch (t: Throwable) { error = t.userMessage() } }
             })
-            add(SheetItem("Open in Gmail", "In the Gmail app or browser", section = "Sift") {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mail.google.com/mail/u/0/#all")))
+            add(SheetItem("Open in Gmail", "This conversation, in the right account", section = "Sift") {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gmailUrl(msg.accountEmail, msg.threadId))))
             })
         }
         Spacer(Modifier.height(14.dp))
@@ -552,4 +552,11 @@ private fun PrivateNotesSection(messageId: String, notes: List<com.solarquack.si
             }
         }
     }
+}
+
+/** Gmail on the web for one conversation: authuser picks the account (not always u/0) and
+ * #all/<thread id> opens the thread wherever it is filed. */
+internal fun gmailUrl(accountEmail: String?, threadId: String?): String {
+    val user = accountEmail?.let { "?authuser=" + Uri.encode(it) } ?: "0/"
+    return "https://mail.google.com/mail/u/$user#all" + (threadId?.takeIf { it.isNotBlank() }?.let { "/$it" } ?: "")
 }

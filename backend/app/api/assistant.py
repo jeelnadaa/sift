@@ -14,8 +14,17 @@ from app.security import current_user
 router = APIRouter(prefix="/api/v1/assistant")
 
 
+class SelectionIn(BaseModel):
+    """What the user had selected ("these"). The AI only sees how many."""
+    message_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
+    group_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
+    opportunity_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
+    folder_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
+
+
 class AskIn(BaseModel):
     text: str = Field(min_length=1, max_length=600)
+    selection: SelectionIn | None = None
 
 
 def _own(db: Session, user: User, run_id: uuid.UUID, lock: bool = False) -> AssistantRun:
@@ -31,11 +40,22 @@ def ask(body: AskIn, user: User = Depends(current_user), db: Session = Depends(g
     """One AI call turns the words into a plan. Read-only plans come back already run; a plan
     that changes anything comes back with needs_confirm and runs on POST /{id}/run."""
     try:
-        run = assistant.plan(db, user.id, body.text)
+        run = assistant.plan(db, user.id, body.text, body.selection.model_dump(mode="json") if body.selection else None)
     except assistant.AssistantError as exc:
         db.commit()  # keep token use and key status
         raise HTTPException(422, str(exc)) from exc
     return assistant.run_json(run)
+
+
+@router.post("/estimate")
+def estimate(body: SelectionIn | None = None, text: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """About how many tokens asking costs, shown before the user asks (no AI call is made)."""
+    from app.llm import service as llm
+    try:
+        tokens = assistant.estimate(db, user.id, body.model_dump(mode="json") if body else None, text[:600])
+    except assistant.AssistantError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"tokens": tokens, "ai_enabled": llm.ai_enabled(db, user.id)}
 
 
 @router.post("/{run_id}/run")
