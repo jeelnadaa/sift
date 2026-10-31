@@ -94,7 +94,8 @@ class SiftMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val title = data["title"] ?: "Sift"
-        val body = data["body"].orEmpty()
+        val code = data["otp"]?.takeIf { it.isNotBlank() }
+        val body = data["body"].orEmpty().let { if (code != null) "Code $code · $it" else it }
         val header = listOfNotNull(tier.channelId.uppercase(), data["account"]?.takeIf { it.isNotBlank() }).joinToString(" · ")
         val builder = NotificationCompat.Builder(this, tier.channelId)
             .setSmallIcon(R.drawable.ic_notification)
@@ -108,6 +109,15 @@ class SiftMessagingService : FirebaseMessagingService() {
             .setContentIntent(open)
             .setAutoCancel(true)
             .setOnlyAlertOnce(data["resend"] == null)
+        if (code != null) {
+            // one-time code: hidden on the lock screen until unlocked, gone after 15 minutes (codes go stale)
+            builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(
+                    NotificationCompat.Builder(this, tier.channelId).setSmallIcon(R.drawable.ic_notification).setColor(0xFFC8FF3D.toInt())
+                        .setContentTitle(title).setContentText("Code hidden. Unlock to see it.").setSubText(header).build(),
+                )
+                .setTimeoutAfter(OTP_TTL_MS)
+        }
         addActions(builder, data, id, messageId, open)
         NotificationManagerCompat.from(this).notify(id, builder.build())
     }
@@ -115,6 +125,12 @@ class SiftMessagingService : FirebaseMessagingService() {
     /** Up to three buttons (Android's limit), most useful first. */
     private fun addActions(builder: NotificationCompat.Builder, data: Map<String, String>, id: Int, messageId: String?, open: PendingIntent) {
         var slots = 3
+        data["otp"]?.takeIf { it.isNotBlank() }?.let { code ->
+            builder.addAction(0, "Copy code", broadcast(id + 6, NotificationActionReceiver.ACTION_COPY_CODE, id) {
+                putExtra(NotificationActionReceiver.EXTRA_CODE, code)
+            })
+            slots--
+        }
         val choices = data["company_choices"].orEmpty().lines().mapNotNull { line ->
             line.split("|", limit = 2).takeIf { it.size == 2 && it[0].isNotBlank() }?.let { it[0] to it[1] }
         }
@@ -172,5 +188,6 @@ class SiftMessagingService : FirebaseMessagingService() {
 
     companion object {
         private const val TAG = "SiftFCM"
+        private const val OTP_TTL_MS = 15 * 60 * 1000L
     }
 }

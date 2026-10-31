@@ -17,7 +17,7 @@ but only urgent mail pushes on its own; the rest is "held" and summed up in one 
 """
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -25,7 +25,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app import folder_ai, grouping, heuristics, notify, opportunities, outbox, places, rules, todos, user_settings, vip
+from app import folder_ai, grouping, heuristics, notify, opportunities, otp, outbox, places, rules, todos, user_settings, vip
 from app.fingerprint import fingerprint, normalize_subject
 from app.llm import service as llm
 from app.mail.base import AuthRevoked, MailProvider
@@ -47,11 +47,12 @@ AI_MAX_AGE = timedelta(hours=72)  # older mail is never sent to the AI (no backf
 class Outcome:
     message_id: uuid.UUID | None
     priority: str | None
-    decided_by: str  # rule | fingerprint | heuristic | llm | default | duplicate | existing | gone | error
+    decided_by: str  # rule | vip | otp | fingerprint | heuristic | llm | default | duplicate | existing | gone | error
     notified: bool = False
     llm_called: bool = False
     held: bool = False  # late mail whose push was left for the caller's one summary push
     quiet: bool = False  # imported or too old: rules only, no push
+    otp: str | None = field(default=None, repr=False)  # one-time code for this mail's push only; never stored or logged
 
 
 def _rule_views(db: Session, user_id: uuid.UUID) -> list[rules.RuleView]:
@@ -187,7 +188,7 @@ def process_message(db: Session, account: GmailAccount, provider: MailProvider, 
         pass
     elif late and msg.priority != "urgent":
         outcome.held = msg.priority in notify.NOTIFY_PRIORITIES and msg.status == "processed"
-    elif notify.notify_message(db, msg, account):
+    elif notify.notify_message(db, msg, account, otp=outcome.otp):
         outcome.notified = True
     if not quiet:  # imports announce themselves once per batch (app.accounts)
         from app import events
@@ -236,6 +237,13 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         fp = fingerprint(meta.authenticated_domain, meta.subject)
         msg.fingerprint = fp
 
+    # one-time codes (app/otp.py): found locally, so OTP mail is urgent with AI off too (owner,
+    # 2026-10-31). A rule of the user's that silences the mail still wins; quieting rules made by
+    # Sift carry a security exception, so they never catch OTP mail.
+    otp_code = None
+    if not (match and match.action["type"] in SILENT_ACTIONS) and otp.mentioned(meta.subject, meta.snippet):
+        otp_code = otp.find(meta.subject, load_body())
+
     if match:
         db.execute(update(Rule).where(Rule.id == match.rule_id).values(hit_count=Rule.hit_count + 1, last_hit_at=datetime.now(UTC)))
         msg.matched_rule_id = match.rule_id
@@ -252,18 +260,18 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
             msg.extraction = extras or None
             return Outcome(msg.id, "silent", "rule")
         if kind in PRIORITY_ACTIONS:
-            msg.priority, msg.status = PRIORITY_ACTIONS[kind], "processed"
+            msg.priority, msg.status = "urgent" if otp_code else PRIORITY_ACTIONS[kind], "processed"
             msg.category = msg.category or "other"
-            msg.extraction = extras or None
-            return Outcome(msg.id, msg.priority, "rule")
+            msg.extraction = {**extras, "otp": True} if otp_code else (extras or None)
+            return Outcome(msg.id, msg.priority, "rule", otp=otp_code)
         # kind == "llm": fall through to the LLM step, skipping heuristics and fingerprints
 
     # VIP sender: elevate priority to urgent and mark processed
     if vip.is_vip(db, user_id, meta.sender):
         msg.priority, msg.status = "urgent", "processed"
         msg.category = msg.category or "other"
-        msg.extraction = {**(extras or {}), "vip": True}
-        return Outcome(msg.id, "urgent", "vip")
+        msg.extraction = {**(extras or {}), "vip": True, **({"otp": True} if otp_code else {})}
+        return Outcome(msg.id, "urgent", "vip", otp=otp_code)
 
     # 6. heuristics (suggest only)
     suggestion = None if match else heuristics.suggest(meta)
@@ -277,6 +285,11 @@ def _classify(db: Session, account: GmailAccount, provider: MailProvider, meta, 
         if row.last_action in SILENT_ACTIONS and row.last_action_source == "user":
             msg.status, msg.priority, msg.category = SILENT_ACTIONS[row.last_action], "silent", "other"
             return Outcome(msg.id, "silent", "fingerprint")
+
+    if otp_code:  # before the heuristics and the AI: urgent, no tokens spent
+        msg.priority, msg.status, msg.category = "urgent", "processed", "action_needed"
+        msg.extraction = {**extras, "otp": True}  # that it had a code, never the code
+        return Outcome(msg.id, "urgent", "otp", otp=otp_code)
 
     if suggestion and suggestion.strength == "strong":
         msg.priority, msg.status, msg.category = "digest", "processed", "other"

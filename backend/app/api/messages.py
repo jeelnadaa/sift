@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service, vip
-from app import events, grouping, notes as notes_service, reader, rule_tools
+from app import events, grouping, notes as notes_service, otp, reader, rule_tools
 from app import snooze as snooze_service
 from app.db import get_db
 from app.mail.base import AuthRevoked
@@ -211,6 +211,7 @@ def thread_json(db: Session, user: User, account: GmailAccount, thread_id: str, 
     budget = BUNDLE_DOC_BYTES
     for x in reversed(msgs):  # newest first get their document inline
         x["id"] = str(stored[x["gmail_id"]]) if x["gmail_id"] in stored else None
+        x["otp"] = otp.find(x.get("subject"), x.get("text"))  # for "Copy code"; found live, never stored
         html = x.pop("html")  # clients load the sandboxed document from html_url instead
         if bundle and html:
             doc = reader.document(html)

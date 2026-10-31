@@ -247,3 +247,21 @@ def test_bundle_downloads_are_rate_limited(client, thread, monkeypatch):
     assert codes == [200, 200, 429]
     assert client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).status_code == 200  # reading is never limited
     m_api._bundle_hits.clear()
+
+
+def test_conversation_carries_each_mails_one_time_code(client, db, setup, monkeypatch):
+    user, account, provider, msgs = setup
+    code_mail = mail("o1", "otp-thr", text="Your verification code is 731042. It expires in 10 minutes.")
+    plain = mail("o2", "otp-thr", text="Thanks, see you at 1830.")
+
+    class P:
+        def get_thread(self, tid):
+            return {"messages": [code_mail, plain]}
+
+    monkeypatch.setattr(account_service, "provider_for", lambda a: P())
+    from app.models import Message
+    msg = Message(user_id=user.id, account_id=account.id, gmail_id="o1", thread_id="otp-thr", sender="x@y.com", subject="Code", status="processed", priority="urgent")
+    db.add(msg)
+    db.commit()
+    got = {m["gmail_id"]: m["otp"] for m in client.get(f"/api/v1/messages/{msg.id}/thread", headers=H(user)).json()["messages"]}
+    assert got == {"o1": "731042", "o2": None}

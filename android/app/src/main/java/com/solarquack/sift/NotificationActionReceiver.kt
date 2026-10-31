@@ -23,6 +23,11 @@ class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0)
+        if (intent.action == ACTION_COPY_CODE) {  // on the phone only: no server call
+            intent.getStringExtra(EXTRA_CODE)?.let { copyCode(app, it) }
+            NotificationManagerCompat.from(app).cancel(notificationId)
+            return
+        }
         if (!Session.signedIn(app)) return
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
@@ -61,6 +66,17 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "SiftAction"
+        const val ACTION_COPY_CODE = "com.solarquack.sift.action.COPY_CODE"
+        const val EXTRA_CODE = "code"
+
+        /** Copies a one-time code, marked sensitive so Android 13+ hides it in the clipboard preview. */
+        fun copyCode(context: Context, code: String) {
+            val clip = android.content.ClipData.newPlainText("One-time code", code)
+            clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
+            (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+            // Android 13+ confirms copies itself
+            if (android.os.Build.VERSION.SDK_INT < 33) Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
+        }
         const val ACTION_COMPANY = "com.solarquack.sift.action.COMPANY"
         const val ACTION_TODO_DONE = "com.solarquack.sift.action.TODO_DONE"
         const val ACTION_IGNORE = "com.solarquack.sift.action.IGNORE"

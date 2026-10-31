@@ -89,6 +89,19 @@ export function RefreshButton() {
   );
 }
 
+/** Copies text; falls back to the older copy command where the clipboard API is refused
+ * (embedded browsers, http on a LAN address). True when it worked. */
+export async function copyText(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall back below */ }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+  document.body.appendChild(area);
+  area.select();
+  try { return document.execCommand("copy"); } catch { return false; } finally { area.remove(); }
+}
+
 /** For pages that load without useLoad: counts them as updating (Refresh spins, "Updating…") while [busy]. */
 export function useBusyWhile(busy: boolean) {
   useEffect(() => {

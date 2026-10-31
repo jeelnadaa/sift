@@ -50,7 +50,7 @@ def send_data(db: Session, user_id: uuid.UUID, data: dict) -> int:
     return _send_all(db, user_id, data)
 
 
-def payload(n: Notification, msg: Message, account: GmailAccount, last_folder: str = "") -> dict:
+def payload(n: Notification, msg: Message, account: GmailAccount, last_folder: str = "", otp: str | None = None) -> dict:
     ext = msg.extraction or {}
     links = ext.get("links") or []
     return {
@@ -72,11 +72,12 @@ def payload(n: Notification, msg: Message, account: GmailAccount, last_folder: s
         # "which company?" buttons: up to 3 "id|name" pairs, separated by newlines (FCM data is strings only)
         "company_choices": "\n".join(f"{c['id']}|{c['name']}" for c in (ext.get("company_question") or [])[:3]),
         "last_folder": last_folder,  # for the "File in <folder>" button
+        "otp": otp or "",  # one-time code for the "Copy code" button; only here, never stored or logged
         "sent_at_ms": int(time.time() * 1000),
     }
 
 
-def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notification | None:
+def notify_message(db: Session, msg: Message, account: GmailAccount, otp: str | None = None) -> Notification | None:
     if msg.priority not in NOTIFY_PRIORITIES:
         return None
     # Suppress notifications if thread is muted by user
@@ -110,7 +111,7 @@ def notify_message(db: Session, msg: Message, account: GmailAccount) -> Notifica
         return None  # already notified
     n = db.get(Notification, notification_id)
     last = folders.last_used(db, msg.user_id)
-    if _send_all(db, msg.user_id, payload(n, msg, account, last.name if last else "")):
+    if _send_all(db, msg.user_id, payload(n, msg, account, last.name if last else "", otp)):
         n.sent_at = datetime.now(UTC)
     db.flush()
     return n

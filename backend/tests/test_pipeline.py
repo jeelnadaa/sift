@@ -208,7 +208,7 @@ def test_interrupted_message_is_resumed_and_reuses_cached_llm_result(db, setup, 
     user, account, provider, msgs = setup
     with_key(db, user)
     real = notify.notify_message
-    monkeypatch.setattr(notify, "notify_message", lambda *a: (_ for _ in ()).throw(RuntimeError("crash after LLM")))
+    monkeypatch.setattr(notify, "notify_message", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("crash after LLM")))
     with pytest.raises(RuntimeError):
         run(db, account, provider, msgs["hirepro"])
     db.rollback()
@@ -442,3 +442,54 @@ def test_subject_line_personal_identifiers_are_redacted_before_llm(db, setup, fa
     assert "98765 43210" not in sent_prompt
     assert "[roll]" in sent_prompt
     assert "[phone]" in sent_prompt
+
+
+# ---- one-time codes (OTP) ------------------------------------------------------------------
+
+def _otp_mail(subject="Your Swiggy OTP", body="Your OTP for Swiggy login is 482913. Do not share it with anyone.", labels=("INBOX", "UNREAD")):
+    return demo._msg("otp", "Swiggy <noreply@swiggy.in>", subject, body, list(labels))
+
+
+def test_otp_mail_is_urgent_without_ai_and_the_code_rides_only_in_the_push(db, setup, fake_llm, fcm_sends, caplog):
+    user, account, _, _ = setup
+    m = _otp_mail()
+    with caplog.at_level("DEBUG"):
+        out = process_message(db, db.get(GmailAccount, account.id), demo.DemoProvider([m]), m["id"])
+    assert (out.priority, out.decided_by, out.notified) == ("urgent", "otp", True)
+    assert fake_llm.calls == []
+    assert fcm_sends[-1]["otp"] == "482913" and fcm_sends[-1]["priority"] == "urgent"
+    stored = db.get(Message, out.message_id)
+    assert stored.extraction == {"otp": True}  # that it had a code, never the code
+    # (Gmail's own preview, stored as always, may show it; Sift adds the code nowhere)
+    assert "482913" not in json.dumps({c.name: str(getattr(stored, c.name)) for c in Message.__table__.columns if c.name != "snippet"})
+    assert "482913" not in caplog.text and "482913" not in repr(out)
+
+
+def test_otp_beats_ai_and_promotions_and_rule_priority(db, setup, fake_llm, fcm_sends):
+    user, account, _, _ = setup
+    with_key(db, user)
+    db.add(Rule(user_id=user.id, name="swiggy digest", position=0, enabled=True,
+                conditions={"all": [{"field": "sender_domain", "op": "in", "value": ["swiggy.in"]}]},
+                action={"type": "digest"}))
+    db.commit()
+    m = _otp_mail(labels=("INBOX", "CATEGORY_PROMOTIONS"))
+    out = process_message(db, db.get(GmailAccount, account.id), demo.DemoProvider([m]), m["id"])
+    assert (out.priority, out.decided_by) == ("urgent", "rule") and out.otp == "482913"
+    assert fake_llm.calls == []
+
+
+def test_a_silencing_rule_of_the_users_still_wins_over_otp(db, setup, fcm_sends):
+    user, account, _, _ = setup
+    db.add(Rule(user_id=user.id, name="swiggy quiet", position=0, enabled=True,
+                conditions={"all": [{"field": "sender_domain", "op": "in", "value": ["swiggy.in"]}]},
+                action={"type": "silent"}))
+    db.commit()
+    m = _otp_mail()
+    out = process_message(db, db.get(GmailAccount, account.id), demo.DemoProvider([m]), m["id"])
+    assert out.priority == "silent" and out.otp is None and not out.notified
+
+
+def test_mail_without_a_code_gets_no_otp(db, setup, fcm_sends):
+    user, account, provider, msgs = setup
+    out = run(db, account, provider, msgs["fraud"])  # "card ending 4421", "call 1860 266 2666"
+    assert out.otp is None and fcm_sends[-1]["otp"] == ""

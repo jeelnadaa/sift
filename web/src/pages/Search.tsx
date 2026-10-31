@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { del, get, patch, post, session, type Account, type FolderTree, type Mail } from "../api";
 import { Top } from "../App";
 import {
-  Banner, FolderPicker, MailRow, Modal, Pager, Select, TextField, Toggle, confirmDialog, errorText, inputDialog, toast, useLoad, usePages,
+  Banner, FolderPicker, MailRow, Modal, Pager, Select, TextField, Toggle, confirmDialog, copyText, errorText, inputDialog, toast, useLoad, usePages,
 } from "../components";
 import { flatten, accountName } from "../util";
 import { SnoozeDialog, mailAction, type MailAction, type Target } from "../mailActions";
@@ -238,7 +238,7 @@ export function SearchPage() {
             <div className="field"><label>Gmail query (copy into Gmail)</label>
               <div className="inline">
                 <code className="input code" style={{ flex: 1, display: "flex", alignItems: "center", overflowWrap: "anywhere", height: "auto", minHeight: 42, padding: "10px 14px" }}>{gmailQuery}</code>
-                <button className="btn btn-ghost btn-sm" style={{ height: 42 }} onClick={() => navigator.clipboard.writeText(gmailQuery).then(() => toast("Copied"))} data-tip="Copy the Gmail part; Sift filters (◆) aren't Gmail syntax">Copy</button>
+                <button className="btn btn-ghost btn-sm" style={{ height: 42 }} onClick={() => void copyText(gmailQuery).then((ok) => toast(ok ? "Copied" : "Couldn't copy"))} data-tip="Copy the Gmail part; Sift filters (◆) aren't Gmail syntax">Copy</button>
               </div>
             </div>
           )}

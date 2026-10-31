@@ -696,6 +696,8 @@ data class ThreadMessageDto(
     val doc: String? = null,
     @SerialName("images_blocked") val imagesBlocked: Int = 0,
     val attachments: List<ThreadAttachmentDto> = emptyList(),
+    /** A one-time code found in this mail (found live by the server, never stored there). */
+    val otp: String? = null,
 )
 
 @Serializable

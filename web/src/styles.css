@@ -354,3 +354,10 @@ div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
 .refresh-btn.busy svg { animation: refresh-spin .9s linear infinite; }
 @keyframes refresh-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .refresh-btn.busy svg { animation: none; opacity: .5; } }
+
+/* one-time code above a mail (2026-10-31) */
+.code-banner { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 75ch; margin-bottom: 12px; padding: 10px 14px; border-radius: var(--r-md); background: rgba(200,255,61,.07); border: 1px solid rgba(200,255,61,.3); color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.code-banner:hover { background: rgba(200,255,61,.12); }
+.code-banner:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.code-banner .code-value { font-size: 18px; font-variant-numeric: tabular-nums; letter-spacing: .12em; user-select: all; }
+.code-banner .code-copy { margin-left: auto; color: var(--signal); font-weight: 700; font-size: 13.5px; }

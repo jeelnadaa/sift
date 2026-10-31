@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.launch
@@ -160,6 +161,27 @@ fun ThreadView(messageId: String?, accountId: String? = null, threadId: String? 
     }
 }
 
+/** "Code 482913 · Copy" above a mail that carries a one-time code; one tap copies it. */
+@Composable
+private fun CodeBanner(code: String) {
+    val context = LocalContext.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp).background(Ink.signal.copy(alpha = 0.10f), Radius.md).border(1.dp, Ink.signal.copy(alpha = 0.35f), Radius.md)
+            .clickable(onClickLabel = "Copy code") {
+                com.solarquack.sift.NotificationActionReceiver.copyCode(context, code)
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Code", color = Ink.text2, style = MaterialTheme.typography.bodyMedium)
+        Text(code, color = Ink.text, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum", letterSpacing = 2.sp),
+            modifier = Modifier.weight(1f).padding(start = 10.dp))
+        Text("Copy", color = Ink.signal, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
 @Composable
 private fun MessageCard(m: ThreadMessageDto, expanded: Boolean, current: Boolean, fresh: Boolean, onWrite: ((String) -> Unit)? = null, onToggle: () -> Unit) {
     val context = LocalContext.current
@@ -181,6 +203,7 @@ private fun MessageCard(m: ThreadMessageDto, expanded: Boolean, current: Boolean
         }
         if (expanded) {
             Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+                m.otp?.let { CodeBanner(it) }
                 val url = m.htmlUrl?.let { server + it }
                 val offline = com.solarquack.sift.data.Offline.since.value != null
                 when {

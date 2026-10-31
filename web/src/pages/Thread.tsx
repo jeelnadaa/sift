@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { del, get, post } from "../api";
-import { Avatar, Banner, errorText, toast, useLoad } from "../components";
+import { Avatar, Banner, copyText, errorText, toast, useLoad } from "../components";
 import { fullTime, relativeTime } from "../util";
 
 interface Addr { name: string; email: string }
@@ -9,6 +9,7 @@ interface ThreadAttachment { filename: string; mime: string; size: number; url: 
 interface ThreadMessage {
   gmail_id: string; id: string | null; from: Addr | null; to: Addr[]; cc: Addr[]; subject: string; date: string | null;
   unread: boolean; snippet: string; text: string; html_url: string | null; images_blocked: number; attachments: ThreadAttachment[];
+  otp?: string | null;  // a one-time code found in this mail (found live by the server, never stored there)
 }
 interface ThreadData { thread_id: string; account: string; account_id: string; subject: string; images: boolean; messages: ThreadMessage[]; is_muted?: boolean }
 
@@ -101,6 +102,7 @@ export function Thread({ messageId, accountId, threadId }: { messageId?: string;
             </header>
             {isOpen && (
               <div className="msg-body">
+                {m.otp && <CodeBanner code={m.otp} />}
                 {m.html_url ? <MailFrame src={m.html_url} title={`Message from ${who(m.from)}`} /> : <div className="mail-body">{m.text || m.snippet}</div>}
                 {d.account_id && (
                   <div className="reply-bar">
@@ -171,5 +173,17 @@ function MailFrame({ src, title }: { src: string; title: string }) {
         </button>
       </div>
     </>
+  );
+}
+
+/** "Code 482913 · Copy" above a mail that carries a one-time code; one click copies it. */
+function CodeBanner({ code }: { code: string }) {
+  const copy = async () => {
+    toast(await copyText(code) ? "Code copied" : "Couldn't copy. Select the code and copy it.");
+  };
+  return (
+    <button type="button" className="code-banner" onClick={copy} data-tip="Copy the code">
+      <span className="dim">Code</span><b className="code-value">{code}</b><span className="code-copy">Copy</span>
+    </button>
   );
 }
