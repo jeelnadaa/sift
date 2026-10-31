@@ -118,9 +118,11 @@ export function snoozeChoices(now = new Date()): [string, Date][] {
   return out;
 }
 
-export function SnoozeDialog({ target, onClose, onDone }: { target: Target; onClose: () => void; onDone: () => void }) {
+/** With `onPick` it only chooses the time (the caller snoozes, e.g. a selection of many). */
+export function SnoozeDialog({ target, onClose, onDone, onPick }: { target?: Target; onClose: () => void; onDone: () => void; onPick?: (until: Date) => void }) {
   const [custom, setCustom] = useState("");
   async function go(until: Date) {
+    if (onPick) { onPick(until); return; }
     try {
       const r = await post<{ in_gmail: boolean }[]>("/snoozes", { ...target, until: until.toISOString() });
       toast(`Snoozed until ${until.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}${r.some((x) => !x.in_gmail) ? " (hidden in Sift; Gmail unchanged)" : ""}`);

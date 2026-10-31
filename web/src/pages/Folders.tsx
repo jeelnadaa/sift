@@ -1,9 +1,10 @@
-import { useEffect, useState, type DragEvent } from "react";
+import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { FolderAi } from "./FolderAi";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Folder, type FolderTree, type FolderView } from "../api";
 import { Top, fileDropped, foldersChanged } from "../App";
-import { Banner, errorText, FolderPicker, MailRow, Modal, Pager, TextField, toast, Toggle, useLoad, usePages } from "../components";
+import { BulkBar, SelectBox, ThingBar, rowKey, runBulk, runMany, useSelection } from "../bulk";
+import { Banner, confirmDialog, errorText, FolderPicker, MailRow, Modal, Pager, TextField, toast, Toggle, useLoad, usePages } from "../components";
 import { FOLDER_COLORS, findFolder, flatten, subtreeIds } from "../util";
 
 const MAIL = "application/x-sift-mail";
@@ -35,6 +36,28 @@ export function Folders() {
   }, [current?.id, tree.data]);
 
   const refresh = () => { tree.reload(); foldersChanged(); };
+  const sel = useSelection("tree");
+  const rows = flatten(folders, open);
+  const keys = rows.map(([f]) => f.id);
+  async function many(done: string, fn: (id: string) => Promise<unknown>) {
+    const ids = [...sel.keys];
+    const ok = await runMany(ids, fn);
+    toast(ok === ids.length ? `${done}: ${ok}` : `${done}: ${ok} of ${ids.length}. Try the rest again.`);
+    sel.clear();
+    refresh();
+  }
+  async function deleteSelected() {
+    const ids = [...sel.keys];
+    if (!(await confirmDialog({ title: `Delete ${ids.length} folder${ids.length === 1 ? "" : "s"}?`, body: "Subfolders that aren't picked move up a level. Mail is never deleted; only the filing goes.", confirm: "Delete", danger: true }))) return;
+    let ok = 0;
+    for (const fid of ids) {  // one at a time: a parent and its child may both be picked
+      try { await del(`/folders/${fid}`); ok++; } catch { /* counted below */ }
+    }
+    toast(ok === ids.length ? `Deleted: ${ok}` : `Deleted ${ok} of ${ids.length}. Try the rest again.`);
+    sel.clear();
+    if (current && ids.includes(current.id)) navigate("/folders");
+    refresh();
+  }
   async function moveFolder(folderId: string, parentId: string | null) {
     if (folderId === parentId) return;
     try { await post(`/folders/${folderId}/move`, { parent_id: parentId }); refresh(); } catch (e) { toast(errorText(e)); }
@@ -46,10 +69,18 @@ export function Folders() {
       <section className="page">
         {tree.error && <Banner tone="err">{tree.error}</Banner>}
         <div className="split">
-          <div className="card tree" style={{ padding: 12 }}>
+          <div className={`card tree ${sel.size ? "selecting" : ""}`} style={{ padding: 12 }}>
+            <ThingBar sel={sel} keys={keys} noun={["folder", "folders"]}>
+              <button className="btn btn-ghost btn-sm" onClick={() => runBulk({ folder_ids: [...sel.keys] }, "read").then((ok) => ok && sel.clear())} data-tip="Mark the mail filed in them (and their subfolders) read">Mark read</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => many("Pinned", (id) => patch(`/folders/${id}`, { pinned: true }))}>Pin</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => many("Unpinned", (id) => patch(`/folders/${id}`, { pinned: false }))}>Unpin</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => many("Muted", (id) => patch(`/folders/${id}`, { notify_mode: "mute" }))} data-tip="Mail filed here won't notify. Urgent mail still does">Mute</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => many("Notifying as usual", (id) => patch(`/folders/${id}`, { notify_mode: "default" }))}>Unmute</button>
+              <button className="btn btn-ghost btn-sm danger-text" onClick={deleteSelected}>Delete</button>
+            </ThingBar>
             {tree.data && folders.length === 0 && <p className="dim" style={{ padding: 8 }}>No folders yet. Make one, then drag mail onto it or let a rule file it.</p>}
-            {flatten(folders, open).map(([f, depth]) => (
-              <TreeItem key={f.id} f={f} depth={depth} on={f.id === current?.id} open={open.has(f.id)}
+            {rows.map(([f, depth]) => (
+              <TreeItem key={f.id} lead={<SelectBox sel={sel} k={f.id} ordered={keys} label={`Select ${f.name}`} />} f={f} depth={depth} on={f.id === current?.id} open={open.has(f.id)}
                 onToggle={() => setOpen((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; })}
                 onOpen={() => navigate(`/folders/${f.id}`)}
                 onDropMail={(mid) => fileDropped(mid, f).then(refresh)}
@@ -80,8 +111,8 @@ export function Folders() {
   );
 }
 
-function TreeItem({ f, depth, on, open, onToggle, onOpen, onDropMail, onDropFolder }: {
-  f: Folder; depth: number; on: boolean; open: boolean; onToggle: () => void; onOpen: () => void;
+function TreeItem({ lead, f, depth, on, open, onToggle, onOpen, onDropMail, onDropFolder }: {
+  lead?: ReactNode; f: Folder; depth: number; on: boolean; open: boolean; onToggle: () => void; onOpen: () => void;
   onDropMail: (id: string) => void; onDropFolder: (id: string) => void;
 }) {
   const [over, setOver] = useState(false);
@@ -96,6 +127,7 @@ function TreeItem({ f, depth, on, open, onToggle, onOpen, onDropMail, onDropFold
         const mail = e.dataTransfer.getData(MAIL);
         if (mail) onDropMail(mail); else onDropFolder(e.dataTransfer.getData(FOLDER));
       }}>
+      {lead}
       <span className="tw" onClick={(e) => { e.stopPropagation(); if (f.children.length) onToggle(); }}>{f.children.length ? (open ? "▾" : "▸") : ""}</span>
       <span className="sw" style={{ background: f.color ?? "var(--text-3)" }} />
       <span className="nm">{f.name}</span>
@@ -115,6 +147,10 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
   const [dialog, setDialog] = useState<"edit" | "move" | "merge" | "delete" | null>(null);
   useEffect(() => { const t = setTimeout(() => setQuery(q.trim()), 300); return () => clearTimeout(t); }, [q]);
   const view = usePages((before) => get<FolderView>(`/folders/${f.id}/threads`, { include_subfolders: includeSub, q: query || undefined, before, limit: 30 }), [f.id, includeSub, query], ["mail", "new_mail", "folders"]);
+
+  const items = view.data?.items ?? [];
+  const sel = useSelection(`${f.id}|${includeSub}|${query}|${view.page}`);
+  const ordered = items.map(rowKey);
 
   async function edit(changes: object) {
     try { await patch(`/folders/${f.id}`, changes); onChanged(); } catch (e) { toast(errorText(e)); }
@@ -146,10 +182,13 @@ function FolderPane({ f, all, onChanged, onAddChild }: { f: Folder; all: Folder[
       </div>
       {view.error && <Banner tone="err">{view.error}</Banner>}
       {view.data && <Pager page={view.page} pages={view.pages} total={view.total} noun="conversations" onPrev={view.onPrev} onNext={view.onNext} />}
-      <div className="list">
+      <BulkBar sel={sel} items={items} total={view.total} noun="conversations" place={{ kind: "folder", id: f.id, name: f.name }}
+        match={{ folder_id: f.id, include_subfolders: includeSub }} />
+      <div className={`list ${sel.size || sel.all ? "selecting" : ""}`}>
         {view.data?.items.length === 0 && <div className="empty">{query ? "No mail here matches." : "Nothing filed here yet. Drag mail onto this folder, or open a mail and choose File in folder."}</div>}
         {view.data?.items.map((m, n) => (
           <MailRow key={m.id} m={m} n={n + 1} onOpen={() => navigate(`/mail/${m.id}`)}
+            lead={<SelectBox sel={sel} k={rowKey(m)} ordered={ordered} label={`Select mail from ${m.sender_name || m.sender}`} />}
             extra={!includeSub && <button className="chip" onClick={(e) => { e.stopPropagation(); unfile(m.id); }} data-tip="Take this conversation out of the folder (mail stays)">Unfile</button>} />
         ))}
       </div>

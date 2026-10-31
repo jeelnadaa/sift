@@ -333,8 +333,17 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
     val nearEnd by remember { androidx.compose.runtime.derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 8 } ?: false } }
     LaunchedEffect(nearEnd, view?.nextBefore) { if (nearEnd) loadMore() }
 
+    // picking many (long-press); "All matching" is the whole folder when no search narrows it
+    val picks = rememberPicks(id, includeSub, query)
+    val runner = rememberBulkRunner { load() }
+    fun bulkBody(action: String): com.solarquack.sift.data.BulkIn =
+        if (picks.all) com.solarquack.sift.data.BulkIn(action, match = com.solarquack.sift.data.BulkMatch(folderId = id, includeSubfolders = includeSub))
+        else com.solarquack.sift.data.BulkIn(action, messageIds = picks.keys.toList())
+
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
-        Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(start = 18.dp, top = 12.dp, bottom = 4.dp))
+        if (picks.active) SelectionTopBar(picks, view?.items.orEmpty().map { it.id },
+            onAllMatching = if (query.isBlank() && view?.folder?.smart != true) ({ picks.all = true }) else null)
+        else Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(start = 18.dp, top = 12.dp, bottom = 4.dp))
         val v = view
         if (v != null && v.path.size > 1) {
             Row(Modifier.padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -361,18 +370,34 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
             }
         }
         error?.let { Box(Modifier.padding(horizontal = 14.dp)) { Banner(it, Ink.urgent, "Retry") { load() } } }
-        com.solarquack.sift.ui.Refreshable({ load().join() }) {
+        com.solarquack.sift.ui.Refreshable({ load().join() }, Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp)) {
                 if (v != null && v.items.isEmpty()) item {
                     Text(if (query.isBlank()) "Nothing filed here yet. Open a mail and tap File in folder." else "No mail here matches.",
                         color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))
                 }
                 items(v?.items.orEmpty(), key = { it.id }) { row ->
-                    MailRow(row.asMessage().let { m -> if (row.threadCount > 1) m.copy(senderName = "${m.senderName ?: m.sender} (${row.threadCount})") else m }) { onOpenMail(row.id) }
+                    val m = row.asMessage()
+                    val picking = picks.active
+                    SwipeRow(if (m.unread) "Mark read" else "Mark unread",
+                        onRight = if (picking) null else ({ runner.run(com.solarquack.sift.data.BulkIn(if (m.unread) "read" else "unread", messageIds = listOf(row.id)), confirmed = true, quiet = true) }),
+                        onLeft = if (picking) null else ({ runner.run(com.solarquack.sift.data.BulkIn("archive", messageIds = listOf(row.id)), confirmed = true) })) {
+                        MailRow(if (row.threadCount > 1) m.copy(senderName = "${m.senderName ?: m.sender} (${row.threadCount})") else m,
+                            onLongPress = { picks.toggle(row.id) }, picked = if (picking) picks.has(row.id) else null) {
+                            if (picking) picks.toggle(row.id) else onOpenMail(row.id)
+                        }
+                    }
                 }
             }
         }
+        if (picks.active) {
+            val takeOut = if (v?.folder?.smart == true) emptyList() else listOf(SheetItem("Take out of this folder", "The mail stays in Gmail and your feed", section = "Sift") {
+                runner.run(bulkBody("unfile").copy(folderId = id)) { ok -> if (ok) picks.clear() }
+            })
+            MailBulkBar(runner, ::bulkBody, extra = takeOut) { picks.clear() }
+        }
     }
+    BulkRunnerUi(runner)
 }
 
 /** "File in folder" for one mail: picker plus "last used" shortcut, and where the thread is filed now. */

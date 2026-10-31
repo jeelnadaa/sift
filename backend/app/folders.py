@@ -307,6 +307,7 @@ def thread_rows(db: Session, user_id: uuid.UUID, folder: Folder, include_subfold
                 q: str | None = None, before=None, limit: int = 50) -> tuple[list[Message], list[Folder], int]:
     """Latest message of each thread in the folder (and its subfolders), newest first.
     `q` is a plain words-in-sender/subject/snippet search; full search arrives in Phase 3."""
+    from app.bulk import not_in_bin
     tree = load_tree(db, user_id)
     ids = tree.subtree(folder.id) if include_subfolders else [folder.id]
     filed = select(FolderItem.account_id, FolderItem.thread_id).where(FolderItem.folder_id.in_(ids)).distinct().subquery()
@@ -314,7 +315,7 @@ def thread_rows(db: Session, user_id: uuid.UUID, folder: Folder, include_subfold
         select(Message.id, func.row_number().over(partition_by=(Message.account_id, Message.thread_id),
                                                   order_by=Message.received_at.desc().nulls_last()).label("rn"))
         .join(filed, and_(Message.account_id == filed.c.account_id, Message.thread_id == filed.c.thread_id))
-        .where(Message.user_id == user_id, Message.status.in_(VIEW_STATUSES))
+        .where(Message.user_id == user_id, Message.status.in_(VIEW_STATUSES), not_in_bin())
     )
     if q:
         for word in q.split()[:8]:

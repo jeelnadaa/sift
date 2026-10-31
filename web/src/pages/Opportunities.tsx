@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, type Opportunity, type OpportunityDetail, type TimelineEvent } from "../api";
 import { Top } from "../App";
+import { SelectBox, ThingBar, runBulk, runMany, useSelection } from "../bulk";
 import { Avatar, Banner, confirmDialog, errorText, inputDialog, Modal, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { fullTime, googleCalendarUrl, humanize, safeUrl, toLocalInput } from "../util";
 
@@ -19,6 +20,17 @@ export function Opportunities() {
   const list = useLoad(() => get<Opportunity[]>("/opportunities", { status }), [status], ["new_mail"]);
   const [creating, setCreating] = useState(false);
   const selected = id ?? list.data?.[0]?.id;
+  const sel = useSelection(status);
+  const keys = (list.data ?? []).map((o) => o.id);
+  async function many(done: string, fn: (id: string) => Promise<unknown>, confirm?: { title: string; body: string }) {
+    const ids = [...sel.keys];
+    if (confirm && !(await confirmDialog({ ...confirm, confirm: "Delete", danger: true }))) return;
+    const ok = await runMany(ids, fn);
+    toast(ok === ids.length ? `${done}: ${ok}` : `${done}: ${ok} of ${ids.length}. Try the rest again.`);
+    sel.clear();
+    list.reload();
+  }
+  const theirMail = (action: string) => runBulk({ opportunity_ids: [...sel.keys] }, action);
 
   return (
     <>
@@ -29,11 +41,21 @@ export function Opportunities() {
           <button className={`chip ${status === "closed" ? "on" : ""}`} onClick={() => setStatus("closed")} data-tip="Timelines you closed">Closed</button>
         </div>
         {list.error && <Banner tone="err">{list.error}</Banner>}
+        <ThingBar sel={sel} keys={keys} noun={["timeline", "timelines"]}>
+          {status === "active"
+            ? <button className="btn btn-ghost btn-sm" onClick={() => many("Closed", (o) => patch(`/opportunities/${o}`, { status: "closed" }))}>Close</button>
+            : <button className="btn btn-ghost btn-sm" onClick={() => many("Reopened", (o) => patch(`/opportunities/${o}`, { status: "active" }))}>Reopen</button>}
+          <button className="btn btn-ghost btn-sm" onClick={() => theirMail("read")} data-tip="Mark every mail on these timelines read">Mark mail read</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => theirMail("archive")} data-tip="Archive every mail on these timelines in Gmail">Archive mail</button>
+          <button className="btn btn-ghost btn-sm danger-text" onClick={() => many("Deleted", (o) => del(`/opportunities/${o}`),
+            { title: `Delete ${sel.size} timeline${sel.size === 1 ? "" : "s"}?`, body: "The timelines go; the mail on them stays." })}>Delete</button>
+        </ThingBar>
         <div className="split">
-          <div className="list">
+          <div className={`list ${sel.size ? "selecting" : ""}`}>
             {list.data?.length === 0 && <div className="empty">No company drives yet. They appear when placement or hiring mail arrives, or add one by hand.</div>}
             {list.data?.map((o) => (
               <div key={o.id} className={`row click ${o.id === selected ? "sel" : ""}`} onClick={() => navigate(`/opportunities/${o.id}`)}>
+                <SelectBox sel={sel} k={o.id} ordered={keys} label={`Select ${o.company}`} />
                 <Avatar text={o.company} />
                 <div className="main"><div className="who">{o.company}</div><div className="subj">{o.last_kind ? humanize(o.last_kind) : "No mail yet"} · {o.events} event{o.events === 1 ? "" : "s"}</div></div>
                 {o.deadline && <Tag tone="warn">{fullTime(o.deadline)}</Tag>}

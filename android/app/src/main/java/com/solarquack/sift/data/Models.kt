@@ -1032,3 +1032,51 @@ data class TemplateListResultDto(
     val templates: List<ReplyTemplateDto> = emptyList(),
     val total: Int = 0,
 )
+
+// ---- many conversations at once (POST /api/v1/bulk) ----
+
+@Serializable
+data class BulkMatch(
+    val view: String? = null, val priority: String? = null, @SerialName("account_id") val accountId: String? = null,
+    @SerialName("folder_id") val folderId: String? = null, @SerialName("include_subfolders") val includeSubfolders: Boolean = false,
+    @SerialName("group_id") val groupId: String? = null,
+)
+
+@Serializable
+data class BulkIn(
+    val action: String,
+    @SerialName("message_ids") val messageIds: List<String> = emptyList(),
+    @SerialName("group_ids") val groupIds: List<String> = emptyList(),
+    @SerialName("opportunity_ids") val opportunityIds: List<String> = emptyList(),
+    @SerialName("folder_ids") val folderIds: List<String> = emptyList(),
+    val match: BulkMatch? = null,
+    val label: String? = null,
+    @SerialName("folder_id") val folderId: String? = null,
+    @SerialName("group_id") val groupId: String? = null,
+    @SerialName("opportunity_id") val opportunityId: String? = null,
+    val until: String? = null,
+    val preview: Boolean = false,
+)
+
+@Serializable
+data class BulkPicked(
+    val mails: Int = 0, val groups: Int = 0, @SerialName("group_mails") val groupMails: Int = 0,
+    @SerialName("urgent_in_groups") val urgentInGroups: Int = 0, val conversations: Int = 0,
+)
+
+@Serializable
+data class BulkUndo(val action: String, val params: Map<String, String> = emptyMap(), @SerialName("message_ids") val messageIds: List<String> = emptyList())
+
+@Serializable
+data class BulkJobDto(
+    val id: String, val status: String, val total: Int = 0, val done: Int = 0, val changed: Int = 0,
+    @SerialName("failed_accounts") val failedAccounts: List<String> = emptyList(), val undo: BulkUndo? = null,
+)
+
+@Serializable
+data class BulkOut(
+    val picked: BulkPicked = BulkPicked(), val conversations: Int = 0, val changed: Int = 0,
+    @SerialName("failed_accounts") val failedAccounts: List<String> = emptyList(),
+    @SerialName("sift_only") val siftOnly: List<String> = emptyList(),
+    val job: BulkJobDto? = null, val undo: BulkUndo? = null,
+)

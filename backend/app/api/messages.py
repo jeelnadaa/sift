@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import accounts as account_service, vip
-from app import events, grouping, notes as notes_service, otp, reader, rule_tools
+from app import bulk, events, grouping, notes as notes_service, otp, reader, rule_tools
 from app import snooze as snooze_service
 from app.db import get_db
 from app.mail.base import AuthRevoked
@@ -64,7 +64,8 @@ def list_messages(
     rows in all pages and `pages` how many pages of `limit` mails that makes, for "Page 2 of 7"."""
     q = select(Message).where(Message.user_id == user.id)
     if view == "feed":
-        q = q.where(Message.status.in_(FEED_STATUSES), ~snooze_service.active_condition())  # snoozed: back when it wakes
+        # snoozed: back when it wakes; in Gmail's Trash or Spam: gone from the feed (still searchable)
+        q = q.where(Message.status.in_(FEED_STATUSES), ~snooze_service.active_condition(), bulk.not_in_bin())
     elif view == "silenced":
         q = q.where(Message.status.in_(SILENCED_STATUSES))
     if priority:

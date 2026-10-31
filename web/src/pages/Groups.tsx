@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post, put, type AiStatus, type Draft, type Group, type GroupingStatus } from "../api";
 import { Top } from "../App";
+import { BulkBar, SelectBox, rowKey, useSelection } from "../bulk";
 import { Banner, confirmDialog, errorText, FolderPicker, GroupRow, inputDialog, MailRow, Modal, TextField, toast, Toggle, useLoad } from "../components";
 
 export function Groups() {
@@ -12,6 +13,10 @@ export function Groups() {
   const [making, setMaking] = useState(false);
   const mine = (groups.data ?? []).filter((g) => g.custom);
   const auto = (groups.data ?? []).filter((g) => !g.custom);
+  const all = [...mine, ...(on ? auto : [])].map((g) => ({ ...g, type: "group" as const }));
+  const sel = useSelection(String(on));
+  const ordered = all.map(rowKey);
+  const box = (g: Group) => <SelectBox sel={sel} k={rowKey({ ...g, type: "group" })} ordered={ordered} label={`Select group ${g.title}`} />;
 
   async function set(answer: "yes" | "no") {
     try { await post("/grouping", { answer }); status.reload(); toast(answer === "yes" ? "Grouping on. The last 30 days are being grouped." : "Grouping off"); } catch (e) { toast(errorText(e)); }
@@ -23,19 +28,20 @@ export function Groups() {
         {on && <button className="btn btn-ghost btn-sm" onClick={async () => { await post("/groups/collapse-all", { collapsed: true }).catch(() => {}); groups.reload(); }} data-tip="Fold every group into a single row">Collapse all</button>}
       </Top>
       <section className="page">
+        <BulkBar sel={sel} items={all} noun="groups" />
         <h3 className="sec-h">Your groups</h3>
-        <div className="list">
+        <div className={`list ${sel.size ? "selecting" : ""}`}>
           {groups.data && mine.length === 0 && <div className="empty">No groups of your own yet. <b>+ New group</b>: give it a search (free) or describe the mail in words (the AI checks each new mail), and new mail joins it on its own, next to its folders and timeline.</div>}
-          {mine.map((g) => <GroupRow key={g.id} g={g} onOpen={() => navigate(`/groups/${g.id}`)} />)}
+          {mine.map((g) => <GroupRow key={g.id} g={g} onOpen={() => navigate(`/groups/${g.id}`)} lead={box(g)} />)}
         </div>
         <h3 className="sec-h">Automatic groups</h3>
         {status.data && (on
           ? <Banner tone="warn" action="Turn off" onAction={() => set("no")}>Automatic grouping is <b>on</b>. It only changes how mail is displayed. Notifications are unaffected.</Banner>
           : <Banner tone="ok" action="Turn on" onAction={() => set("yes")}>Automatic grouping is <b>off</b>. Turn it on to stack similar mail (bank alerts, newsletters, one company's drive) into one row. Display only.</Banner>)}
         {on && (
-          <div className="list">
+          <div className={`list ${sel.size ? "selecting" : ""}`}>
             {auto.length === 0 && <div className="empty">No automatic groups yet. A group shows once three similar mails arrive.</div>}
-            {auto.map((g) => <GroupRow key={g.id} g={g} onOpen={() => navigate(`/groups/${g.id}`)} />)}
+            {auto.map((g) => <GroupRow key={g.id} g={g} onOpen={() => navigate(`/groups/${g.id}`)} lead={box(g)} />)}
           </div>
         )}
       </section>
@@ -108,6 +114,8 @@ export function GroupDetail() {
   }
   const d = g.data;
   const sender = d?.items?.[0]?.sender;
+  const sel = useSelection(id);
+  const ordered = (d?.items ?? []).map(rowKey);
   return (
     <>
       <Top title={d?.title ?? "Group"} back="/groups" refresh>
@@ -156,9 +164,11 @@ export function GroupDetail() {
                 Pick the mails to move into a new group.
               </Banner>
             )}
-            <div className="list">
+            {!selecting && <BulkBar sel={sel} items={d.items ?? []} place={{ kind: "group", id, name: d.title }}
+              extra={(ids) => ids.length > 0 && ids.length < (d.items?.length ?? 0) && <button className="btn btn-ghost btn-sm" onClick={() => run("Split into a new group", () => post(`/groups/${id}/split`, { message_ids: ids })).then(sel.clear)} data-tip="Move them into a new group of their own">Split off</button>} />}
+            <div className={`list ${sel.size ? "selecting" : ""}`}>
               {d.items?.map((m) => (
-                <MailRow key={m.id} m={m}
+                <MailRow key={m.id} m={m} lead={selecting ? undefined : <SelectBox sel={sel} k={rowKey(m)} ordered={ordered} label={`Select mail from ${m.sender_name || m.sender}`} />}
                   onOpen={() => selecting ? setSelected((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; }) : navigate(`/mail/${m.id}`)}
                   extra={selecting
                     ? <span className="ok-text">{selected.has(m.id) ? "☑" : "☐"}</span>

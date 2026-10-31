@@ -673,3 +673,28 @@ class AssistantRun(Base):
     tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+BULK_STATUSES = ("queued", "running", "done", "failed")
+
+
+class BulkJob(Base):
+    """A big change to many conversations at once (app/bulk.py): runs in the worker with progress.
+    Holds message ids and the action only, never mail content."""
+    __tablename__ = "bulk_jobs"
+    __table_args__ = (
+        CheckConstraint(_in("status", BULK_STATUSES), name="status_valid"),
+        Index("ix_bulk_jobs_user_created", "user_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    params: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}", nullable=False)
+    message_ids: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)  # one per conversation
+    status: Mapped[str] = mapped_column(String(10), default="queued", server_default="queued", nullable=False)
+    total: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    done: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    changed: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)  # ids that changed, for Undo
+    failed_accounts: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)
+    created_at: Mapped[datetime] = created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

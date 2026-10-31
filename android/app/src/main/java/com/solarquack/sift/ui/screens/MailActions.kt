@@ -194,7 +194,7 @@ fun snoozeChoices(now: ZonedDateTime = ZonedDateTime.now()): List<Pair<String, Z
 }
 
 @Composable
-private fun SnoozeDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
+internal fun SnoozeDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Snooze until…") },

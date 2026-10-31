@@ -277,9 +277,11 @@ def shown_group_ids(db: Session, user_id: uuid.UUID):
 
 
 def members(db: Session, group: MailGroup) -> list[Message]:
+    from app.bulk import not_in_bin
+
     return list(db.scalars(select(Message).join(GroupMember, GroupMember.message_id == Message.id)
                            .where(GroupMember.group_id == group.id, GroupMember.added_by != "removed",
-                                  Message.status.in_(GROUPABLE_STATUSES))
+                                  Message.status.in_(GROUPABLE_STATUSES), not_in_bin())
                            .order_by(Message.received_at.desc().nulls_last())))
 
 

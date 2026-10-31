@@ -323,9 +323,10 @@ const GROUP_KIND: Record<string, string> = {
   similar: "similar subjects from one sender domain", sender: "a sender you chose to always group", thread: "same conversation",
 };
 
-export function GroupRow({ g, onOpen, n }: { g: Group; onOpen: () => void; n?: number }) {
+export function GroupRow({ g, onOpen, n, lead }: { g: Group; onOpen: () => void; n?: number; lead?: ReactNode }) {
   return (
     <div className="row group-row click" onClick={onOpen}>
+      {lead}
       {n !== undefined && <span className="num" data-tip={`Row ${n} on this page`}>{n}</span>}
       <Dot tier={g.urgent ? "urgent" : "digest"} tip={g.urgent ? "Has urgent mail (also shown on its own row)" : "A group of similar mail"} />
       <div className="avatar" data-tip={`Grouped by ${GROUP_KIND[g.kind] ?? "similarity"}. Display only: nothing changes in Gmail.`}>▤</div>

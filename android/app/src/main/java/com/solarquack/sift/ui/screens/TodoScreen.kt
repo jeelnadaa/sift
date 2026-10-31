@@ -1,5 +1,6 @@
 package com.solarquack.sift.ui.screens
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -102,14 +103,19 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
         } catch (e: Throwable) { error = e.userMessage() }
     }
 
+    // picking many (long-press): done / not done, clear the due date, delete
+    val picks = rememberPicks(state)
+    val runner = rememberBulkRunner { load() }
+
     Box(Modifier.fillMaxSize().background(Ink.bg)) {
         Column(Modifier.fillMaxSize()) {
-            Text("To-do", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 10.dp))
+            if (picks.active) SelectionTopBar(picks, items.map { it.id })
+            else Text("To-do", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 10.dp))
             Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Chip("open", state == "open") { state = "open" }
                 Chip("done", state == "done") { state = "done" }
             }
-            PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.fillMaxSize()) {
+            PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
                     error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
                     if (!loading && error == null && items.isEmpty()) {
@@ -118,14 +124,34 @@ fun TodoScreen(onOpenMail: (String) -> Unit) {
                                 color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 32.dp))
                         }
                     }
-                    items(items, key = { it.id }) { t -> TodoRow(t, onToggle = { setDone(t, !t.done) }, onOpen = { t.messageId?.let(onOpenMail) }, onEdit = { editingTodo = t }) }
+                    items(items, key = { it.id }) { t ->
+                        TodoRow(t, picked = if (picks.active) picks.has(t.id) else null, onPick = { picks.toggle(t.id) },
+                            onToggle = { setDone(t, !t.done) }, onOpen = { t.messageId?.let(onOpenMail) }, onEdit = { editingTodo = t })
+                    }
                 }
             }
+            if (picks.active) {
+                val ids = picks.keys
+                ThingBulkBar(
+                    listOf(
+                        (if (state == "open") "Done" else "Not done") to {
+                            runner.many(ids, if (state == "open") "Done" else "Reopened", { Api.get(context).updateTodo(it, TodoPatch(done = state == "open")) }) { picks.clear() }
+                        },
+                        "Clear due" to { runner.many(ids, "Due date cleared", { Api.get(context).updateTodo(it, TodoPatch(clearDue = true)) }) { picks.clear() } },
+                    ),
+                    danger = "Delete" to {
+                        runner.confirm("Delete ${ids.size} to-do${if (ids.size == 1) "" else "s"}? They and their reminders go; the mail stays.") {
+                            runner.many(ids, "Deleted", { Api.get(context).deleteTodo(it) }) { picks.clear() }
+                        }
+                    },
+                )
+            }
         }
-        com.solarquack.sift.ui.AddButton("Add", Modifier.align(Alignment.BottomEnd)) { adding = true }
+        if (!picks.active) com.solarquack.sift.ui.AddButton("Add", Modifier.align(Alignment.BottomEnd)) { adding = true }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp))
     }
 
+    BulkRunnerUi(runner)
     if (adding) EditTodoDialog(null, onDismiss = { adding = false }) { title, notes, due ->
         adding = false
         scope.launch { try { Api.get(context).createTodo(TodoIn(title, due, notes.ifBlank { null })); state = "open"; load() } catch (t: Throwable) { error = t.userMessage() } }
@@ -158,10 +184,13 @@ private fun dueLabel(iso: String?): Pair<String, androidx.compose.ui.graphics.Co
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun TodoRow(t: TodoDto, onToggle: () -> Unit, onOpen: () -> Unit, onEdit: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = t.messageId != null, onClick = onOpen).padding(vertical = 12.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
+private fun TodoRow(t: TodoDto, picked: Boolean?, onPick: () -> Unit, onToggle: () -> Unit, onOpen: () -> Unit, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth()
+        .combinedClickable(onClick = { if (picked != null) onPick() else if (t.messageId != null) onOpen() }, onLongClick = onPick, onLongClickLabel = "Select")
+        .padding(vertical = 12.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (picked != null) PickMark(picked) else Box(
             Modifier.size(24.dp).background(if (t.done) Ink.signal else Ink.bg, Radius.sm).border(1.5.dp, if (t.done) Ink.signal else Ink.line2, Radius.sm)
                 .clickable(role = Role.Checkbox, onClick = onToggle).semantics { contentDescription = if (t.done) "Mark not done" else "Mark done" },
             contentAlignment = Alignment.Center,
@@ -181,7 +210,7 @@ private fun TodoRow(t: TodoDto, onToggle: () -> Unit, onOpen: () -> Unit, onEdit
                 Tag(it.first, it.second)
             }
         }
-        Text("Edit", color = Ink.signal, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onEdit).padding(horizontal = 8.dp, vertical = 10.dp))
+        if (picked == null) Text("Edit", color = Ink.signal, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onEdit).padding(horizontal = 8.dp, vertical = 10.dp))
     }
     HorizontalDivider(color = Ink.line)
 }

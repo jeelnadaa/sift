@@ -6,6 +6,7 @@ import { get, post, type Account, type Group, type GroupingStatus, type Mail, ty
 import { Top } from "../App";
 import { Banner, GroupRow, MailRow, Modal, Pager, useLoad, usePages } from "../components";
 import { accountColor, accountName } from "../util";
+import { BulkBar, SelectBox, rowKey, useSelection } from "../bulk";
 
 const PAGE_SIZE = 30;
 const PROMPTED_KEY = "sift.groupingPrompted";  // once per browser session; the server counts to 3
@@ -44,6 +45,8 @@ export function Feed() {
 
   const trouble = (accounts.data ?? []).filter((a) => a.status !== "active");
   const items = feed.data?.items ?? [];
+  const sel = useSelection(`${account}|${priority}|${grouped}|${feed.page}`);
+  const ordered = items.map(rowKey);
   // download the newest mails' contents in idle time, so they open at once (prefetch.ts)
   useEffect(() => { if (feed.data && !feed.updating) prefetchMails(items.filter((i) => i.type !== "group").map((i) => i.id)); }, [feed.data, feed.updating]);  // eslint-disable-line react-hooks/exhaustive-deps
   return (
@@ -81,11 +84,14 @@ export function Feed() {
         </div>
         {feed.error && <Banner tone="err" action="Retry" onAction={feed.reload}>{feed.error}</Banner>}
         {feed.data && <Pager page={feed.page} pages={feed.pages} total={feed.total} onPrev={feed.onPrev} onNext={feed.onNext} />}
-        <div className="list">
+        <BulkBar sel={sel} items={items} total={feed.total} match={{ view: "feed", priority, account_id: account }} />
+        <div className={`list ${sel.size || sel.all ? "selecting" : ""}`}>
           {!feed.loading && items.length === 0 && <div className="empty">{account || priority ? "No mail matches these filters." : "No mail yet. New mail shows up here within seconds."}</div>}
           {items.map((i, n) => i.type === "group"
-            ? <GroupRow key={"g" + i.id} g={i} n={n + 1} onOpen={() => navigate(`/groups/${i.id}`)} />
-            : <MailRow key={i.id} m={i as Mail} n={n + 1} onOpen={() => navigate(`/mail/${i.id}`)} />)}
+            ? <GroupRow key={"g" + i.id} g={i} n={n + 1} onOpen={() => navigate(`/groups/${i.id}`)}
+                lead={<SelectBox sel={sel} k={rowKey(i)} ordered={ordered} label={`Select group ${i.title}`} />} />
+            : <MailRow key={i.id} m={i as Mail} n={n + 1} onOpen={() => navigate(`/mail/${i.id}`)}
+                lead={<SelectBox sel={sel} k={rowKey(i)} ordered={ordered} label={`Select mail from ${(i as Mail).sender_name || (i as Mail).sender}`} />} />)}
         </div>
         {feed.data && <Pager bottom page={feed.page} pages={feed.pages} total={feed.total} onPrev={feed.onPrev} onNext={feed.onNext} />}
         <div className="dim" style={{ marginTop: 14, fontSize: 13 }}>

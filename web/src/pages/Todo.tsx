@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { del, get, patch, post, type Opportunity, type Todo } from "../api";
 import { Top } from "../App";
+import { SelectBox, ThingBar, runMany, useSelection } from "../bulk";
 import { Banner, confirmDialog, errorText, Modal, Select, Tag, TextField, toast, Toggle, useLoad } from "../components";
 import { fullTime, googleCalendarUrl, toLocalInput } from "../util";
 
@@ -17,6 +18,19 @@ export function Todos() {
   const todos = useLoad(() => get<Todo[]>("/todos", { state }), [state], ["new_mail"]);
   const [editing, setEditing] = useState<Todo | "new" | null>(null);
 
+  const sel = useSelection(state);
+  const keys = (todos.data ?? []).map((t) => t.id);
+  const [dating, setDating] = useState(false);
+  const [due, setDue] = useState("");
+  async function many(done: string, fn: (id: string) => Promise<unknown>, confirm?: { title: string; body: string }) {
+    const ids = [...sel.keys];
+    if (confirm && !(await confirmDialog({ ...confirm, confirm: "Delete", danger: true }))) return;
+    const ok = await runMany(ids, fn);
+    toast(ok === ids.length ? `${done}: ${ok}` : `${done}: ${ok} of ${ids.length}. Try the rest again.`);
+    sel.clear();
+    todos.reload();
+  }
+
   async function toggle(t: Todo) {
     try { await patch(`/todos/${t.id}`, { done: !t.done }); todos.reload(); } catch (e) { toast(errorText(e)); }
   }
@@ -31,10 +45,20 @@ export function Todos() {
           <button className={`chip ${state === "done" ? "on" : ""}`} onClick={() => setState("done")} data-tip="To-dos you finished">Done</button>
         </div>
         {todos.error && <Banner tone="err">{todos.error}</Banner>}
-        <div className="list">
+        <ThingBar sel={sel} keys={keys} noun={["to-do", "to-dos"]}>
+          {state === "open"
+            ? <button className="btn btn-ghost btn-sm" onClick={() => many("Done", (id) => patch(`/todos/${id}`, { done: true }))}>Mark done</button>
+            : <button className="btn btn-ghost btn-sm" onClick={() => many("Reopened", (id) => patch(`/todos/${id}`, { done: false }))}>Mark not done</button>}
+          <button className="btn btn-ghost btn-sm" onClick={() => setDating(true)} data-tip="One deadline for all of them; reminders follow it">Set due date…</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => many("Due date cleared", (id) => patch(`/todos/${id}`, { clear_due: true }))}>Clear due date</button>
+          <button className="btn btn-ghost btn-sm danger-text" onClick={() => many("Deleted", (id) => del(`/todos/${id}`),
+            { title: `Delete ${sel.size} to-do${sel.size === 1 ? "" : "s"}?`, body: "They and their reminders go. The mail stays." })}>Delete</button>
+        </ThingBar>
+        <div className={`list ${sel.size ? "selecting" : ""}`}>
           {todos.data?.length === 0 && <div className="empty">{state === "open" ? "Nothing to do. Nice." : "Nothing done yet."}</div>}
           {todos.data?.map((t) => (
             <div className="row" key={t.id}>
+              <SelectBox sel={sel} k={t.id} ordered={keys} label={`Select ${t.title}`} />
               <Toggle on={t.done} onChange={() => toggle(t)} label={`Mark ${t.title} ${t.done ? "not done" : "done"}`} />
               <div className="main">
                 <div className="who" style={t.done ? { textDecoration: "line-through", color: "var(--text-3)" } : undefined}>{t.title}</div>
@@ -68,6 +92,13 @@ export function Todos() {
           ))}
         </div>
       </section>
+      {dating && (
+        <Modal title={`Due date for ${sel.size} to-do${sel.size === 1 ? "" : "s"}`} onClose={() => setDating(false)}
+          foot={<><button className="btn btn-ghost btn-sm" onClick={() => setDating(false)}>Cancel</button>
+            <button className="btn btn-primary btn-sm" disabled={!due} onClick={() => { setDating(false); const iso = new Date(due).toISOString(); void many("Due date set", (id) => patch(`/todos/${id}`, { due_at: iso })); }}>Set</button></>}>
+          <div className="field"><label htmlFor="bulk-due">Due</label><input id="bulk-due" className="input" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></div>
+        </Modal>
+      )}
       {editing && <TodoDialog todo={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); todos.reload(); }} />}
     </>
   );

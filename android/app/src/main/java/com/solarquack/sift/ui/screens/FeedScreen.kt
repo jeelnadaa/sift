@@ -37,6 +37,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.solarquack.sift.data.AccountDto
 import com.solarquack.sift.data.Api
+import com.solarquack.sift.data.BulkIn
+import com.solarquack.sift.data.BulkMatch
 import com.solarquack.sift.data.FeedItem
 import com.solarquack.sift.data.GroupDto
 import com.solarquack.sift.data.GroupItem
@@ -239,6 +241,18 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
     }
 
+    // picking many (long-press): the bar acts on what's picked, or on the whole list ("All matching")
+    val picks = rememberPicks(priority, account, silenced, grouped, pinnedOnly)
+    val runner = rememberBulkRunner { scope.launch { refreshQuiet() } }
+    fun bulkBody(action: String): BulkIn =
+        if (picks.all) BulkIn(action, match = BulkMatch(view = if (silenced) "silenced" else "feed", priority = priority, accountId = account))
+        else BulkIn(action, messageIds = picks.keys.filter { it.startsWith("m:") }.map { it.drop(2) },
+            groupIds = picks.keys.filter { it.startsWith("g:") }.map { it.drop(2) })
+    fun archiveOne(m: MessageDto) {
+        items = items.filterNot { it is MailItem && it.m.id == m.id }  // gone at once; a failure brings it back
+        runner.run(BulkIn("archive", messageIds = listOf(m.id)), confirmed = true)
+    }
+
     // fetch the next page when the list gets within 8 rows of its end
     val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 8 } ?: false } }
     LaunchedEffect(nearEnd, next) { if (nearEnd && next != null) loadMore() }
@@ -246,7 +260,9 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
     if (askGrouping) GroupingPromptDialog { answer -> askGrouping = false; if (answer == "yes") load() }
 
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
-        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        val displayItems = if (pinnedOnly) items.filter { it is MailItem && it.m.pinned } else items
+        if (picks.active) SelectionTopBar(picks, displayItems.map { it.key }, onAllMatching = if (pinnedOnly) null else ({ picks.all = true }))
+        else Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (silenced) "Silenced" else "Feed", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f))
             onAsk?.let { go ->
                 Text("✦ Ask", color = Ink.signal, style = MaterialTheme.typography.labelLarge,
@@ -288,7 +304,7 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         } else {
             Text("Saved and searchable, never notified. Check here if a rule looks too greedy.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
         }
-        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { load(isPullRefresh = true) }, modifier = Modifier.fillMaxSize()) {
+        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { load(isPullRefresh = true) }, modifier = Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
                 error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
                 if (updating && !refreshing) item(key = "updating") {
@@ -302,11 +318,19 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                         )
                     }
                 }
-                val displayItems = if (pinnedOnly) items.filter { it is MailItem && it.m.pinned } else items
                 items(displayItems, key = { it.key }) { item ->
+                    val picking = picks.active
                     when (item) {
-                        is MailItem -> MailRow(item.m, onLongPress = { toggleRead(item.m) }) { FeedSessionCache.scrollIndex = listState.firstVisibleItemIndex; FeedSessionCache.scrollOffset = listState.firstVisibleItemScrollOffset; onOpen(item.m.id) }
-                        is GroupItem -> GroupRow(item.g) { onOpenGroup(item.g.id) }
+                        is MailItem -> SwipeRow(if (item.m.unread) "Mark read" else "Mark unread", onRight = if (picking) null else ({ toggleRead(item.m) }),
+                            onLeft = if (picking) null else ({ archiveOne(item.m) })) {
+                            MailRow(item.m, onLongPress = { picks.toggle(item.key) }, picked = if (picking) picks.has(item.key) else null) {
+                                if (picking) picks.toggle(item.key)
+                                else { FeedSessionCache.scrollIndex = listState.firstVisibleItemIndex; FeedSessionCache.scrollOffset = listState.firstVisibleItemScrollOffset; onOpen(item.m.id) }
+                            }
+                        }
+                        is GroupItem -> GroupRow(item.g, onLongPress = { picks.toggle(item.key) }, picked = if (picking) picks.has(item.key) else null) {
+                            if (picking) picks.toggle(item.key) else onOpenGroup(item.g.id)
+                        }
                     }
                 }
                 if (loadingMore) item {
@@ -323,25 +347,39 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 )
             }
         }
+        if (picks.active) {
+            val notLikeThis = if (!silenced || picks.all) emptyList() else listOf(SheetItem("Not like this", "Back to the feed; Sift learns from it", section = "Sift") {
+                val ids = picks.keys.filter { it.startsWith("m:") }.map { it.drop(2) }
+                scope.launch {
+                    val ok = runMany(ids) { Api.get(context).unsilence(it) }
+                    runner.say(if (ok == ids.size) "Back in the feed: $ok" else "Back in the feed: $ok of ${ids.size}. Try the rest again.")
+                    picks.clear(); refreshQuiet()
+                }
+            })
+            MailBulkBar(runner, ::bulkBody, extra = notLikeThis) { picks.clear() }
+        }
     }
+    BulkRunnerUi(runner)
 }
 
-/** One mail in a list. Read mail is greyed out; unread is bright and bold. Long-press switches
- * read / unread (where the screen allows it). */
+/** One mail in a list. Read mail is greyed out; unread is bright and bold. Long-press picks it
+ * (where the screen allows picking); `picked` is non-null while picking. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun MailRow(m: MessageDto, onLongPress: (() -> Unit)? = null, onClick: () -> Unit) {
+fun MailRow(m: MessageDto, onLongPress: (() -> Unit)? = null, picked: Boolean? = null, onClick: () -> Unit) {
     val urgent = m.priority == "urgent"
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     Row(
         Modifier.fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress?.let { f -> { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); f() } },
-                onLongClickLabel = if (m.unread) "Mark read" else "Mark unread")
-            .alpha(if (m.unread) 1f else 0.62f)
+                onLongClickLabel = "Select")
+            .background(if (picked == true) Ink.signal.copy(alpha = 0.08f) else androidx.compose.ui.graphics.Color.Transparent)
+            .alpha(if (m.unread || picked == true) 1f else 0.62f)
             .padding(vertical = 11.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.padding(top = 14.dp, end = 10.dp)) { PriorityDot(m.priority) }
+        if (picked != null) PickMark(picked, Modifier.padding(top = 10.dp, end = 10.dp))
+        else Box(Modifier.padding(top = 14.dp, end = 10.dp)) { PriorityDot(m.priority) }
         Avatar(m.senderName ?: m.sender ?: "?", if (urgent) Ink.urgent else null)
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(

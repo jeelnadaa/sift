@@ -181,15 +181,7 @@ def _own_message(db: Session, user: User, message_id: uuid.UUID) -> Message:
 def _assign(db: Session, opp: Opportunity, msg: Message, kind: str | None, learn: bool) -> dict:
     if kind is not None and kind not in EVENT_KINDS:
         raise HTTPException(422, f"kind must be one of {', '.join(EVENT_KINDS)}")
-    db.execute(delete(OpportunityEvent).where(OpportunityEvent.message_id == msg.id))  # move, never duplicate
-    ext = dict(msg.extraction or {})
-    kind = kind or opp_service.EVENT_KIND.get(ext.get("category") or "") or "update"
-    details = {k: ext.get(k) for k in ("deadline", "links", "platform", "summary")}
-    opp_service.attach(db, opp, msg, kind, details, "user")
-    learned = opp_service.learn(opp, msg, ext) if learn else None
-    ext.pop("company_question", None)
-    ext["opportunity_id"], ext["matched_by"] = str(opp.id), "user"
-    msg.extraction = ext
+    learned = opp_service.assign(db, opp, msg, kind, learn_too=learn)
     db.commit()
     return {"opportunity": opportunity_json(opp), "learned": learned}
 

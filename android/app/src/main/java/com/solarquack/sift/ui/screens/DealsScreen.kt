@@ -1,5 +1,7 @@
 package com.solarquack.sift.ui.screens
 
+import com.solarquack.sift.data.OpportunityPatch
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,14 +72,19 @@ fun DealsScreen(onOpen: (String) -> Unit) {
     LaunchedEffect(status) { load() }
     LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
+    // picking many (long-press): close / reopen, act on their mail, delete
+    val picks = rememberPicks(status)
+    val runner = rememberBulkRunner { load() }
+
     Box(Modifier.fillMaxSize().background(Ink.bg)) {
         Column(Modifier.fillMaxSize()) {
-            Text("Opportunities", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 10.dp))
+            if (picks.active) SelectionTopBar(picks, items.map { it.id })
+            else Text("Opportunities", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 10.dp))
             Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Chip("active", status == "active") { status = "active" }
                 Chip("closed", status == "closed") { status = "closed" }
             }
-            PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.fillMaxSize()) {
+            PullToRefreshBox(isRefreshing = loading, onRefresh = { load() }, modifier = Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
                     error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
                     if (!loading && error == null && items.isEmpty()) {
@@ -89,12 +96,35 @@ fun DealsScreen(onOpen: (String) -> Unit) {
                             )
                         }
                     }
-                    items(items, key = { it.id }) { o -> OpportunityRow(o) { onOpen(o.id) } }
+                    items(items, key = { it.id }) { o ->
+                        OpportunityRow(o, picked = if (picks.active) picks.has(o.id) else null, onPick = { picks.toggle(o.id) }) {
+                            if (picks.active) picks.toggle(o.id) else onOpen(o.id)
+                        }
+                    }
                 }
             }
+            if (picks.active) {
+                val ids = picks.keys
+                ThingBulkBar(
+                    listOf(
+                        (if (status == "active") "Close" else "Reopen") to {
+                            val to = if (status == "active") "closed" else "active"
+                            runner.many(ids, if (to == "closed") "Closed" else "Reopened", { Api.get(context).updateOpportunity(it, OpportunityPatch(status = to)) }) { picks.clear() }
+                        },
+                        "Read mail" to { runner.run(com.solarquack.sift.data.BulkIn("read", opportunityIds = ids.toList())) { ok -> if (ok) picks.clear() } },
+                        "Archive mail" to { runner.run(com.solarquack.sift.data.BulkIn("archive", opportunityIds = ids.toList())) { ok -> if (ok) picks.clear() } },
+                    ),
+                    danger = "Delete" to {
+                        runner.confirm("Delete ${ids.size} timeline${if (ids.size == 1) "" else "s"}? Their events and to-dos go; the mail stays.") {
+                            runner.many(ids, "Deleted", { Api.get(context).deleteOpportunity(it) }) { picks.clear() }
+                        }
+                    },
+                )
+            }
         }
-        com.solarquack.sift.ui.AddButton("New", Modifier.align(Alignment.BottomEnd)) { adding = true }
+        if (!picks.active) com.solarquack.sift.ui.AddButton("New", Modifier.align(Alignment.BottomEnd)) { adding = true }
     }
+    BulkRunnerUi(runner)
 
     if (adding) NewOpportunityDialog(onDismiss = { adding = false }) { company ->
         scope.launch {
@@ -118,10 +148,12 @@ private fun deadlineTag(iso: String?): Pair<String, androidx.compose.ui.graphics
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun OpportunityRow(o: OpportunityDto, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun OpportunityRow(o: OpportunityDto, picked: Boolean?, onPick: () -> Unit, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onPick, onLongClickLabel = "Select").padding(vertical = 12.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         val due = deadlineTag(o.deadline)
+        if (picked != null) PickMark(picked, Modifier.padding(end = 10.dp))
         Avatar(o.company, if (due?.second == Ink.urgent) Ink.signal else null)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(o.company, color = Ink.text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)

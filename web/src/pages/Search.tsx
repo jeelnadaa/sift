@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { del, get, patch, post, session, type Account, type FolderTree, type Mail } from "../api";
 import { Top } from "../App";
+import { BulkBar, rowKey, useSelection } from "../bulk";
 import {
   Banner, FolderPicker, MailRow, Modal, Pager, Select, TextField, Toggle, confirmDialog, copyText, errorText, inputDialog, toast, useLoad, usePages,
 } from "../components";
@@ -51,7 +52,6 @@ export function SearchPage() {
   const [chips, setChips] = useState<Chip[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
   const [gmailQuery, setGmailQuery] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filing, setFiling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [managing, setManaging] = useState(false);
@@ -85,7 +85,10 @@ export function SearchPage() {
     // Gmail only estimates how many results a search has (and badly), so Gmail searches show no total
     return { ...r, next_before: r.next_cursor, total: r.estimated ? -1 : r.total, pages: r.estimated ? 0 : Math.max(1, Math.ceil(r.total / PAGE)) };
   }, [q, mode, parseError]);
-  useEffect(() => setSelected(new Set()), [q, mode, results.page]);
+  // stored mail is keyed like everywhere else ("m:<id>"); Gmail-only threads as "x:<account>:<thread>"
+  const sel = useSelection(`${q}|${mode}|${results.page}`);
+  const selected = sel.keys;
+  const clearSel = sel.clear;
 
   const [accumulated, setAccumulated] = useState<(Mail & { source?: string; score?: number; gmail_id?: string })[]>(() => {
     if (webSearchSession && webSearchSession.q === q && webSearchSession.mode === mode) {
@@ -166,13 +169,15 @@ export function SearchPage() {
   const stored = items.filter((m) => m.id);
   const aiOn = !!sem.data?.ai_enabled;
 
-  const storedSel = [...selected].filter((k) => !k.startsWith("g:"));
+  const storedSel = [...selected].filter((k) => k.startsWith("m:")).map((k) => k.slice(2));
+  const gmailOnly = [...selected].some((k) => k.startsWith("x:"));
+  const ordered = items.map((m) => (m.id ? rowKey(m) : `x:${m.account_id}:${m.thread_id}`));
   const target = (): Target => ({
     message_ids: storedSel,
-    threads: [...selected].filter((k) => k.startsWith("g:")).map((k) => { const [, account_id, thread_id] = k.split(":"); return { account_id, thread_id }; }),
+    threads: [...selected].filter((k) => k.startsWith("x:")).map((k) => { const [, account_id, thread_id] = k.split(":"); return { account_id, thread_id }; }),
   });
   async function bulk(action: MailAction) {
-    if (await mailAction(target(), action)) { setSelected(new Set()); results.reload(); }
+    if (await mailAction(target(), action)) { clearSel(); results.reload(); }
   }
   async function bulkTag() {
     const name = await inputDialog({ title: `Tag ${selected.size} mail${selected.size === 1 ? "" : "s"}`, label: "Tag", placeholder: "e.g. Later", confirm: "Tag" });
@@ -180,7 +185,7 @@ export function SearchPage() {
     try {
       await post("/search/tag", { message_ids: storedSel, name });
       toast(`Tagged ${selected.size}`);
-      setSelected(new Set());
+      clearSel();
     } catch (e) { toast(errorText(e)); }
   }
   async function exportCsv() {
@@ -263,27 +268,30 @@ export function SearchPage() {
         {q && results.data && (
           <>
             <Pager page={results.page} pages={results.pages || results.page} total={results.total} noun={mode === "meaning" ? "matches" : "conversations"} onPrev={results.onPrev} onNext={results.onNext} />
-            {selected.size > 0 && (
-              <div className="banner ok" style={{ marginBottom: 12 }}>
-                <span>{selected.size} selected</span>
+            {gmailOnly ? (
+              // older Gmail-only mail is picked: Gmail's own actions only
+              <div className="bulk-bar" role="toolbar" aria-label="Selected">
+                <span className="bulk-count">{selected.size} selected</span>
                 <span className="spacer" />
                 <button className="btn btn-ghost btn-sm" onClick={() => bulk("read")} data-tip="Mark the selected conversations read in Gmail">Mark read</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => bulk("archive")} data-tip="Archive the selected conversations in Gmail (Z to undo)">Archive</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSnoozingSel(true)} data-tip="Hide the selected conversations until later">Snooze…</button>
-                <button className="btn btn-ghost btn-sm" disabled={!storedSel.length} onClick={() => setFiling(true)} data-tip={storedSel.length ? "File the selected conversations in a folder" : "Filing needs mail Sift stored"}>File in folder</button>
-                <button className="btn btn-ghost btn-sm" disabled={!storedSel.length} onClick={bulkTag} data-tip={storedSel.length ? "Tag the selected mails" : "Tags need mail Sift stored"}>Tag</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())} data-tip="Clear the selection">Clear</button>
+                <button className="btn btn-ghost btn-sm" disabled={!storedSel.length} onClick={() => setFiling(true)} data-tip={storedSel.length ? "File the Sift mail among them in a folder" : "Filing needs mail Sift stored"}>File in folder</button>
+                <button className="btn btn-ghost btn-sm" disabled={!storedSel.length} onClick={bulkTag} data-tip={storedSel.length ? "Tag the Sift mail among them" : "Tags need mail Sift stored"}>Tag</button>
+                <button className="btn btn-ghost btn-sm" onClick={clearSel} aria-label="Clear the selection" data-tip="Clear (Esc). Pick only Sift mail for every action">✕</button>
               </div>
+            ) : (
+              <BulkBar sel={sel} items={stored} extra={() => <button className="btn btn-ghost btn-sm" onClick={bulkTag} data-tip="Tag the selected mails">Tag</button>} />
             )}
-            <div className="list">
+            <div className={`list ${selected.size ? "selecting" : ""}`}>
               {items.length === 0 && <div className="empty">{mode === "meaning" ? "Nothing close enough in meaning. Try other words, or Keywords." : "No mail matches."}</div>}
               {items.map((m, i) => (
                 <MailRow key={m.id ?? `${m.account_id}:${m.thread_id}`} m={m} n={i + 1} highlight={r?.words}
                   draggable={!!m.id}
                   lead={(() => {
-                    const key = m.id ?? `g:${m.account_id}:${m.thread_id}`;
-                    return <input type="checkbox" checked={selected.has(key)} aria-label="Select" data-tip={m.id ? "Select for bulk actions" : "Select (older mail: archive, read and snooze work; file and tag need mail Sift stored)"}
-                      onClick={(e) => e.stopPropagation()} onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />;
+                    const key = ordered[i];
+                    return <input type="checkbox" className="sel" checked={sel.has(key)} aria-label="Select" data-tip={m.id ? "Select (Shift-click picks a range)" : "Select (older mail: archive, read and snooze work; file and tag need mail Sift stored)"}
+                      onClick={(e) => { e.stopPropagation(); sel.toggle(key, ordered, e.shiftKey); }} onChange={() => {}} />;
                   })()}
                   extra={<>
                     {m.score !== undefined && <span className="tag ok" data-tip="How close in meaning (1 = identical)">{Math.round(m.score * 100)}%</span>}
@@ -311,9 +319,9 @@ export function SearchPage() {
         onPick={async (f) => {
           setFiling(false);
           if (!f) return;
-          try { const res = await post<{ filed: number }>(`/folders/${f.id}/threads`, { message_ids: storedSel }); toast(`Filed ${res.filed} in ${f.name}`); setSelected(new Set()); } catch (e) { toast(errorText(e)); }
+          try { const res = await post<{ filed: number }>(`/folders/${f.id}/threads`, { message_ids: storedSel }); toast(`Filed ${res.filed} in ${f.name}`); clearSel(); } catch (e) { toast(errorText(e)); }
         }} />}
-      {snoozingSel && <SnoozeDialog target={target()} onClose={() => setSnoozingSel(false)} onDone={() => { setSnoozingSel(false); setSelected(new Set()); results.reload(); }} />}
+      {snoozingSel && <SnoozeDialog target={target()} onClose={() => setSnoozingSel(false)} onDone={() => { setSnoozingSel(false); clearSel(); results.reload(); }} />}
       {saving && <SaveDialog query={q} onClose={() => setSaving(false)} onSaved={() => { setSaving(false); saved.reload(); }} />}
       {managing && <ManageSaved list={saved.data ?? []} onClose={() => setManaging(false)} onChanged={saved.reload} />}
     </>

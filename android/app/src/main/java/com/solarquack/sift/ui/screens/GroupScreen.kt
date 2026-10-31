@@ -3,6 +3,7 @@ package com.solarquack.sift.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.solarquack.sift.data.AnswerIn
 import com.solarquack.sift.data.Api
+import com.solarquack.sift.data.BulkMatch
+import com.solarquack.sift.data.BulkIn
 import com.solarquack.sift.data.FolderIdIn
 import com.solarquack.sift.data.GroupDto
 import com.solarquack.sift.data.GroupPatch
@@ -60,15 +63,18 @@ import com.solarquack.sift.ui.theme.Ink
 import com.solarquack.sift.ui.theme.Radius
 import kotlinx.coroutines.launch
 
-/** A stacked row for a group in the feed (mobile design: groups). */
+/** A stacked row for a group in the feed (mobile design: groups). Long-press picks it where the
+ * screen allows picking; `picked` is non-null while picking. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun GroupRow(g: GroupDto, onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp).clickable(onClick = onClick)) {
+fun GroupRow(g: GroupDto, onLongPress: (() -> Unit)? = null, picked: Boolean? = null, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp).combinedClickable(onClick = onClick, onLongClick = onLongPress, onLongClickLabel = "Select")) {
         // two offset layers behind the card read as "a stack of mail"
         Box(Modifier.matchParentSize().padding(start = 10.dp, end = 10.dp, top = 8.dp).background(Ink.surface2.copy(alpha = 0.5f), Radius.lg))
         Box(Modifier.matchParentSize().padding(start = 5.dp, end = 5.dp, top = 4.dp).background(Ink.surface2, Radius.lg))
-        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp).background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(12.dp),
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp).background(Ink.surface, Radius.lg).border(1.dp, if (picked == true) Ink.signal else Ink.line2, Radius.lg).padding(12.dp),
             verticalAlignment = Alignment.Top) {
+            if (picked != null) PickMark(picked, Modifier.padding(top = 8.dp, end = 10.dp))
             Avatar(g.title, if (g.urgent > 0) Ink.urgent else null)
             Column(Modifier.weight(1f).padding(start = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -120,8 +126,6 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
     var renaming by remember { mutableStateOf(false) }
     var filing by remember { mutableStateOf<String?>(null) }  // "file" = file group, "rule" = file-like-this rule
     var merging by remember { mutableStateOf(false) }
-    var selecting by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf(setOf<String>()) }
     var editing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var actionsOpen by remember { mutableStateOf(false) }
@@ -141,8 +145,15 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
     LaunchedEffect(id) { load() }
     LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
+    // picking many (long-press): the bottom bar acts on them; "All matching" is the whole group
+    val picks = rememberPicks(id)
+    val runner = rememberBulkRunner { load() }
+    fun bulkBody(action: String): BulkIn =
+        if (picks.all) BulkIn(action, match = BulkMatch(groupId = id)) else BulkIn(action, messageIds = picks.keys.toList())
     val group = g
-    com.solarquack.sift.ui.Refreshable({ load().join() }) {
+    Column(Modifier.fillMaxSize().background(Ink.bg)) {
+    if (picks.active) SelectionTopBar(picks, group?.items.orEmpty().map { it.id }, onAllMatching = { picks.all = true })
+    com.solarquack.sift.ui.Refreshable({ load().join() }, Modifier.weight(1f)) {
         LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
             item {
                 Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
@@ -187,9 +198,6 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         GhostButton("Actions ▾", onClick = { actionsOpen = true })
-                        if (selecting) {
-                            GhostButton("Cancel split", onClick = { selecting = false; selected = emptySet() })
-                        }
                     }
 
                     if (actionsOpen) {
@@ -202,9 +210,8 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                                 add(SheetItem("File all in folder", "Move all emails in this group to a folder", section = "Organize") {
                                     filing = "file"
                                 })
-                                add(SheetItem("Split group", "Select emails to split into a new group", section = "Organize") {
-                                    selecting = true
-                                    selected = emptySet()
+                                add(SheetItem("Split group", "Long-press the mails to move, then More → Split off", section = "Organize") {
+                                    info = "Long-press the mails to move, then More → Split off into a new group."
                                 })
                                 add(SheetItem("Merge into…", "Combine with another existing group", section = "Organize") {
                                     merging = true
@@ -262,29 +269,42 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
                             }
                         }
                     }
-                    if (selecting) Banner(
-                        if (selected.isEmpty()) "Tap the mails to move into a new group." else "${selected.size} selected", Ink.signal,
-                        if (selected.isNotEmpty()) "Split off" else null,
-                    ) {
-                        run("Split into a new group") { Api.get(context).splitGroup(id, SplitIn(selected.toList())) }
-                        selecting = false; selected = emptySet()
-                    }
                     info?.let { Text(it, color = Ink.signal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 6.dp)) }
                     HorizontalDivider(color = Ink.line)
                 }
                 items(group.items, key = { it.id }) { m ->
+                    val picking = picks.active
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (selecting) Text(if (m.id in selected) "☑" else "☐", color = Ink.signal, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
                         Box(Modifier.weight(1f)) {
-                            MailRow(m) { if (selecting) selected = if (m.id in selected) selected - m.id else selected + m.id else onOpenMail(m.id) }
+                            SwipeRow(if (m.unread) "Mark read" else "Mark unread",
+                                onRight = if (picking) null else ({ runner.run(BulkIn(if (m.unread) "read" else "unread", messageIds = listOf(m.id)), confirmed = true, quiet = true) }),
+                                onLeft = if (picking) null else ({ runner.run(BulkIn("archive", messageIds = listOf(m.id)), confirmed = true) })) {
+                                MailRow(m, onLongPress = { picks.toggle(m.id) }, picked = if (picking) picks.has(m.id) else null) {
+                                    if (picking) picks.toggle(m.id) else onOpenMail(m.id)
+                                }
+                            }
                         }
-                        if (!selecting) Text("Take out", color = Ink.text3, style = MaterialTheme.typography.labelMedium,
+                        if (!picking) Text("Take out", color = Ink.text3, style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.clickable { run("Taken out of the group") { Api.get(context).removeFromGroup(id, MessageIdIn(m.id)) } }.padding(8.dp))
                     }
                 }
             }
         }
     }
+    if (picks.active) {
+        val own = buildList {
+            add(SheetItem("Take out of this group", "They go back to the feed on their own", section = "Group") {
+                runner.run(bulkBody("group_remove").copy(groupId = id)) { ok -> if (ok) picks.clear() }
+            })
+            if (!picks.all) add(SheetItem("Split off into a new group", null, section = "Group") {
+                run("Split into a new group") { Api.get(context).splitGroup(id, SplitIn(picks.keys.toList())) }
+                picks.clear()
+            })
+        }
+        MailBulkBar(runner, ::bulkBody, extra = own) { picks.clear() }
+    }
+    }
+    BulkRunnerUi(runner)
 
     if (editing) group?.let { gr -> GroupFormDialog(gr, onDismiss = { editing = false }) { editing = false; load() } }
     if (deleting) group?.let { gr ->
@@ -379,7 +399,12 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         } catch (t: Throwable) { error = t.userMessage() }
     }
 
-    com.solarquack.sift.ui.Refreshable({ load().join() }) {
+    // picking many groups (long-press): their mail read / archived, mute, delete
+    val picks = rememberPicks(Unit)
+    val runner = rememberBulkRunner { load() }
+    Column(Modifier.fillMaxSize().background(Ink.bg)) {
+    if (picks.active) SelectionTopBar(picks, groups.orEmpty().map { it.id })
+    com.solarquack.sift.ui.Refreshable({ load().join() }, Modifier.weight(1f)) {
         LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 110.dp)) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -400,7 +425,9 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 Text("None yet. Give a group a search (free) or describe its mail in words (the AI checks each new mail), and new mail joins it on its own, next to its folders and timeline.",
                     color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp))
             }
-            items(mine, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
+            items(mine, key = { it.id }) { g ->
+                GroupRow(g, onLongPress = { picks.toggle(g.id) }, picked = if (picks.active) picks.has(g.id) else null) { if (picks.active) picks.toggle(g.id) else onOpen(g.id) }
+            }
             item { Text("Automatic groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)) }
             status?.let {
                 item {
@@ -423,9 +450,29 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             if (on && groups?.none { !it.custom } == true) item {
                 Text("No automatic groups yet. A group shows once three similar mails arrive.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 28.dp, horizontal = 4.dp))
             }
-            items(groups.orEmpty().filter { !it.custom }, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
+            items(groups.orEmpty().filter { !it.custom }, key = { it.id }) { g ->
+                GroupRow(g, onLongPress = { picks.toggle(g.id) }, picked = if (picks.active) picks.has(g.id) else null) { if (picks.active) picks.toggle(g.id) else onOpen(g.id) }
+            }
         }
     }
+    if (picks.active) {
+        val ids = picks.keys
+        ThingBulkBar(
+            listOf(
+                "Read" to { runner.run(com.solarquack.sift.data.BulkIn("read", groupIds = ids.toList())) { ok -> if (ok) picks.clear() } },
+                "Archive" to { runner.run(com.solarquack.sift.data.BulkIn("archive", groupIds = ids.toList())) { ok -> if (ok) picks.clear() } },
+                "Mute" to { runner.many(ids, "Muted", { Api.get(context).editGroup(it, GroupPatch(muted = true)) }) { picks.clear() } },
+                "Unmute" to { runner.many(ids, "Unmuted", { Api.get(context).editGroup(it, GroupPatch(muted = false)) }) { picks.clear() } },
+            ),
+            danger = "Delete" to {
+                runner.confirm("Delete ${ids.size} group${if (ids.size == 1) "" else "s"}? The mail stays in your feed and in Gmail; only the grouping goes.") {
+                    runner.many(ids, "Deleted", { Api.get(context).deleteGroup(it) }) { picks.clear() }
+                }
+            },
+        )
+    }
+    }
+    BulkRunnerUi(runner)
     if (making) GroupFormDialog(null, onDismiss = { making = false }) { made -> making = false; load(); made?.let { onOpen(it.id) } }
 }
 

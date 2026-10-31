@@ -218,7 +218,14 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
     fun add(token: String) = run((query.split(" ").filter { it.isNotBlank() && it != token } + token).joinToString(" "))
     val aiOn = sem?.aiEnabled == true
 
-    com.solarquack.sift.ui.Refreshable({ searchNow(keep = true) }) {
+    // picking many (long-press): mail Sift stored only; "Gmail only" rows open but can't be picked
+    val picks = rememberPicks(query, meaning, fuzzy)
+    val runner = rememberBulkRunner { scope.launch { searchNow(keep = true) } }
+    fun bulkBody(action: String) = com.solarquack.sift.data.BulkIn(action, messageIds = picks.keys.toList())
+
+    Column(Modifier.fillMaxSize().background(Ink.bg)) {
+    if (picks.active) SelectionTopBar(picks, hits.mapNotNull { it.id })
+    com.solarquack.sift.ui.Refreshable({ searchNow(keep = true) }, Modifier.weight(1f)) {
         LazyColumn(Modifier.fillMaxSize().background(Ink.bg), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp)) {
             item {
                 Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = { SearchSession.clear(); onBack() }).padding(vertical = 6.dp))
@@ -287,7 +294,11 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             }
             items(hits, key = { it.id ?: (it.accountId + ":" + it.threadId) }) { h ->
                 Box {
-                    MailRow(h.asMessage()) { SearchSession.scrollIndex = listState.firstVisibleItemIndex; SearchSession.scrollOffset = listState.firstVisibleItemScrollOffset; if (h.id != null) onOpenMail(h.id) else onOpenThread(h.accountId, h.threadId) }
+                    val picking = picks.active
+                    MailRow(h.asMessage(), onLongPress = h.id?.let { mid -> { picks.toggle(mid) } }, picked = if (picking && h.id != null) picks.has(h.id) else null) {
+                        if (picking) { if (h.id != null) picks.toggle(h.id) }
+                        else { SearchSession.scrollIndex = listState.firstVisibleItemIndex; SearchSession.scrollOffset = listState.firstVisibleItemScrollOffset; if (h.id != null) onOpenMail(h.id) else onOpenThread(h.accountId, h.threadId) }
+                    }
                     Row(Modifier.align(Alignment.BottomEnd).padding(bottom = 8.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         h.score?.let { Tag("${(it * 100).toInt()}%", Ink.signal) }
                         if (h.id == null) Tag("Gmail only")
@@ -297,6 +308,9 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             if (loading) item { Text("Searching…", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 16.dp)) }
         }
     }
+    if (picks.active) MailBulkBar(runner, ::bulkBody) { picks.clear() }
+    }
+    BulkRunnerUi(runner)
 
     if (saving) {
         var name by remember { mutableStateOf("") }

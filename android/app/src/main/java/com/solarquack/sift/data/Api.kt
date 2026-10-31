@@ -211,6 +211,8 @@ interface SiftApi {
     @GET("api/v1/accounts/{account}/threads/{thread}") suspend fun accountThread(@Path("account") accountId: String, @Path("thread") threadId: String, @Query("images") images: Boolean? = null, @Query("bundle") bundle: Boolean? = true): ThreadDto
 
     @POST("api/v1/mail/actions") suspend fun mailAction(@Body body: MailActionIn): MailActionResult
+    @POST("api/v1/bulk") suspend fun bulk(@Body body: BulkIn): BulkOut
+    @GET("api/v1/bulk/jobs/{id}") suspend fun bulkJob(@Path("id") id: String): BulkJobDto
     @POST("api/v1/snoozes") suspend fun snooze(@Body body: SnoozeIn): List<SnoozeDto>
     @GET("api/v1/accounts/{id}/labels") suspend fun labels(@Path("id") accountId: String): List<LabelDto>
     @GET("api/v1/accounts/{id}/write-access-url") suspend fun writeAccessUrl(@Path("id") accountId: String): AuthUrl

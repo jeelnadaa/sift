@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -189,3 +189,17 @@ def learn(opp: Opportunity, msg: Message, extraction: dict | None) -> str | None
         opp.domains = [*(opp.domains or []), domain]
         return f"domain:{domain}"
     return None
+
+
+def assign(db: Session, opp: Opportunity, msg: Message, kind: str | None = None, learn_too: bool = False) -> str | None:
+    """Put a mail on a timeline by hand (moved, never duplicated). Returns what was learned, if asked."""
+    db.execute(delete(OpportunityEvent).where(OpportunityEvent.message_id == msg.id))
+    ext = dict(msg.extraction or {})
+    kind = kind or EVENT_KIND.get(ext.get("category") or "") or "update"
+    details = {k: ext.get(k) for k in ("deadline", "links", "platform", "summary")}
+    attach(db, opp, msg, kind, details, "user")
+    learned = learn(opp, msg, ext) if learn_too else None
+    ext.pop("company_question", None)
+    ext["opportunity_id"], ext["matched_by"] = str(opp.id), "user"
+    msg.extraction = ext
+    return learned
