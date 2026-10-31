@@ -42,7 +42,7 @@ export function Folders() {
 
   return (
     <>
-      <Top title="Folders"><button className="btn btn-primary btn-sm" onClick={() => setCreating({ parent: null })} data-tip="Make a folder. Folders live in Sift; Gmail is never changed">+ New folder</button></Top>
+      <Top title="Folders" refresh><button className="btn btn-primary btn-sm" onClick={() => setCreating({ parent: null })} data-tip="Make a folder. Folders live in Sift; Gmail is never changed">+ New folder</button></Top>
       <section className="page">
         {tree.error && <Banner tone="err">{tree.error}</Banner>}
         <div className="split">

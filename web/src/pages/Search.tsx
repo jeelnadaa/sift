@@ -196,7 +196,7 @@ export function SearchPage() {
 
   return (
     <>
-      <Top title="Search">
+      <Top title="Search" refresh>
         {q && <button className="btn btn-primary btn-sm" onClick={() => setSaving(true)} data-tip="Keep this search: pin it, get notified of new matches, or show it as a smart folder">Save this search</button>}
         <button className="btn btn-ghost btn-sm" onClick={() => setManaging(true)} data-tip="Rename, pin, notify or delete saved searches">Saved searches</button>
         {q && mode === "keywords" && <button className="btn btn-ghost btn-sm" onClick={exportCsv} data-tip="Download up to 500 results as a spreadsheet (CSV)">Export CSV</button>}

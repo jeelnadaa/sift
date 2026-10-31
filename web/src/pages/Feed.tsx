@@ -48,7 +48,7 @@ export function Feed() {
   useEffect(() => { if (feed.data && !feed.updating) prefetchMails(items.filter((i) => i.type !== "group").map((i) => i.id)); }, [feed.data, feed.updating]);  // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <Top title="Feed" />
+      <Top title="Feed" refresh />
       <section className="page">
         {(accounts.data ?? []).filter((a) => a.status === "active" && a.stalled).map((a) => {
           const since = a.check_failing_since ?? a.last_check_ok_at;

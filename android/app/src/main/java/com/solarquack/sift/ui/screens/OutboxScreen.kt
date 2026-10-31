@@ -64,84 +64,87 @@ fun OutboxScreen(onBack: () -> Unit, onCompose: () -> Unit, onOpenDraft: (String
         try { block(); android.widget.Toast.makeText(context, done, android.widget.Toast.LENGTH_SHORT).show(); load() } catch (t: Throwable) { error = t.userMessage() }
     }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
-    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
-        item {
-            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
-            Text("Outbox", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(vertical = 8.dp))
-            PrimaryButton("New mail", Modifier.fillMaxWidth(), onClick = onCompose)
-            FlowRow(Modifier.padding(vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val waiting = follows?.followUps?.count { it.status == "waiting" } ?: 0
-                listOf(
-                    "drafts" to "Drafts${drafts?.drafts?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""}",
-                    "scheduled" to "Scheduled${box?.scheduled?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""}",
-                    "follow" to "Follow-ups${if (waiting > 0) " · $waiting" else ""}",
-                    "recent" to "Sent by Sift",
-                ).forEach { (k, label) -> Chip(label, tab == k) { tab = k } }
-            }
-            error?.let { Banner(it, Ink.urgent, "Retry") { load() } }
-        }
-        when (tab) {
-            "drafts" -> {
-                val list = drafts
-                if (list == null) item { Text("Loading drafts from Gmail…", color = Ink.text3) }
-                else {
-                    if (list.failedAccounts.isNotEmpty()) item { Banner("Couldn't load drafts of ${list.failedAccounts.joinToString()}.", Ink.warn) }
-                    if (list.drafts.isEmpty()) item { Text("No drafts.", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
-                    items(list.drafts, key = { it.accountId + it.draftId }) { d ->
-                        Line(d.subject.ifBlank { "(no subject)" }, listOf(d.to.ifBlank { "No recipient" }, d.accountEmail).joinToString(" · "), d.snippet,
-                            onClick = { onOpenDraft(d.accountId, d.draftId) }) {
-                            d.outbox?.let { Tag("Sends ${fullTime(it.sendAt)}", Ink.normal) }
-                        }
-                    }
+    com.solarquack.sift.ui.Refreshable({ load().join() }) {
+        LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
+            item {
+                Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
+                Text("Outbox", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(vertical = 8.dp))
+                PrimaryButton("New mail", Modifier.fillMaxWidth(), onClick = onCompose)
+                FlowRow(Modifier.padding(vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val waiting = follows?.followUps?.count { it.status == "waiting" } ?: 0
+                    listOf(
+                        "drafts" to "Drafts${drafts?.drafts?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""}",
+                        "scheduled" to "Scheduled${box?.scheduled?.size?.takeIf { it > 0 }?.let { " · $it" } ?: ""}",
+                        "follow" to "Follow-ups${if (waiting > 0) " · $waiting" else ""}",
+                        "recent" to "Sent by Sift",
+                    ).forEach { (k, label) -> Chip(label, tab == k) { tab = k } }
                 }
+                error?.let { Banner(it, Ink.urgent, "Retry") { load() } }
             }
-            "scheduled" -> {
-                val list = box?.scheduled
-                if (list == null) item { Text("Loading…", color = Ink.text3) }
-                else {
-                    if (list.isEmpty()) item { Text("Nothing scheduled. In a draft, use \"Send later…\".", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
-                    items(list, key = { it.id }) { r ->
-                        Line(r.subject ?: "(no subject)", "${r.recipients ?: ""} · ${r.accountEmail ?: ""}",
-                            if (r.status == "sending") "Sending…" else "Sends ${fullTime(r.sendAt)}", onClick = { onOpenDraft(r.accountId, r.draftId) }) {
-                            r.error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall) }
-                            if (r.status == "scheduled") Row {
-                                LinkText("Send now") { act("Sending now") { Api.get(context).sendNow(r.id) } }
-                                LinkText("Unschedule") { act("Unscheduled. It stays a draft") { Api.get(context).cancelSend(r.id) } }
+            when (tab) {
+                "drafts" -> {
+                    val list = drafts
+                    if (list == null) item { Text("Loading drafts from Gmail…", color = Ink.text3) }
+                    else {
+                        if (list.failedAccounts.isNotEmpty()) item { Banner("Couldn't load drafts of ${list.failedAccounts.joinToString()}.", Ink.warn) }
+                        if (list.drafts.isEmpty()) item { Text("No drafts.", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
+                        items(list.drafts, key = { it.accountId + it.draftId }) { d ->
+                            Line(d.subject.ifBlank { "(no subject)" }, listOf(d.to.ifBlank { "No recipient" }, d.accountEmail).joinToString(" · "), d.snippet,
+                                onClick = { onOpenDraft(d.accountId, d.draftId) }) {
+                                d.outbox?.let { Tag("Sends ${fullTime(it.sendAt)}", Ink.normal) }
                             }
                         }
                     }
                 }
-            }
-            "follow" -> {
-                val list = follows?.followUps
-                if (list == null) item { Text("Loading…", color = Ink.text3) }
-                else {
-                    if (list.isEmpty()) item { Text("No follow-ups. When sending, pick \"Remind me if no reply\".", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
-                    items(list, key = { it.id }) { f ->
-                        Line(f.subject ?: "(no subject)", "${f.recipients ?: ""} · sent ${relativeTime(f.sentAt)} ago", null, onClick = { onOpenThread(f.accountId, f.threadId) }) {
-                            when (f.status) {
-                                "waiting" -> Row {
-                                    Tag("Reminds ${fullTime(f.dueAt)}")
-                                    LinkText("Cancel") { act("Reminder cancelled") { Api.get(context).cancelFollowUp(f.id) } }
+                "scheduled" -> {
+                    val list = box?.scheduled
+                    if (list == null) item { Text("Loading…", color = Ink.text3) }
+                    else {
+                        if (list.isEmpty()) item { Text("Nothing scheduled. In a draft, use \"Send later…\".", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
+                        items(list, key = { it.id }) { r ->
+                            Line(r.subject ?: "(no subject)", "${r.recipients ?: ""} · ${r.accountEmail ?: ""}",
+                                if (r.status == "sending") "Sending…" else "Sends ${fullTime(r.sendAt)}", onClick = { onOpenDraft(r.accountId, r.draftId) }) {
+                                r.error?.let { Text(it, color = Ink.urgent, style = MaterialTheme.typography.bodySmall) }
+                                if (r.status == "scheduled") Row {
+                                    LinkText("Send now") { act("Sending now") { Api.get(context).sendNow(r.id) } }
+                                    LinkText("Unschedule") { act("Unscheduled. It stays a draft") { Api.get(context).cancelSend(r.id) } }
                                 }
-                                "replied" -> Tag("Replied", Ink.signal)
-                                "reminded" -> Tag("No reply, reminded", Ink.warn)
-                                else -> Tag("Cancelled")
                             }
                         }
                     }
                 }
-            }
-            else -> {
-                val list = box?.recent
-                if (list == null) item { Text("Loading…", color = Ink.text3) }
-                else {
-                    if (list.isEmpty()) item { Text("Nothing sent through Sift yet.", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
-                    items(list, key = { it.id }) { r ->
-                        Line(r.subject ?: "(no subject)", "${r.recipients ?: ""} · ${relativeTime(r.sentAt ?: r.sendAt)}", r.error?.takeIf { r.status == "failed" },
-                            onClick = { if (r.status == "sent") r.threadId?.let { onOpenThread(r.accountId, it) } else onOpenDraft(r.accountId, r.draftId) }) {
-                            when (r.status) { "sent" -> Tag("Sent", Ink.signal); "failed" -> Tag("Not sent", Ink.urgent); else -> Tag("Undone") }
+                "follow" -> {
+                    val list = follows?.followUps
+                    if (list == null) item { Text("Loading…", color = Ink.text3) }
+                    else {
+                        if (list.isEmpty()) item { Text("No follow-ups. When sending, pick \"Remind me if no reply\".", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
+                        items(list, key = { it.id }) { f ->
+                            Line(f.subject ?: "(no subject)", "${f.recipients ?: ""} · sent ${relativeTime(f.sentAt)} ago", null, onClick = { onOpenThread(f.accountId, f.threadId) }) {
+                                when (f.status) {
+                                    "waiting" -> Row {
+                                        Tag("Reminds ${fullTime(f.dueAt)}")
+                                        LinkText("Cancel") { act("Reminder cancelled") { Api.get(context).cancelFollowUp(f.id) } }
+                                    }
+                                    "replied" -> Tag("Replied", Ink.signal)
+                                    "reminded" -> Tag("No reply, reminded", Ink.warn)
+                                    else -> Tag("Cancelled")
+                                }
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    val list = box?.recent
+                    if (list == null) item { Text("Loading…", color = Ink.text3) }
+                    else {
+                        if (list.isEmpty()) item { Text("Nothing sent through Sift yet.", color = Ink.text3, modifier = Modifier.padding(vertical = 24.dp)) }
+                        items(list, key = { it.id }) { r ->
+                            Line(r.subject ?: "(no subject)", "${r.recipients ?: ""} · ${relativeTime(r.sentAt ?: r.sendAt)}", r.error?.takeIf { r.status == "failed" },
+                                onClick = { if (r.status == "sent") r.threadId?.let { onOpenThread(r.accountId, it) } else onOpenDraft(r.accountId, r.draftId) }) {
+                                when (r.status) { "sent" -> Tag("Sent", Ink.signal); "failed" -> Tag("Not sent", Ink.urgent); else -> Tag("Undone") }
+                            }
                         }
                     }
                 }

@@ -20,7 +20,7 @@ export function Silenced() {
   }
   return (
     <>
-      <Top title="Silenced mail" />
+      <Top title="Silenced mail" refresh />
       <section className="page">
         <p className="lede">Everything a rule or a silenced template kept quiet: stored and searchable, never notified. Check here when a rule seems too greedy.</p>
         {mail.error && <Banner tone="err">{mail.error}</Banner>}

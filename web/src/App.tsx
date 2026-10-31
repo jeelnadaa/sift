@@ -6,7 +6,7 @@ import { ComposePage } from "./pages/Compose";
 import { OutboxPage } from "./pages/Outbox";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { get, post, session, setSignedOutHandler, type Account, type Folder } from "./api";
-import { DialogHost, Icon, Toaster, TooltipLayer, errorText, toast } from "./components";
+import { DialogHost, Icon, RefreshButton, Toaster, TooltipLayer, errorText, toast } from "./components";
 import { AskPanel } from "./pages/Ask";
 import { Login } from "./pages/Login";
 import { Feed } from "./pages/Feed";
@@ -252,14 +252,14 @@ export async function fileDropped(messageId: string, f: Folder) {
 
 /** Page header. `back` puts "‹ Back" above the title on the left (where the eye starts);
  * the page's actions sit in a row right under the title, never tucked in the far corner. */
-export function Top({ title, children, back }: { title: string; children?: ReactNode; back?: boolean | string }) {
+export function Top({ title, children, back, refresh }: { title: string; children?: ReactNode; back?: boolean | string; refresh?: boolean }) {
   const navigate = useNavigate();
   useEffect(() => { document.title = `${title} · Sift`; }, [title]);
   return (
     <div className="top">
       {back && <button className="back" onClick={() => (typeof back === "string" ? navigate(back) : navigate(-1))} data-tip="Back to where you were  (Alt + ←)">‹ Back</button>}
       <h1>{title}</h1>
-      {children && <div className="actions">{children}</div>}
+      {(children || refresh) && <div className="actions">{children}{refresh && <RefreshButton />}</div>}
     </div>
   );
 }

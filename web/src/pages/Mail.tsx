@@ -194,7 +194,7 @@ export function MailDetail() {
   const last = findFolder(tree.data?.folders ?? [], tree.data?.last_used_id);
   return (
     <>
-      <Top title={m?.subject ?? "Mail"} back />
+      <Top title={m?.subject ?? "Mail"} back refresh />
       <section className="page">
         {mail.error && <Banner tone="err">{mail.error}</Banner>}
         {m && (

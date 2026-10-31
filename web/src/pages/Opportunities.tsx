@@ -22,7 +22,7 @@ export function Opportunities() {
 
   return (
     <>
-      <Top title="Opportunities"><button className="btn btn-primary btn-sm" onClick={() => setCreating(true)} data-tip="Start a company timeline by hand">+ New opportunity</button></Top>
+      <Top title="Opportunities" refresh><button className="btn btn-primary btn-sm" onClick={() => setCreating(true)} data-tip="Start a company timeline by hand">+ New opportunity</button></Top>
       <section className="page">
         <div className="tabs">
           <button className={`chip ${status === "active" ? "on" : ""}`} onClick={() => setStatus("active")} data-tip="Companies you're still hearing from">Active</button>

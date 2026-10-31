@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
@@ -213,4 +216,22 @@ fun Avatar(text: String, tint: Color? = null) {
             style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.solarquack.sift.ui.theme.ClashDisplay), maxLines = 1, overflow = TextOverflow.Clip,
         )
     }
+}
+
+/** Pull down to refresh, for any list (owner, 2026-10-31: every list refreshes this way). Keeps its
+ * own spinner state, so a screen only passes its reload: [onRefresh] runs until the reload ends
+ * (a `load()` that returns a Job passes `{ load().join() }`). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun Refreshable(onRefresh: suspend () -> Unit, modifier: Modifier = Modifier.fillMaxSize(), content: @Composable () -> Unit) {
+    var refreshing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            scope.launch { try { onRefresh() } finally { refreshing = false } }
+        },
+        modifier = modifier,
+    ) { content() }
 }

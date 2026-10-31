@@ -90,6 +90,7 @@ fun FoldersScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
         try { block(); tree = Api.get(context).folders(); error = null } catch (t: Throwable) { error = t.userMessage() }
     }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -101,15 +102,17 @@ fun FoldersScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
         Text("Yours, in Sift. Filing never moves or changes mail in Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
         error?.let { Box(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) { Banner(it, Ink.urgent) } }
         val t = tree
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
-            if (t != null && t.folders.isEmpty()) item {
-                Text("No folders yet. Make one, then file mail into it from any mail, or let a rule do it.", color = Ink.text3,
-                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))
-            }
-            items(flatten(t?.folders.orEmpty(), open = open), key = { it.first.id }) { (f, depth) ->
-                FolderRow(f, depth, expanded = f.id in open,
-                    onToggle = { open = if (f.id in open) open - f.id else open + f.id },
-                    onOpen = { onOpen(f.id) }, onMore = { acting = f })
+        com.solarquack.sift.ui.Refreshable({ load().join() }) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp)) {
+                if (t != null && t.folders.isEmpty()) item {
+                    Text("No folders yet. Make one, then file mail into it from any mail, or let a rule do it.", color = Ink.text3,
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))
+                }
+                items(flatten(t?.folders.orEmpty(), open = open), key = { it.first.id }) { (f, depth) ->
+                    FolderRow(f, depth, expanded = f.id in open,
+                        onToggle = { open = if (f.id in open) open - f.id else open + f.id },
+                        onOpen = { onOpen(f.id) }, onMore = { acting = f })
+                }
             }
         }
     }
@@ -358,13 +361,15 @@ fun FolderScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, o
             }
         }
         error?.let { Box(Modifier.padding(horizontal = 14.dp)) { Banner(it, Ink.urgent, "Retry") { load() } } }
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp)) {
-            if (v != null && v.items.isEmpty()) item {
-                Text(if (query.isBlank()) "Nothing filed here yet. Open a mail and tap File in folder." else "No mail here matches.",
-                    color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))
-            }
-            items(v?.items.orEmpty(), key = { it.id }) { row ->
-                MailRow(row.asMessage().let { m -> if (row.threadCount > 1) m.copy(senderName = "${m.senderName ?: m.sender} (${row.threadCount})") else m }) { onOpenMail(row.id) }
+        com.solarquack.sift.ui.Refreshable({ load().join() }) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp)) {
+                if (v != null && v.items.isEmpty()) item {
+                    Text(if (query.isBlank()) "Nothing filed here yet. Open a mail and tap File in folder." else "No mail here matches.",
+                        color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 24.dp))
+                }
+                items(v?.items.orEmpty(), key = { it.id }) { row ->
+                    MailRow(row.asMessage().let { m -> if (row.threadCount > 1) m.copy(senderName = "${m.senderName ?: m.sender} (${row.threadCount})") else m }) { onOpenMail(row.id) }
+                }
             }
         }
     }

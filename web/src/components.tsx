@@ -61,7 +61,41 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = [], live?: Li
     addEventListener("sift:live", on);
     return () => { removeEventListener("sift:live", on); window.clearTimeout(timer); };
   }, [reload, liveKey]);
+  // the Refresh button: every loader on screen fetches again, keeping its data while it does
+  useEffect(() => {
+    const on = () => { updatingDelta(1); void reload(true).finally(() => updatingDelta(-1)); };
+    addEventListener("sift:refresh", on);
+    return () => removeEventListener("sift:refresh", on);
+  }, [reload]);
   return { data, setData, error, setError, loading, updating, reload: () => reload(false) };
+}
+
+/** ↻ Refresh in a page's actions. New mail and changes also arrive by themselves (live updates);
+ * this fetches everything on the page again now. It turns while anything on the page is loading. */
+export function RefreshButton() {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setBusy((e as CustomEvent<boolean>).detail);
+    addEventListener("sift:updating", on);
+    return () => removeEventListener("sift:updating", on);
+  }, []);
+  return (
+    <button className={`btn btn-ghost btn-sm refresh-btn ${busy ? "busy" : ""}`} aria-label="Refresh" aria-busy={busy}
+      onClick={() => dispatchEvent(new Event("sift:refresh"))}
+      data-tip={"Refresh this page\nNew mail also shows up by itself"}>
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      Refresh
+    </button>
+  );
+}
+
+/** For pages that load without useLoad: counts them as updating (Refresh spins, "Updating…") while [busy]. */
+export function useBusyWhile(busy: boolean) {
+  useEffect(() => {
+    if (!busy) return;
+    updatingDelta(1);
+    return () => updatingDelta(-1);
+  }, [busy]);
 }
 
 // how many pages are showing a saved copy while they fetch (the shell shows "Updating…")

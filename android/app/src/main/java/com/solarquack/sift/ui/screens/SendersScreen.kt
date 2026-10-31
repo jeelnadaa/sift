@@ -61,7 +61,7 @@ fun SendersScreen(
     var sortBy by remember { mutableStateOf("count") }
     var offset by remember { mutableStateOf(0) }
 
-    fun refresh(q: String, sort: String, off: Int) {
+    fun refresh(q: String, sort: String, off: Int) =
         scope.launch {
             loading = true
             try {
@@ -75,23 +75,23 @@ fun SendersScreen(
                 items = res.items
                 total = res.total
             } catch (_: Exception) {
-                items = emptyList()
+                // keep what is on screen; a failed reload must not blank the list
             } finally {
                 loading = false
             }
         }
-    }
 
     LaunchedEffect(Unit) {
         refresh(query, sortBy, offset)
     }
+    LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { refresh(query, sortBy, offset) } }
 
     val sortTabs = listOf(
-        "count" to "📊 Volume",
-        "recent" to "🕒 Recent",
-        "unread" to "📬 Unread",
-        "urgent" to "🚨 Urgent",
-        "name" to "🔤 Name",
+        "count" to "Volume",
+        "recent" to "Recent",
+        "unread" to "Unread",
+        "urgent" to "Urgent",
+        "name" to "Name",
     )
 
     Column(
@@ -191,50 +191,52 @@ fun SendersScreen(
                 }
             }
         } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(items, key = { it.email }) { s ->
-                    SenderRow(
-                        item = s,
-                        onSearch = { onSearchSender(s.email) }
-                    )
-                }
+            com.solarquack.sift.ui.Refreshable({ refresh(query, sortBy, offset).join() }) {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(items, key = { it.email }) { s ->
+                        SenderRow(
+                            item = s,
+                            onSearch = { onSearchSender(s.email) }
+                        )
+                    }
 
-                if (total > 40) {
-                    item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(16.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            GhostButton(
-                                label = "‹ Previous",
-                                enabled = offset > 0,
-                                onClick = {
-                                    val newOff = maxOf(0, offset - 40)
-                                    offset = newOff
-                                    refresh(query, sortBy, newOff)
-                                }
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            Text(
-                                "${offset + 1}–${minOf(offset + 40, total)} of $total",
-                                color = Ink.text3,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            GhostButton(
-                                label = "Next ›",
-                                enabled = offset + 40 < total,
-                                onClick = {
-                                    val newOff = offset + 40
-                                    offset = newOff
-                                    refresh(query, sortBy, newOff)
-                                }
-                            )
+                    if (total > 40) {
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                GhostButton(
+                                    label = "‹ Previous",
+                                    enabled = offset > 0,
+                                    onClick = {
+                                        val newOff = maxOf(0, offset - 40)
+                                        offset = newOff
+                                        refresh(query, sortBy, newOff)
+                                    }
+                                )
+                                Spacer(Modifier.width(16.dp))
+                                Text(
+                                    "${offset + 1}–${minOf(offset + 40, total)} of $total",
+                                    color = Ink.text3,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Spacer(Modifier.width(16.dp))
+                                GhostButton(
+                                    label = "Next ›",
+                                    enabled = offset + 40 < total,
+                                    onClick = {
+                                        val newOff = offset + 40
+                                        offset = newOff
+                                        refresh(query, sortBy, newOff)
+                                    }
+                                )
+                            }
                         }
                     }
                 }

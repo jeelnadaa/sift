@@ -85,7 +85,7 @@ fun AttachmentsScreen(
     var nextBefore by remember { mutableStateOf<String?>(null) }
     var total by remember { mutableStateOf(0) }
 
-    fun refresh(type: String?, q: String) {
+    fun refresh(type: String?, q: String) =
         scope.launch {
             loading = true
             try {
@@ -99,12 +99,11 @@ fun AttachmentsScreen(
                 nextBefore = res.nextBefore
                 total = res.total
             } catch (_: Exception) {
-                items = emptyList()
+                // keep what is on screen; a failed reload must not blank the list
             } finally {
                 loading = false
             }
         }
-    }
 
     LaunchedEffect(Unit) {
         try {
@@ -115,11 +114,11 @@ fun AttachmentsScreen(
 
     val typeFilters = listOf(
         null to "All",
-        "pdf" to "📄 PDFs",
-        "image" to "🖼️ Images",
-        "sheet" to "📊 Sheets",
-        "doc" to "📝 Docs",
-        "archive" to "📦 Archives",
+        "pdf" to "PDFs",
+        "image" to "Images",
+        "sheet" to "Sheets",
+        "doc" to "Docs",
+        "archive" to "Archives",
     )
 
     Column(
@@ -219,51 +218,53 @@ fun AttachmentsScreen(
                 }
             }
         } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(items, key = { it.id }) { att ->
-                    AttachmentRow(
-                        item = att,
-                        onOpenMail = { onOpenMail(att.messageId) },
-                        onDownload = {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(att.downloadUrl))
-                                context.startActivity(intent)
-                            } catch (_: Exception) {}
-                        }
-                    )
-                }
+            com.solarquack.sift.ui.Refreshable({ runCatching { stats = Api.get(context).attachmentStats() }; refresh(selectedType, query).join() }) {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(items, key = { it.id }) { att ->
+                        AttachmentRow(
+                            item = att,
+                            onOpenMail = { onOpenMail(att.messageId) },
+                            onDownload = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(att.downloadUrl))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                        )
+                    }
 
-                if (nextBefore != null) {
-                    item {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            GhostButton(
-                                label = if (loading) "Loading…" else "Load more (${total - items.size} remaining)",
-                                onClick = {
-                                    if (!loading) {
-                                        scope.launch {
-                                            loading = true
-                                            try {
-                                                val res = Api.get(context).attachments(
-                                                    type = selectedType,
-                                                    q = query.ifBlank { null },
-                                                    before = nextBefore,
-                                                    limit = 30,
-                                                )
-                                                items = items + res.items
-                                                nextBefore = res.nextBefore
-                                                total = res.total
-                                            } catch (_: Exception) {}
-                                            finally {
-                                                loading = false
+                    if (nextBefore != null) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                GhostButton(
+                                    label = if (loading) "Loading…" else "Load more (${total - items.size} remaining)",
+                                    onClick = {
+                                        if (!loading) {
+                                            scope.launch {
+                                                loading = true
+                                                try {
+                                                    val res = Api.get(context).attachments(
+                                                        type = selectedType,
+                                                        q = query.ifBlank { null },
+                                                        before = nextBefore,
+                                                        limit = 30,
+                                                    )
+                                                    items = items + res.items
+                                                    nextBefore = res.nextBefore
+                                                    total = res.total
+                                                } catch (_: Exception) {}
+                                                finally {
+                                                    loading = false
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }

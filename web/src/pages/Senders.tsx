@@ -8,7 +8,8 @@ import {
   type SenderItem,
   type SenderListResult,
 } from "../api";
-import { Avatar, Dot, Icon, Modal, errorText, toast } from "../components";
+import { Avatar, Dot, Icon, Modal, Tag, errorText, toast, useBusyWhile } from "../components";
+import { Top } from "../App";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -69,6 +70,12 @@ export function SendersPage() {
       cancelled = true;
     };
   }, [searchQuery, sortBy, offset, reloadTick]);
+  useBusyWhile(loading && reloadTick > 0);
+  useEffect(() => {  // the Refresh button
+    const on = () => setReloadTick((t) => t + 1);
+    addEventListener("sift:refresh", on);
+    return () => removeEventListener("sift:refresh", on);
+  }, []);
 
   // Load sender detail when selected
   useEffect(() => {
@@ -84,28 +91,20 @@ export function SendersPage() {
   }, [selectedSender]);
 
   const sortTabs = [
-    { key: "count", label: "📊 Volume" },
-    { key: "recent", label: "🕒 Recent" },
-    { key: "unread", label: "📬 Unread" },
-    { key: "urgent", label: "🚨 Urgent" },
-    { key: "name", label: "🔤 Name" },
+    { key: "count", label: "Volume" },
+    { key: "recent", label: "Recent" },
+    { key: "unread", label: "Unread" },
+    { key: "urgent", label: "Urgent" },
+    { key: "name", label: "Name" },
   ];
 
   return (
-    <div className="page" style={{ maxWidth: 960, margin: "0 auto", padding: "16px 20px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
-        <div>
-          <h1 style={{ margin: "0 0 6px 0", fontSize: 24, fontWeight: 600 }}>Senders Directory</h1>
-          <div className="dim" style={{ fontSize: 13 }}>
-            Overview and statistics for all people and services contacting your inbox.
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: "6px 16px", textAlign: "center" }}>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>{total}</div>
-          <div className="dim" style={{ fontSize: 11, textTransform: "uppercase" }}>Senders</div>
-        </div>
+    <>
+    <Top title="Senders" refresh />
+    <section className="page">
+      <div className="inline" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+        <p className="lede" style={{ margin: 0 }}>Everyone who writes to your accounts, with how much and how recently.</p>
+        <div className="dim" style={{ fontSize: 13 }}><b className="mono" style={{ color: "var(--text)" }}>{total}</b> senders</div>
       </div>
 
       {/* Search and Sort controls */}
@@ -137,8 +136,7 @@ export function SendersPage() {
                   setSortBy(t.key);
                   setOffset(0);
                 }}
-                className={`btn btn-sm ${active ? "btn-primary" : "btn-ghost"}`}
-                style={{ borderRadius: 20, padding: "6px 12px", fontSize: 13 }}
+                className={`chip ${active ? "on" : ""}`}
               >
                 {t.label}
               </button>
@@ -192,7 +190,7 @@ export function SendersPage() {
                   <span
                     style={{
                       fontSize: 11,
-                      background: "var(--bg-3)",
+                      background: "var(--surface-2)",
                       padding: "1px 6px",
                       borderRadius: 4,
                       color: "var(--text-3)",
@@ -221,50 +219,14 @@ export function SendersPage() {
 
             {/* Metrics Badges */}
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: "2px 8px",
-                  borderRadius: 12,
-                  background: "var(--bg-3)",
-                  color: "var(--text)",
-                }}
-                title="Total emails"
-              >
-                {s.total_count} {s.total_count === 1 ? "mail" : "mails"}
-              </span>
+              <Tag tip="Mail from this sender">{`${s.total_count} ${s.total_count === 1 ? "mail" : "mails"}`}</Tag>
 
               {s.unread_count > 0 && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "2px 6px",
-                    borderRadius: 10,
-                    background: "rgba(56, 189, 248, 0.15)",
-                    color: "#38bdf8",
-                  }}
-                  title="Unread emails"
-                >
-                  {s.unread_count} unread
-                </span>
+                <Tag tone="normal" tip="Unread mail">{`${s.unread_count} unread`}</Tag>
               )}
 
               {s.urgent_count > 0 && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "2px 6px",
-                    borderRadius: 10,
-                    background: "rgba(248, 113, 113, 0.15)",
-                    color: "#f87171",
-                  }}
-                  title="Urgent emails"
-                >
-                  {s.urgent_count} urgent
-                </span>
+                <Tag tone="urgent" tip="Urgent mail">{`${s.urgent_count} urgent`}</Tag>
               )}
             </div>
 
@@ -472,6 +434,7 @@ export function SendersPage() {
           )}
         </Modal>
       )}
-    </div>
+    </section>
+    </>
   );
 }

@@ -89,6 +89,16 @@ class MainActivity : ComponentActivity() {
         setContent { SiftTheme { App() } }
     }
 
+    override fun onStart() {
+        super.onStart()
+        com.solarquack.sift.data.LiveStream.start(this)  // live updates while the app is on screen
+    }
+
+    override fun onStop() {
+        com.solarquack.sift.data.LiveStream.stop()
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         // back on screen: catch up on anything changed meanwhile (read elsewhere, new mail)

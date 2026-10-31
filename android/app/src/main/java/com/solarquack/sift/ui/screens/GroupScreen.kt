@@ -142,143 +142,145 @@ fun GroupScreen(id: String, onBack: () -> Unit, onOpenMail: (String) -> Unit, on
     LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { load() } }
 
     val group = g
-    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
-        item {
-            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
-            error?.let { Banner(it, Ink.urgent) }
-        }
-        if (group != null) {
+    com.solarquack.sift.ui.Refreshable({ load().join() }) {
+        LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 96.dp)) {
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(group.title, style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
-                    Text("Rename", color = Ink.signal, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { renaming = true }.padding(6.dp))
-                }
-                Text("${group.count} mails · ${group.unread} unread" + if (group.urgent > 0) " · ${group.urgent} urgent" else "", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
-                Text("A group only changes how mail is shown. Nothing changes in Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
-                if (group.custom) {
-                    Column(Modifier.fillMaxWidth().padding(top = 12.dp).background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(12.dp)) {
-                        Text("New mail joins when it", color = Ink.text, style = MaterialTheme.typography.titleSmall)
-                        group.query?.let { Text("matches  $it", color = Ink.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp)) }
-                        group.instruction?.let { Text((if (group.query != null) "and " else "") + "fits “$it” (the AI checks)", color = Ink.text2, style = MaterialTheme.typography.bodySmall) }
-                        if (group.query == null && group.instruction == null) Text("Nothing automatic: add mail by hand (a mail's Actions → Add to group).",
-                            color = Ink.text3, style = MaterialTheme.typography.bodySmall)
-                        FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GhostButton("Criteria…") { editing = true }
-                            if (group.query != null || group.instruction != null) GhostButton("Fill now") {
-                                run(null) {
-                                    val r = Api.get(context).fillGroup(id)
-                                    info = if (r.status == "done") "Added ${r.changed} mail" else "The AI is adding matching mail. You'll get a notification"
+                Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
+                error?.let { Banner(it, Ink.urgent) }
+            }
+            if (group != null) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(group.title, style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+                        Text("Rename", color = Ink.signal, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { renaming = true }.padding(6.dp))
+                    }
+                    Text("${group.count} mails · ${group.unread} unread" + if (group.urgent > 0) " · ${group.urgent} urgent" else "", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    Text("A group only changes how mail is shown. Nothing changes in Gmail.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    if (group.custom) {
+                        Column(Modifier.fillMaxWidth().padding(top = 12.dp).background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(12.dp)) {
+                            Text("New mail joins when it", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                            group.query?.let { Text("matches  $it", color = Ink.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp)) }
+                            group.instruction?.let { Text((if (group.query != null) "and " else "") + "fits “$it” (the AI checks)", color = Ink.text2, style = MaterialTheme.typography.bodySmall) }
+                            if (group.query == null && group.instruction == null) Text("Nothing automatic: add mail by hand (a mail's Actions → Add to group).",
+                                color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                GhostButton("Criteria…") { editing = true }
+                                if (group.query != null || group.instruction != null) GhostButton("Fill now") {
+                                    run(null) {
+                                        val r = Api.get(context).fillGroup(id)
+                                        info = if (r.status == "done") "Added ${r.changed} mail" else "The AI is adding matching mail. You'll get a notification"
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Mute this group", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
-                        Text("New mail in it won't notify. Urgent mail still does.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Mute this group", color = Ink.text, style = MaterialTheme.typography.bodyMedium)
+                            Text("New mail in it won't notify. Urgent mail still does.", color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                        }
+                        com.solarquack.sift.ui.SiftSwitch(group.muted, { on -> run { Api.get(context).editGroup(id, GroupPatch(muted = on)) } })
                     }
-                    com.solarquack.sift.ui.SiftSwitch(group.muted, { on -> run { Api.get(context).editGroup(id, GroupPatch(muted = on)) } })
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    GhostButton("Actions ▾", onClick = { actionsOpen = true })
-                    if (selecting) {
-                        GhostButton("Cancel split", onClick = { selecting = false; selected = emptySet() })
-                    }
-                }
-
-                if (actionsOpen) {
-                    ModalBottomSheet(
-                        onDismissRequest = { actionsOpen = false },
-                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                        containerColor = Ink.surface,
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val groupActions = buildList {
-                            add(SheetItem("File all in folder", "Move all emails in this group to a folder", section = "Organize") {
-                                filing = "file"
-                            })
-                            add(SheetItem("Split group", "Select emails to split into a new group", section = "Organize") {
-                                selecting = true
-                                selected = emptySet()
-                            })
-                            add(SheetItem("Merge into…", "Combine with another existing group", section = "Organize") {
-                                merging = true
-                            })
-                            add(SheetItem("File mail like this…", "Create a rule to file future similar emails automatically", section = "Automation") {
-                                filing = "rule"
-                            })
-                            add(SheetItem("Silence mail like this", "Create a rule to silence future similar emails", section = "Automation") {
-                                ruleDraft("silent")
-                            })
-                            group.items.firstOrNull()?.sender?.let { sender ->
-                                add(SheetItem("Never group $sender", "Keep future emails from this sender out of groups", section = "Automation") {
-                                    run("Mail from $sender won't be grouped") {
-                                        Api.get(context).setGroupPreference(PreferenceIn(sender, "never"))
-                                    }
+                        GhostButton("Actions ▾", onClick = { actionsOpen = true })
+                        if (selecting) {
+                            GhostButton("Cancel split", onClick = { selecting = false; selected = emptySet() })
+                        }
+                    }
+
+                    if (actionsOpen) {
+                        ModalBottomSheet(
+                            onDismissRequest = { actionsOpen = false },
+                            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                            containerColor = Ink.surface,
+                        ) {
+                            val groupActions = buildList {
+                                add(SheetItem("File all in folder", "Move all emails in this group to a folder", section = "Organize") {
+                                    filing = "file"
+                                })
+                                add(SheetItem("Split group", "Select emails to split into a new group", section = "Organize") {
+                                    selecting = true
+                                    selected = emptySet()
+                                })
+                                add(SheetItem("Merge into…", "Combine with another existing group", section = "Organize") {
+                                    merging = true
+                                })
+                                add(SheetItem("File mail like this…", "Create a rule to file future similar emails automatically", section = "Automation") {
+                                    filing = "rule"
+                                })
+                                add(SheetItem("Silence mail like this", "Create a rule to silence future similar emails", section = "Automation") {
+                                    ruleDraft("silent")
+                                })
+                                group.items.firstOrNull()?.sender?.let { sender ->
+                                    add(SheetItem("Never group $sender", "Keep future emails from this sender out of groups", section = "Automation") {
+                                        run("Mail from $sender won't be grouped") {
+                                            Api.get(context).setGroupPreference(PreferenceIn(sender, "never"))
+                                        }
+                                    })
+                                }
+                                add(SheetItem("Delete group", "Remove this group without deleting emails", danger = true, section = "Manage") {
+                                    deleting = true
                                 })
                             }
-                            add(SheetItem("Delete group", "Remove this group without deleting emails", danger = true, section = "Manage") {
-                                deleting = true
-                            })
-                        }
 
-                        LazyColumn(Modifier.padding(bottom = 28.dp)) {
-                            val sections = groupActions.groupBy { it.section }
-                            sections.forEach { (section, entries) ->
-                                item(key = "hdr-$section") {
-                                    Text(
-                                        section.uppercase(),
-                                        color = Ink.text3,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        modifier = Modifier.padding(start = 22.dp, top = 14.dp, bottom = 6.dp)
-                                    )
-                                }
-                                items(entries, key = { it.label }) { entry ->
-                                    Column(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                actionsOpen = false
-                                                entry.onClick()
-                                            }
-                                            .padding(horizontal = 22.dp, vertical = 12.dp)
-                                    ) {
+                            LazyColumn(Modifier.padding(bottom = 28.dp)) {
+                                val sections = groupActions.groupBy { it.section }
+                                sections.forEach { (section, entries) ->
+                                    item(key = "hdr-$section") {
                                         Text(
-                                            entry.label,
-                                            color = if (entry.danger) Ink.urgent else Ink.text,
-                                            style = MaterialTheme.typography.titleSmall
+                                            section.uppercase(),
+                                            color = Ink.text3,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(start = 22.dp, top = 14.dp, bottom = 6.dp)
                                         )
-                                        entry.hint?.let { hint ->
-                                            Text(hint, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    items(entries, key = { it.label }) { entry ->
+                                        Column(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    actionsOpen = false
+                                                    entry.onClick()
+                                                }
+                                                .padding(horizontal = 22.dp, vertical = 12.dp)
+                                        ) {
+                                            Text(
+                                                entry.label,
+                                                color = if (entry.danger) Ink.urgent else Ink.text,
+                                                style = MaterialTheme.typography.titleSmall
+                                            )
+                                            entry.hint?.let { hint ->
+                                                Text(hint, color = Ink.text3, style = MaterialTheme.typography.bodySmall)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                if (selecting) Banner(
-                    if (selected.isEmpty()) "Tap the mails to move into a new group." else "${selected.size} selected", Ink.signal,
-                    if (selected.isNotEmpty()) "Split off" else null,
-                ) {
-                    run("Split into a new group") { Api.get(context).splitGroup(id, SplitIn(selected.toList())) }
-                    selecting = false; selected = emptySet()
-                }
-                info?.let { Text(it, color = Ink.signal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 6.dp)) }
-                HorizontalDivider(color = Ink.line)
-            }
-            items(group.items, key = { it.id }) { m ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (selecting) Text(if (m.id in selected) "☑" else "☐", color = Ink.signal, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
-                    Box(Modifier.weight(1f)) {
-                        MailRow(m) { if (selecting) selected = if (m.id in selected) selected - m.id else selected + m.id else onOpenMail(m.id) }
+                    if (selecting) Banner(
+                        if (selected.isEmpty()) "Tap the mails to move into a new group." else "${selected.size} selected", Ink.signal,
+                        if (selected.isNotEmpty()) "Split off" else null,
+                    ) {
+                        run("Split into a new group") { Api.get(context).splitGroup(id, SplitIn(selected.toList())) }
+                        selecting = false; selected = emptySet()
                     }
-                    if (!selecting) Text("Take out", color = Ink.text3, style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.clickable { run("Taken out of the group") { Api.get(context).removeFromGroup(id, MessageIdIn(m.id)) } }.padding(8.dp))
+                    info?.let { Text(it, color = Ink.signal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 6.dp)) }
+                    HorizontalDivider(color = Ink.line)
+                }
+                items(group.items, key = { it.id }) { m ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (selecting) Text(if (m.id in selected) "☑" else "☐", color = Ink.signal, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
+                        Box(Modifier.weight(1f)) {
+                            MailRow(m) { if (selecting) selected = if (m.id in selected) selected - m.id else selected + m.id else onOpenMail(m.id) }
+                        }
+                        if (!selecting) Text("Take out", color = Ink.text3, style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.clickable { run("Taken out of the group") { Api.get(context).removeFromGroup(id, MessageIdIn(m.id)) } }.padding(8.dp))
+                    }
                 }
             }
         }
@@ -377,50 +379,52 @@ fun GroupsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         } catch (t: Throwable) { error = t.userMessage() }
     }
 
-    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 110.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 10.dp, horizontal = 4.dp))
-            }
-            Text("Groups", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 10.dp))
-        }
-        error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
-        info?.let { item { Banner(it, Ink.signal) } }
-        item {
-            Row(Modifier.padding(top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Your groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                PrimaryButton("+ New group") { making = true }
-            }
-        }
-        val mine = groups.orEmpty().filter { it.custom }
-        if (groups != null && mine.isEmpty()) item {
-            Text("None yet. Give a group a search (free) or describe its mail in words (the AI checks each new mail), and new mail joins it on its own, next to its folders and timeline.",
-                color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp))
-        }
-        items(mine, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
-        item { Text("Automatic groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)) }
-        status?.let {
+    com.solarquack.sift.ui.Refreshable({ load().join() }) {
+        LazyColumn(Modifier.fillMaxSize().background(Ink.bg), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 110.dp)) {
             item {
-                Column(Modifier.fillMaxWidth().background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(14.dp)) {
-                    Text(if (on) "Automatic grouping is on" else "Automatic grouping is off", color = Ink.text, style = MaterialTheme.typography.titleSmall)
-                    Text(if (on) "Similar mail is stacked into one row. Display only: notifications are unaffected."
-                        else "Turn it on to stack similar mail (bank alerts, newsletters, one company's drive) into one row. Display only.",
-                        color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (on) {
-                            GhostButton("Turn off") { set("no") }
-                            GhostButton("Collapse all") {
-                                scope.launch { runCatching { Api.get(context).collapseAllGroups(com.solarquack.sift.data.CollapseIn(true)) }; info = "Every group folded into one row."; load() }
-                            }
-                        } else PrimaryButton("Turn on") { set("yes") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 10.dp, horizontal = 4.dp))
+                }
+                Text("Groups", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 10.dp))
+            }
+            error?.let { item { Banner(it, Ink.urgent, "Retry") { load() } } }
+            info?.let { item { Banner(it, Ink.signal) } }
+            item {
+                Row(Modifier.padding(top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Your groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    PrimaryButton("+ New group") { making = true }
+                }
+            }
+            val mine = groups.orEmpty().filter { it.custom }
+            if (groups != null && mine.isEmpty()) item {
+                Text("None yet. Give a group a search (free) or describe its mail in words (the AI checks each new mail), and new mail joins it on its own, next to its folders and timeline.",
+                    color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp))
+            }
+            items(mine, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
+            item { Text("Automatic groups", color = Ink.text2, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)) }
+            status?.let {
+                item {
+                    Column(Modifier.fillMaxWidth().background(Ink.surface, Radius.lg).border(1.dp, Ink.line2, Radius.lg).padding(14.dp)) {
+                        Text(if (on) "Automatic grouping is on" else "Automatic grouping is off", color = Ink.text, style = MaterialTheme.typography.titleSmall)
+                        Text(if (on) "Similar mail is stacked into one row. Display only: notifications are unaffected."
+                            else "Turn it on to stack similar mail (bank alerts, newsletters, one company's drive) into one row. Display only.",
+                            color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (on) {
+                                GhostButton("Turn off") { set("no") }
+                                GhostButton("Collapse all") {
+                                    scope.launch { runCatching { Api.get(context).collapseAllGroups(com.solarquack.sift.data.CollapseIn(true)) }; info = "Every group folded into one row."; load() }
+                                }
+                            } else PrimaryButton("Turn on") { set("yes") }
+                        }
                     }
                 }
             }
+            if (on && groups?.none { !it.custom } == true) item {
+                Text("No automatic groups yet. A group shows once three similar mails arrive.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 28.dp, horizontal = 4.dp))
+            }
+            items(groups.orEmpty().filter { !it.custom }, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
         }
-        if (on && groups?.none { !it.custom } == true) item {
-            Text("No automatic groups yet. A group shows once three similar mails arrive.", color = Ink.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 28.dp, horizontal = 4.dp))
-        }
-        items(groups.orEmpty().filter { !it.custom }, key = { it.id }) { g -> GroupRow(g) { onOpen(g.id) } }
     }
     if (making) GroupFormDialog(null, onDismiss = { making = false }) { made -> making = false; load(); made?.let { onOpen(it.id) } }
 }

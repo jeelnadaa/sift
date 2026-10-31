@@ -41,7 +41,7 @@ export function OutboxPage() {
 
   return (
     <>
-      <Top title="Outbox">
+      <Top title="Outbox" refresh>
         <button className="btn btn-primary btn-sm" onClick={() => navigate("/compose")} data-tip="Write a new mail  (C)">New mail</button>
       </Top>
       <section className="page">

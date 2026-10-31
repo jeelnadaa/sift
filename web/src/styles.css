@@ -348,3 +348,9 @@ div:hover > .tl-tools, .tl-tools:focus-within { opacity: 1; }
 .updating-note i { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); animation: upd-pulse 1s ease-in-out infinite; }
 @keyframes upd-pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .updating-note i { animation: none; } }
+
+/* ↻ Refresh in a page's actions; the icon turns while anything on the page loads */
+.refresh-btn { display: inline-flex; align-items: center; gap: 6px; }
+.refresh-btn.busy svg { animation: refresh-spin .9s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .refresh-btn.busy svg { animation: none; opacity: .5; } }

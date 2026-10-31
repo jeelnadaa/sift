@@ -23,7 +23,7 @@ export function Todos() {
 
   return (
     <>
-      <Top title="To-do"><button className="btn btn-primary btn-sm" onClick={() => setEditing("new")} data-tip="Add a to-do by hand, with an optional deadline">+ Add to-do</button></Top>
+      <Top title="To-do" refresh><button className="btn btn-primary btn-sm" onClick={() => setEditing("new")} data-tip="Add a to-do by hand, with an optional deadline">+ Add to-do</button></Top>
       <section className="page">
         <p className="lede">Action-needed mail with deadlines. Built by AI when a key exists, or by hand from any mail. Reminders arrive 24 hours and 2 hours before.</p>
         <div className="tabs">

@@ -197,11 +197,16 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
         }
     }
 
+    // mail that arrived while the list is scrolled down: "↑ N new mails" (tap to go to the top)
+    var newCount by remember(priority, account, silenced) { mutableStateOf(0) }
+    LaunchedEffect(listState) { androidx.compose.runtime.snapshotFlow { listState.firstVisibleItemIndex }.collect { if (it == 0) newCount = 0 } }
+
     // live: reload what's loaded, quietly (no spinner, no jump to the top)
     suspend fun refreshQuiet() {
         if (loading || loadingMore) return
         val api = Api.get(context)
         val count = items.size.coerceIn(30, 200)
+        val before = items.mapTo(HashSet()) { it.key }
         runCatching {
             if (grouped) {
                 val p = api.groupedFeed(priority = priority, accountId = account, limit = count)
@@ -214,6 +219,8 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
             }
             accounts = api.accounts()
             syncCache(items, next)  // so coming back from a mail shows this list, not an older one
+            val arrived = items.count { it is MailItem && it.key !in before }
+            if (before.isNotEmpty() && arrived > 0 && listState.firstVisibleItemIndex > 1) newCount += arrived
         }
     }
     LaunchedEffect(Unit) { com.solarquack.sift.data.LiveEvents.changes.collect { refreshQuiet() } }
@@ -305,6 +312,15 @@ fun FeedScreen(silenced: Boolean = false, onOpen: (String) -> Unit, onAccounts: 
                 if (loadingMore) item {
                     Text("Loading older mail…", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
                 }
+            }
+            if (newCount > 0) {
+                Text(
+                    "↑ $newCount new ${if (newCount == 1) "mail" else "mails"}", color = Ink.bg, style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)
+                        .background(Ink.signal, com.solarquack.sift.ui.theme.Radius.md)
+                        .clickable { newCount = 0; scope.launch { listState.animateScrollToItem(0) } }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
             }
         }
     }

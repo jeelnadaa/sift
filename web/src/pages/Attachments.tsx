@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Top } from "../App";
 import { Link } from "react-router-dom";
 import {
   get,
@@ -7,7 +8,7 @@ import {
   type AttachmentListResult,
   type AttachmentStats,
 } from "../api";
-import { Icon } from "../components";
+import { Icon, useBusyWhile } from "../components";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -53,6 +54,7 @@ export function AttachmentsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [total, setTotal] = useState<number>(0);
+  const [reloadTick, setReloadTick] = useState(0);
 
   // Load stats & accounts once
   useEffect(() => {
@@ -90,7 +92,13 @@ export function AttachmentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [typeFilter, searchQuery, sizeFilter, accountFilter]);
+  }, [typeFilter, searchQuery, sizeFilter, accountFilter, reloadTick]);
+  useBusyWhile(loading && reloadTick > 0);
+  useEffect(() => {  // the Refresh button
+    const on = () => setReloadTick((t) => t + 1);
+    addEventListener("sift:refresh", on);
+    return () => removeEventListener("sift:refresh", on);
+  }, []);
 
   const loadMore = async () => {
     if (!nextBefore || loading) return;
@@ -122,28 +130,12 @@ export function AttachmentsPage() {
   ];
 
   return (
-    <div className="page" style={{ maxWidth: 960, margin: "0 auto", padding: "16px 20px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
-        <div>
-          <h1 style={{ margin: "0 0 6px 0", fontSize: 24, fontWeight: 600 }}>Attachments Hub</h1>
-          <div className="dim" style={{ fontSize: 13 }}>
-            Search and manage files across all your connected mail accounts.
-          </div>
-        </div>
-
-        {stats && (
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <div className="card" style={{ padding: "6px 14px", textAlign: "center", minWidth: 90 }}>
-              <div style={{ fontSize: 18, fontWeight: 600 }}>{stats.total_count}</div>
-              <div className="dim" style={{ fontSize: 11, textTransform: "uppercase" }}>Files</div>
-            </div>
-            <div className="card" style={{ padding: "6px 14px", textAlign: "center", minWidth: 90 }}>
-              <div style={{ fontSize: 18, fontWeight: 600 }}>{formatBytes(stats.total_size)}</div>
-              <div className="dim" style={{ fontSize: 11, textTransform: "uppercase" }}>Stored</div>
-            </div>
-          </div>
-        )}
+    <>
+    <Top title="Attachments" refresh />
+    <section className="page">
+      <div className="inline" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+        <p className="lede" style={{ margin: 0 }}>Every file in your mail, across all your accounts.</p>
+        {stats && <div className="dim" style={{ fontSize: 13 }}><b className="mono" style={{ color: "var(--text)" }}>{stats.total_count}</b> files · <b className="mono" style={{ color: "var(--text)" }}>{formatBytes(stats.total_size)}</b></div>}
       </div>
 
       {/* Filter Chips Bar */}
@@ -152,35 +144,9 @@ export function AttachmentsPage() {
           const count = tab.key === "all" ? stats?.total_count : stats?.by_type?.[tab.key]?.count;
           const active = typeFilter === tab.key;
           return (
-            <button
-              key={tab.key}
-              onClick={() => setTypeFilter(tab.key)}
-              className={`btn btn-sm ${active ? "btn-primary" : "btn-ghost"}`}
-              style={{
-                borderRadius: 20,
-                padding: "6px 14px",
-                fontWeight: active ? 600 : 400,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-              {typeof count === "number" && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    opacity: 0.7,
-                    marginLeft: 2,
-                    background: active ? "rgba(255,255,255,0.2)" : "var(--bg-3)",
-                    padding: "1px 6px",
-                    borderRadius: 10,
-                  }}
-                >
-                  {count}
-                </span>
-              )}
+            <button key={tab.key} onClick={() => setTypeFilter(tab.key)} className={`chip ${active ? "on" : ""}`}>
+              {tab.label}
+              {typeof count === "number" && <span className="mono" style={{ opacity: 0.7, marginLeft: 6 }}>{count}</span>}
             </button>
           );
         })}
@@ -268,7 +234,7 @@ export function AttachmentsPage() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "var(--bg-3)",
+                  background: "var(--surface-2)",
                   borderRadius: 8,
                   flexShrink: 0,
                 }}
@@ -355,6 +321,7 @@ export function AttachmentsPage() {
           </button>
         </div>
       )}
-    </div>
+    </section>
+    </>
   );
 }

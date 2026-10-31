@@ -161,15 +161,14 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
         }
     }
 
-    LaunchedEffect(query, meaning, fuzzy) {
-        if (SearchSession.query == query && SearchSession.meaning == meaning && SearchSession.fuzzy == fuzzy && SearchSession.hits.isNotEmpty() && hits.isNotEmpty()) {
-            return@LaunchedEffect
-        }
-        hits = emptyList(); next = null; error = null
+    /** Runs the search from the first page; [keep] leaves the current hits on screen meanwhile (pull to refresh). */
+    suspend fun searchNow(keep: Boolean = false) {
+        if (!keep) { hits = emptyList(); next = null }
+        error = null
         if (query.isBlank()) {
             chips = emptyList()
             SearchSession.clear()
-            return@LaunchedEffect
+            return
         }
         loading = true
         try {
@@ -186,8 +185,14 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
             SearchSession.total = total
             SearchSession.estimated = estimated
             SearchSession.failed = failed
-            listState.scrollToItem(0)
+            if (!keep) listState.scrollToItem(0)
         } catch (t: Throwable) { error = t.userMessage() } finally { loading = false }
+    }
+    LaunchedEffect(query, meaning, fuzzy) {
+        if (SearchSession.query == query && SearchSession.meaning == meaning && SearchSession.fuzzy == fuzzy && SearchSession.hits.isNotEmpty() && hits.isNotEmpty()) {
+            return@LaunchedEffect
+        }
+        searchNow()
     }
     fun loadMore() {
         val cursor = next ?: return
@@ -213,82 +218,84 @@ fun SearchScreen(onOpenMail: (String) -> Unit, onOpenThread: (String, String) ->
     fun add(token: String) = run((query.split(" ").filter { it.isNotBlank() && it != token } + token).joinToString(" "))
     val aiOn = sem?.aiEnabled == true
 
-    LazyColumn(Modifier.fillMaxSize().background(Ink.bg), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp)) {
-        item {
-            Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = { SearchSession.clear(); onBack() }).padding(vertical = 6.dp))
-            Text("Search", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(bottom = 8.dp))
-            Field(draft, { draft = it }, "Search all accounts", placeholder = "from:kotak has:attachment · folder:Work")
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                PrimaryButton("Search", enabled = draft.isNotBlank()) { run(draft) }
-                Chip("Keywords", !meaning && !fuzzy) { meaning = false; fuzzy = false }
-                Chip("Fuzzy", fuzzy) { fuzzy = true; meaning = false }
-                Chip(if (aiOn) "By meaning" else "By meaning (needs key)", meaning) { if (aiOn) { meaning = true; fuzzy = false } }
-            }
-            if (chips.isNotEmpty()) {
-                FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    chips.forEach { c ->
-                        Chip((if (c.kind == "sift") "◆ " else "") + c.label + "  ×", true) {
-                            run(chips.filter { it != c }.joinToString(" ") { it.text })
-                        }
-                    }
+    com.solarquack.sift.ui.Refreshable({ searchNow(keep = true) }) {
+        LazyColumn(Modifier.fillMaxSize().background(Ink.bg), state = listState, contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 96.dp)) {
+            item {
+                Text("‹ Back", color = Ink.text2, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable(onClick = { SearchSession.clear(); onBack() }).padding(vertical = 6.dp))
+                Text("Search", style = MaterialTheme.typography.headlineMedium, color = Ink.text, modifier = Modifier.padding(bottom = 8.dp))
+                Field(draft, { draft = it }, "Search all accounts", placeholder = "from:kotak has:attachment · folder:Work")
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PrimaryButton("Search", enabled = draft.isNotBlank()) { run(draft) }
+                    Chip("Keywords", !meaning && !fuzzy) { meaning = false; fuzzy = false }
+                    Chip("Fuzzy", fuzzy) { fuzzy = true; meaning = false }
+                    Chip(if (aiOn) "By meaning" else "By meaning (needs key)", meaning) { if (aiOn) { meaning = true; fuzzy = false } }
                 }
-            }
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                QUICK.forEach { (tok, label) -> Chip(label, false) { add(tok) } }
-            }
-            Text(
-                "◆ Sift filters (folder, tag, priority, company, silenced…) only see mail Sift has seen, from when you connected the account. " +
-                    "Gmail syntax (from:, subject:, has:attachment, newer_than:…) searches all your mail in Gmail.",
-                color = Ink.text3, style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 10.dp).fillMaxWidth().background(Ink.bg2, Radius.sm).padding(10.dp),
-            )
-            if (saved.isNotEmpty()) {
-                Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Saved", color = Ink.text3, style = MaterialTheme.typography.labelMedium)
-                    saved.forEach { s -> Chip((if (s.pinned) "📌 " else "") + s.name + if (s.notify) " 🔔" else "", query == s.query) { run(s.query) } }
-                }
-            }
-            Column(Modifier.padding(top = 12.dp)) {
-                if (aiOn) {
-                    Field(english, { english = it }, "Or describe it", placeholder = "mails from Walmart last week")
-                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GhostButton("Turn into search") {
-                            scope.launch {
-                                try { val r = Api.get(context).searchFromText(TextIn(english.trim())); run(r.query) } catch (t: Throwable) { error = t.userMessage() }
+                if (chips.isNotEmpty()) {
+                    FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        chips.forEach { c ->
+                            Chip((if (c.kind == "sift") "◆ " else "") + c.label + "  ×", true) {
+                                run(chips.filter { it != c }.joinToString(" ") { it.text })
                             }
                         }
-                        if (query.isNotBlank()) GhostButton("Save search") { saving = true }
                     }
-                } else {
-                    Text("Describing a search in plain English and searching by meaning need your AI key (Settings). Gmail syntax works without it.",
-                        color = Ink.warn, style = MaterialTheme.typography.bodySmall)
-                    if (query.isNotBlank()) Box(Modifier.padding(top = 6.dp)) { GhostButton("Save search") { saving = true } }
                 }
-            }
-            error?.let { Box(Modifier.padding(top = 10.dp)) { Banner(it, Ink.urgent) } }
-            if (failed.isNotEmpty()) Box(Modifier.padding(top = 10.dp)) { Banner("Couldn't search ${failed.joinToString()} right now.", Ink.warn) }
-            if (query.isNotBlank() && !loading && error == null) {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    QUICK.forEach { (tok, label) -> Chip(label, false) { add(tok) } }
+                }
                 Text(
-                    when {
-                        hits.isEmpty() -> if (meaning) "Nothing close enough in meaning." else "No mail matches."
-                        meaning -> "$total matches by meaning"
-                        estimated -> "${hits.size} conversations${if (next != null) " so far, more as you scroll" else ""}"  // Gmail's own counts are only estimates
-                        else -> "$total conversation${if (total == 1) "" else "s"}"
-                    },
-                    color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+                    "◆ Sift filters (folder, tag, priority, company, silenced…) only see mail Sift has seen, from when you connected the account. " +
+                        "Gmail syntax (from:, subject:, has:attachment, newer_than:…) searches all your mail in Gmail.",
+                    color = Ink.text3, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 10.dp).fillMaxWidth().background(Ink.bg2, Radius.sm).padding(10.dp),
                 )
-            }
-        }
-        items(hits, key = { it.id ?: (it.accountId + ":" + it.threadId) }) { h ->
-            Box {
-                MailRow(h.asMessage()) { SearchSession.scrollIndex = listState.firstVisibleItemIndex; SearchSession.scrollOffset = listState.firstVisibleItemScrollOffset; if (h.id != null) onOpenMail(h.id) else onOpenThread(h.accountId, h.threadId) }
-                Row(Modifier.align(Alignment.BottomEnd).padding(bottom = 8.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    h.score?.let { Tag("${(it * 100).toInt()}%", Ink.signal) }
-                    if (h.id == null) Tag("Gmail only")
+                if (saved.isNotEmpty()) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Saved", color = Ink.text3, style = MaterialTheme.typography.labelMedium)
+                        saved.forEach { s -> Chip((if (s.pinned) "📌 " else "") + s.name + if (s.notify) " 🔔" else "", query == s.query) { run(s.query) } }
+                    }
+                }
+                Column(Modifier.padding(top = 12.dp)) {
+                    if (aiOn) {
+                        Field(english, { english = it }, "Or describe it", placeholder = "mails from Walmart last week")
+                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GhostButton("Turn into search") {
+                                scope.launch {
+                                    try { val r = Api.get(context).searchFromText(TextIn(english.trim())); run(r.query) } catch (t: Throwable) { error = t.userMessage() }
+                                }
+                            }
+                            if (query.isNotBlank()) GhostButton("Save search") { saving = true }
+                        }
+                    } else {
+                        Text("Describing a search in plain English and searching by meaning need your AI key (Settings). Gmail syntax works without it.",
+                            color = Ink.warn, style = MaterialTheme.typography.bodySmall)
+                        if (query.isNotBlank()) Box(Modifier.padding(top = 6.dp)) { GhostButton("Save search") { saving = true } }
+                    }
+                }
+                error?.let { Box(Modifier.padding(top = 10.dp)) { Banner(it, Ink.urgent) } }
+                if (failed.isNotEmpty()) Box(Modifier.padding(top = 10.dp)) { Banner("Couldn't search ${failed.joinToString()} right now.", Ink.warn) }
+                if (query.isNotBlank() && !loading && error == null) {
+                    Text(
+                        when {
+                            hits.isEmpty() -> if (meaning) "Nothing close enough in meaning." else "No mail matches."
+                            meaning -> "$total matches by meaning"
+                            estimated -> "${hits.size} conversations${if (next != null) " so far, more as you scroll" else ""}"  // Gmail's own counts are only estimates
+                            else -> "$total conversation${if (total == 1) "" else "s"}"
+                        },
+                        color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+                    )
                 }
             }
+            items(hits, key = { it.id ?: (it.accountId + ":" + it.threadId) }) { h ->
+                Box {
+                    MailRow(h.asMessage()) { SearchSession.scrollIndex = listState.firstVisibleItemIndex; SearchSession.scrollOffset = listState.firstVisibleItemScrollOffset; if (h.id != null) onOpenMail(h.id) else onOpenThread(h.accountId, h.threadId) }
+                    Row(Modifier.align(Alignment.BottomEnd).padding(bottom = 8.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        h.score?.let { Tag("${(it * 100).toInt()}%", Ink.signal) }
+                        if (h.id == null) Tag("Gmail only")
+                    }
+                }
+            }
+            if (loading) item { Text("Searching…", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 16.dp)) }
         }
-        if (loading) item { Text("Searching…", color = Ink.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 16.dp)) }
     }
 
     if (saving) {

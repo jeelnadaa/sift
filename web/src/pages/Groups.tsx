@@ -18,7 +18,7 @@ export function Groups() {
   }
   return (
     <>
-      <Top title="Groups">
+      <Top title="Groups" refresh>
         <button className="btn btn-primary btn-sm" onClick={() => setMaking(true)} data-tip="A group of your own: say which mail belongs in it">+ New group</button>
         {on && <button className="btn btn-ghost btn-sm" onClick={async () => { await post("/groups/collapse-all", { collapsed: true }).catch(() => {}); groups.reload(); }} data-tip="Fold every group into a single row">Collapse all</button>}
       </Top>
@@ -110,7 +110,7 @@ export function GroupDetail() {
   const sender = d?.items?.[0]?.sender;
   return (
     <>
-      <Top title={d?.title ?? "Group"} back="/groups">
+      <Top title={d?.title ?? "Group"} back="/groups" refresh>
         {d && <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(d.title)} data-tip="Give it a new name">Rename</button>}
         {d?.custom && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)} data-tip="Change which new mail joins it">Criteria…</button>}
         {d?.custom && (d.query || d.instruction) && <button className="btn btn-ghost btn-sm" data-tip="Add matching mail that's already in Sift (last 30 days)" onClick={async () => {
